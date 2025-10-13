@@ -1,0 +1,37 @@
+import React from 'react'
+import { Outlet, Navigate } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext.tsx'
+import Topbar from './Topbar.tsx'
+import Sidebar from './Sidebar.tsx'
+
+const AuthenticatedLayout: React.FC = () => {
+  const { isAuthenticated, isLoading } = useAuth()
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <Topbar />
+      <div className="flex">
+        <Sidebar />
+        <main className="flex-1">
+          <div className="py-2 px-4 max-w-6xl mx-auto">
+            <Outlet />
+          </div>
+        </main>
+      </div>
+    </div>
+  )
+}
+
+export default AuthenticatedLayout
