@@ -1,0 +1,221 @@
+// Prisma schema — first pass for core entities
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  role          Role     @relation(fields: [roleId], references: [id])
+  roleId        String
+  department    Department @relation(fields: [departmentId], references: [id])
+  departmentId  String
+  isActive      Boolean  @default(true)
+  memberships   ProjectMembership[]
+  timeLogs      TimeLog[]
+  comments      Comment[] @relation("CommentAuthor")
+  mentionedIn   Comment[] @relation("CommentMentions")
+  documentsReviewed Document[] @relation("DocumentReviewer")
+  documentsCreated  Document[] @relation("DocumentCreator")
+  notifications Notification[] @relation("UserNotifications")
+  projectsOwned Project[] @relation("ProjectOwner")
+  historyEvents HistoryEvent[] @relation("HistoryCreatedBy")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([name])
+  @@index([email])
+  @@index([isActive])
+  @@index([roleId, departmentId])
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  users     User[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Role {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  users     User[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Project {
+  id            String   @id @default(cuid())
+  code          String   @unique
+  title         String
+  description   String
+  status        ProjectStatus @default(PLANNING)
+  ownerId       String?
+  owner         User?    @relation("ProjectOwner", fields: [ownerId], references: [id])
+  visibility    Visibility @default(TEAM)
+  allocatedHours Int      @default(0)
+  startDate     DateTime?
+  endDate       DateTime?
+  phases        Phase[]
+  memberships   ProjectMembership[]
+  attachments   Attachment[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model ProjectMembership {
+  id        String  @id @default(cuid())
+  project   Project @relation(fields: [projectId], references: [id])
+  projectId String
+  user      User    @relation(fields: [userId], references: [id])
+  userId    String
+  role      ProjectRole
+  tasks     Task[]  @relation("TaskAssignees")
+  @@unique([projectId, userId])
+}
+
+model Phase {
+  id        String  @id @default(cuid())
+  name      String
+  description String?
+  startDate DateTime?
+  endDate   DateTime?
+  project   Project @relation(fields: [projectId], references: [id])
+  projectId String
+  tasks     Task[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model Task {
+  id        String  @id @default(cuid())
+  title     String
+  description String
+  status    TaskStatus @default(NOT_STARTED)
+  dueDate   DateTime?
+  phase     Phase   @relation(fields: [phaseId], references: [id])
+  phaseId   String
+  assignees ProjectMembership[] @relation("TaskAssignees")
+  timeLogs  TimeLog[]
+  comments  Comment[]
+  documents Document[]
+  history   HistoryEvent[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TimeLog {
+  id        String  @id @default(cuid())
+  task      Task    @relation(fields: [taskId], references: [id])
+  taskId    String
+  user      User    @relation(fields: [userId], references: [id])
+  userId    String
+  startedAt DateTime
+  endedAt   DateTime
+  durationMins Int
+  description String
+  attachment Attachment? @relation(fields: [attachmentId], references: [id])
+  attachmentId String? @unique
+  createdAt DateTime @default(now())
+}
+
+model Comment {
+  id        String  @id @default(cuid())
+  task      Task    @relation(fields: [taskId], references: [id])
+  taskId    String
+  author    User    @relation("CommentAuthor", fields: [authorId], references: [id])
+  authorId  String
+  content   String
+  parent    Comment? @relation("CommentReplies", fields: [parentId], references: [id])
+  parentId  String?
+  replies   Comment[] @relation("CommentReplies")
+  mentions  User[] @relation("CommentMentions")
+  createdAt DateTime @default(now())
+}
+
+model Document {
+  id        String  @id @default(cuid())
+  task      Task    @relation(fields: [taskId], references: [id])
+  taskId    String
+  name      String
+  reviewer  User?   @relation("DocumentReviewer", fields: [reviewerId], references: [id])
+  reviewerId String?
+  filePath  String
+  createdBy User    @relation("DocumentCreator", fields: [createdById], references: [id])
+  createdById String
+  createdAt DateTime @default(now())
+}
+
+model Attachment {
+  id        String  @id @default(cuid())
+  filePath  String
+  fileType  String
+  createdAt DateTime @default(now())
+  project   Project? @relation(fields: [projectId], references: [id])
+  projectId String?
+  timeLog   TimeLog?
+}
+
+model Notification {
+  id        String  @id @default(cuid())
+  user      User    @relation("UserNotifications", fields: [userId], references: [id])
+  userId    String
+  message   String
+  read      Boolean @default(false)
+  createdAt DateTime @default(now())
+}
+
+model HistoryEvent {
+  id        String  @id @default(cuid())
+  task      Task    @relation(fields: [taskId], references: [id])
+  taskId    String
+  type      HistoryType
+  message   String
+  createdBy User    @relation("HistoryCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  createdAt  DateTime @default(now())
+}
+
+enum ProjectRole {
+  DIRECTOR
+  MANAGER
+  CONSULTANT
+  LEAD
+  ENGINEER
+  OPS
+}
+
+enum ProjectStatus {
+  PLANNING
+  IN_PROGRESS
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  ON_HOLD
+  COMPLETED
+}
+
+enum Visibility {
+  PRIVATE
+  TEAM
+  COMPANY
+}
+
+enum HistoryType {
+  TIME_LOG
+  COMMENT
+  DOCUMENT
+  STATUS_CHANGE
+}
