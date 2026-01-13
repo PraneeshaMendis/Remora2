@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext.tsx'
 import { useTheme } from '../contexts/ThemeContext.tsx'
 import { getImpersonationStatus, stopImpersonation } from '../services/adminAPI.ts'
+import RemoraLogo from './RemoraLogo.tsx'
 
 const Topbar: React.FC = () => {
   const { user, logout } = useAuth()
   const [impersonation, setImpersonation] = useState<{ active: boolean; user?: { id: string; name: string; email: string } } | null>(null)
+  const navigate = useNavigate()
 
   useEffect(() => {
     ;(async () => {
@@ -21,22 +24,12 @@ const Topbar: React.FC = () => {
         <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
       <div className="px-6 py-4">
         <div className="flex items-center justify-between">
-          {/* Left side - REMORA Logo */}
-          <div className="flex items-center space-x-3">
-            {/* Logo Icon */}
-            <div className="relative w-10 h-10">
-              <div className="absolute inset-0 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-blue-700 flex items-center justify-center">
-                <span className="text-white font-bold text-lg">R</span>
-              </div>
-              <div className="absolute inset-0 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-blue-700 opacity-20 blur-sm"></div>
-            </div>
-            
-            {/* Logo Text */}
-            <div className="flex flex-col">
-              <span className="text-xl font-bold text-gray-900 dark:text-white tracking-wide">REMORA</span>
-              <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">BY PRANEESHA MENDIS</span>
-            </div>
+          {/* Left side - brand on mobile, spacer on desktop */}
+          <div className="flex items-center gap-3 lg:hidden">
+            <RemoraLogo size={32} />
+            <span className="text-base font-semibold text-gray-900 dark:text-white tracking-wide">Remora</span>
           </div>
+          <div className="hidden lg:block lg:w-56" aria-hidden="true"></div>
 
           {/* Center - Search */}
           <div className="flex-1 max-w-lg mx-8">
@@ -108,11 +101,16 @@ const Topbar: React.FC = () => {
               </div>
               
               {/* User avatar */}
-              <div className="h-8 w-8 rounded-full bg-primary-600 flex items-center justify-center">
+              <button
+                type="button"
+                onClick={() => navigate('/profile')}
+                className="h-8 w-8 rounded-full bg-primary-600 flex items-center justify-center hover:opacity-90 transition-opacity"
+                aria-label="Open profile"
+              >
                 <span className="text-sm font-medium text-white">
                   {user?.name?.charAt(0).toUpperCase()}
                 </span>
-              </div>
+              </button>
 
               {/* Logout button */}
               <button

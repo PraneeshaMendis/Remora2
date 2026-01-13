@@ -1,10 +1,9 @@
 import { Router, Request, Response } from 'express'
-import { PrismaClient } from '@prisma/client'
 import { z } from 'zod'
 import path from 'path'
 import fs from 'fs/promises'
+import { prisma } from '../prisma.ts'
 
-const prisma = new PrismaClient()
 const db: any = prisma
 const router = Router()
 

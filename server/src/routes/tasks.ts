@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express'
-import { PrismaClient, TaskStatus, HistoryType } from '@prisma/client'
+import { TaskStatus, HistoryType } from '@prisma/client'
 import { z } from 'zod'
+import { prisma } from '../prisma.ts'
 
-const prisma = new PrismaClient()
 const router = Router()
 
 router.post('/phases/:phaseId/tasks', async (req: Request, res: Response) => {

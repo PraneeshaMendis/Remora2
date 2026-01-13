@@ -1,11 +1,10 @@
 import { Router } from 'express'
-import { PrismaClient } from '@prisma/client'
 import { z } from 'zod'
 import { requireSuperAdmin } from '../middleware/super-admin.ts'
 import { getSuperAdminEmail } from '../utils/settings.ts'
 import { isSuperAdminByUserId } from '../middleware/super-admin.ts'
+import { prisma } from '../prisma.ts'
 
-const prisma = new PrismaClient()
 const router = Router()
 
 const paginationSchema = z.object({

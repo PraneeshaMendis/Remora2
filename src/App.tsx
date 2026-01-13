@@ -29,7 +29,7 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <div className="min-h-screen bg-background app-bg">
           <Routes>
             {/* Public routes */}
             <Route path="/login" element={<Login />} />

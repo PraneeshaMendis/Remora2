@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '../prisma.ts'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
@@ -10,7 +10,6 @@ import { loginRateLimiter } from '../middleware/security.ts'
 import { getSuperAdminEmail } from '../utils/settings.ts'
 import { emailEnabled, renderVerifyEmail, renderInviteEmail, renderPasswordResetEmail, sendMail } from '../utils/mailer.ts'
 
-const prisma = new PrismaClient()
 const db: any = prisma
 const router = Router()
 

@@ -1,10 +1,9 @@
 import { Router } from 'express'
-import { PrismaClient } from '@prisma/client'
 import { z } from 'zod'
 import { requireSuperAdmin } from '../middleware/super-admin.ts'
 import { emailEnabled, renderApprovedEmail, sendMail } from '../utils/mailer.ts'
+import { prisma } from '../prisma.ts'
 
-const prisma = new PrismaClient()
 const router = Router()
 
 async function isSuperAdmin(userId: string | null) {

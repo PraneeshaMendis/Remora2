@@ -1,12 +1,11 @@
 import { Router, Request, Response } from 'express'
-import { PrismaClient } from '@prisma/client'
 import axios from 'axios'
 // PDF text extractor (no official types)
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import { extractAmount } from '../utils/slip-extract.ts'
+import { prisma } from '../prisma.ts'
 
-const prisma = new PrismaClient()
 const db: any = prisma
 const router = Router()
 

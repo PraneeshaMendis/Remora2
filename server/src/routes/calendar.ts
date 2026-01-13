@@ -1,9 +1,8 @@
 import { Router, Request, Response } from 'express'
-import { PrismaClient } from '@prisma/client'
 import axios from 'axios'
 import crypto from 'crypto'
+import { prisma } from '../prisma.ts'
 
-const prisma = new PrismaClient()
 const router = Router()
 
 function baseUrl(req: Request) {

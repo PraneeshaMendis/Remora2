@@ -17,7 +17,7 @@ import dotenv from 'dotenv'
 import express from 'express'
 import cors from 'cors'
 import morgan from 'morgan'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from './prisma.ts'
 import { helmetMiddleware, buildCorsOptions, loginRateLimiter } from './middleware/security.ts'
 import projectsRouter from './routes/projects.ts'
 import tasksRouter from './routes/tasks.ts'
@@ -62,8 +62,6 @@ app.use(
   }),
 )
 
-const prisma = new PrismaClient()
-
 app.get('/health', async (_req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`
@@ -101,10 +99,7 @@ app.use(async (req, _res, next) => {
   try {
     const impSid = (req as any).cookies?.impSid || ''
     if (impSid && adminId) {
-      const { PrismaClient } = await import('@prisma/client')
-      const prisma = new PrismaClient()
-      const db: any = prisma
-      const session = await db.impersonationSession.findUnique({ where: { id: String(impSid) } })
+      const session = await prisma.impersonationSession.findUnique({ where: { id: String(impSid) } })
       if (session && !session.endedAt && session.adminId === adminId) {
         userId = session.userId
         ;(req as any).adminId = adminId

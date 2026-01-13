@@ -16,6 +16,7 @@ import {
   Receipt,
   Shield
 } from 'lucide-react'
+import RemoraLogo from './RemoraLogo.tsx'
 
 const Sidebar: React.FC = () => {
   const { user } = useAuth()
@@ -117,28 +118,19 @@ const Sidebar: React.FC = () => {
   return (
     <div className="hidden lg:flex lg:flex-shrink-0">
       <div className="flex flex-col w-56">
-        <div className="flex flex-col flex-grow bg-gradient-to-b from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 border-r border-gray-200 dark:border-gray-700 shadow-lg">
+        <div className="flex flex-col flex-grow sidebar-surface border-r shadow-lg">
 
-          {/* User Info */}
-              <div 
-                className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-200"
-                onClick={() => navigate('/profile')}
-              >
-            <div className="flex items-center space-x-3">
-              <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white font-semibold text-sm shadow-lg">
-                {user?.name?.charAt(0) || 'U'}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
-                  {user?.name || 'User'}
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                  {user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Member'}
-                </p>
+          {/* Brand */}
+          <div className="px-4 pt-5 pb-4 border-b border-[hsl(var(--sidebar-border))]">
+            <div className="flex items-center gap-3">
+              <RemoraLogo size={40} className="shrink-0" />
+              <div className="flex flex-col leading-tight">
+                <span className="text-lg font-semibold text-gray-900 dark:text-white tracking-wide">Remora</span>
+                <span className="text-[10px] uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">Studio</span>
               </div>
             </div>
           </div>
-          
+
           {/* Navigation */}
               <nav className="flex-1 px-3 py-4 space-y-2 overflow-y-auto">
             {filteredNavigation.map((item) => {
@@ -189,7 +181,7 @@ const Sidebar: React.FC = () => {
           </nav>
 
           {/* Footer */}
-              <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+              <div className="px-4 py-3 border-t border-[hsl(var(--sidebar-border))]">
             <div className="flex items-center justify-between">
               <div className="text-xs text-gray-500 dark:text-gray-400">
                 Version 1.0.0

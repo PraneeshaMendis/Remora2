@@ -32,37 +32,43 @@
     --input: 214 32% 91%;
     --ring: 238 75% 58%;
 
+    --sidebar: 0 0% 100%;
+    --sidebar-border: 214 32% 88%;
+
     --radius: 0.75rem;
   }
 
   .dark {
-    --background: 222 47% 11%;
+    --background: 220 26% 8%;
     --foreground: 210 40% 98%;
 
-    --card: 224 32% 14%;
+    --card: 220 18% 11%;
     --card-foreground: 210 40% 98%;
 
-    --popover: 224 32% 14%;
+    --popover: 220 18% 11%;
     --popover-foreground: 210 40% 98%;
 
     --primary: 238 75% 58%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 217 33% 18%;
+    --secondary: 220 20% 16%;
     --secondary-foreground: 210 40% 98%;
 
-    --muted: 217 33% 18%;
-    --muted-foreground: 215 20% 65%;
+    --muted: 220 20% 16%;
+    --muted-foreground: 215 20% 68%;
 
-    --accent: 217 33% 18%;
+    --accent: 220 20% 16%;
     --accent-foreground: 210 40% 98%;
 
     --destructive: 0 63% 31%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 217 33% 22%;
-    --input: 217 33% 18%;
+    --border: 220 15% 20%;
+    --input: 220 15% 13%;
     --ring: 238 75% 58%;
+
+    --sidebar: 220 20% 9%;
+    --sidebar-border: 220 15% 16%;
   }
 
   /* Tighter borders for Permissions page in dark mode to avoid light seams */
@@ -85,14 +91,22 @@
     @apply bg-background text-foreground;
   }
 
+  .dark .app-bg {
+    background-image:
+      radial-gradient(1200px 600px at 12% -10%, hsl(220 28% 16% / 0.6), transparent),
+      radial-gradient(1000px 600px at 88% 0%, hsl(250 28% 15% / 0.5), transparent),
+      linear-gradient(180deg, hsl(var(--background)), hsl(220 25% 6%));
+    background-attachment: fixed;
+  }
+
   /* Registration page helpers */
   .bg-gradient-subtle {
     background: radial-gradient(1200px 400px at 50% -100px, hsl(0 0% 100% / 0.9), transparent),
                 linear-gradient(to bottom, hsl(220 20% 98%), hsl(220 20% 96%));
   }
   .dark .bg-gradient-subtle {
-    background: radial-gradient(1200px 400px at 50% -100px, hsl(222 47% 13% / 0.8), transparent),
-                linear-gradient(to bottom, hsl(222 47% 11%), hsl(222 47% 10%));
+    background: radial-gradient(1200px 400px at 50% -100px, hsl(220 28% 14% / 0.75), transparent),
+                linear-gradient(to bottom, hsl(220 26% 8%), hsl(220 25% 6%));
   }
   .shadow-soft {
     box-shadow: 0 10px 30px hsl(220 10% 20% / 0.08), 0 2px 8px hsl(220 10% 20% / 0.05);
@@ -162,7 +176,12 @@
   }
 
   .card {
-    @apply bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6;
+    @apply bg-card text-card-foreground rounded-xl shadow-sm border border-border p-6;
+  }
+
+  .sidebar-surface {
+    background-color: hsl(var(--sidebar));
+    border-color: hsl(var(--sidebar-border));
   }
   
   .badge {

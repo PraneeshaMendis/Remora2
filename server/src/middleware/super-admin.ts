@@ -1,8 +1,6 @@
 import { Request, Response, NextFunction } from 'express'
-import { PrismaClient } from '@prisma/client'
 import { getSuperAdminEmail } from '../utils/settings.ts'
-
-const prisma = new PrismaClient()
+import { prisma } from '../prisma.ts'
 
 export async function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
   try {

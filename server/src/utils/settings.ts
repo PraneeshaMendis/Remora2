@@ -1,6 +1,4 @@
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import { prisma } from '../prisma.ts'
 
 let cachedEmail: string | null = null
 let cachedAt = 0
@@ -23,4 +21,3 @@ export async function setSuperAdminEmail(email: string) {
   cachedAt = Date.now()
   return value
 }
-
