@@ -9,7 +9,7 @@ interface Task {
   dueDate: string
   status: 'not-started' | 'in-progress' | 'completed' | 'on-hold'
   priority: 'low' | 'medium' | 'high' | 'critical'
-  assignee: {
+  assignee?: {
     id: string
     name: string
     email: string
@@ -26,13 +26,22 @@ interface EditTaskModalProps {
   onClose: () => void
   task: Task | null
   onSave: (task: Task) => void
+  teamMembers?: Array<{
+    id: string
+    name: string
+    email: string
+    role: string
+    department: string
+    avatar?: string
+  }>
 }
 
 const EditTaskModal: React.FC<EditTaskModalProps> = ({
   isOpen,
   onClose,
   task,
-  onSave
+  onSave,
+  teamMembers = []
 }) => {
   const [formData, setFormData] = useState<Task>({
     id: '',
@@ -55,7 +64,14 @@ const EditTaskModal: React.FC<EditTaskModalProps> = ({
 
   useEffect(() => {
     if (task) {
-      setFormData(task)
+      // Ensure dueDate is in YYYY-MM-DD format for <input type="date">
+      const normalized = {
+        ...task,
+        dueDate: task.dueDate && task.dueDate.includes('T')
+          ? task.dueDate.split('T')[0]
+          : (task.dueDate || ''),
+      }
+      setFormData(normalized)
     }
   }, [task])
 
@@ -205,23 +221,36 @@ const EditTaskModal: React.FC<EditTaskModalProps> = ({
           </div>
 
 
-          {/* Assignee */}
+          {/* Assignee (optional, project members) */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               <Users className="h-4 w-4 inline mr-2" />
-              Assignee
+              Assignee (optional)
             </label>
-            <input
-              type="text"
-              name="assignee"
-              value={formData.assignee.name}
-              onChange={(e) => setFormData(prev => ({
-                ...prev,
-                assignee: { ...prev.assignee, name: e.target.value }
-              }))}
+            <select
+              value={formData.assignee?.id || ''}
+              onChange={(e) => {
+                const id = e.target.value
+                if (!id) {
+                  setFormData(prev => ({ ...prev, assignee: undefined }))
+                } else {
+                  const member = teamMembers.find(m => m.id === id)
+                  if (member) {
+                    setFormData(prev => ({
+                      ...prev,
+                      assignee: { id: member.id, name: member.name, email: member.email, role: member.role, department: member.department }
+                    }))
+                  }
+                }
+              }}
               className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-              placeholder="Enter assignee name"
-            />
+            >
+              <option value="">Unassigned</option>
+              {teamMembers.map(m => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Choose a project member or leave unassigned.</p>
           </div>
 
           {/* Priority Display */}

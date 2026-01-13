@@ -434,8 +434,7 @@ const EmailDrawer: React.FC<{
   onRetry: (emailId: string) => void
   onRefresh: () => void
 }> = ({ email, onClose, onArchive, onRetry }) => {
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error] = useState<string | null>(null)
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {

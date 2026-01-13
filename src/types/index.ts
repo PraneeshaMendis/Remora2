@@ -60,7 +60,7 @@ export interface User {
   id: string
   name: string
   email: string
-  role: 'director' | 'manager' | 'member' | 'consultant' | 'lead' | 'client'
+  role: 'admin' | 'director' | 'manager' | 'member' | 'consultant' | 'lead' | 'client'
   department: string
   isActive: boolean
   avatar?: string
@@ -73,7 +73,10 @@ export interface Document {
   projectId: string
   phaseId?: string
   taskId?: string
+  reviewerId?: string
+  reviewerRole?: string
   uploadedBy: string
+  uploadedByRole?: string
   sentTo: string[]
   dateSubmitted: string
   status: 'draft' | 'in-review' | 'approved' | 'needs-changes' | 'rejected' | 'pending'
@@ -84,6 +87,7 @@ export interface Document {
   version: number
   uploadedAt: string
   reviewedAt?: string
+  reviewNote?: string
 }
 
 export interface Review {
@@ -165,4 +169,6 @@ export interface TimeLog {
   description: string
   loggedAt: string
   createdAt: string
+  attachmentUrl?: string
+  attachmentFileName?: string
 }

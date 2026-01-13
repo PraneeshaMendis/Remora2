@@ -17,6 +17,7 @@ import {
   X
 } from 'lucide-react'
 import PerformanceDetailModal from '../components/PerformanceDetailModal'
+import { AvatarGroup, AvatarGroupTooltip } from '@/components/animate-ui/components/animate/avatar-group'
 
 interface ProjectMember {
   id: string
@@ -623,6 +624,20 @@ const CompletedProjectDetail: React.FC = () => {
             <div className="flex-1">
               <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">{project.title}</h1>
               <p className="text-gray-600 dark:text-gray-400 mb-6">{project.description}</p>
+              {/* Animated team avatars (Animate UI) */}
+              <div className="mb-6">
+                <AvatarGroup className="h-10 -space-x-3">
+                  {project.team.map((m) => (
+                    <div key={m.id} className="inline-flex items-center justify-center rounded-full ring-2 ring-white dark:ring-gray-800 bg-gradient-to-br from-indigo-500 to-blue-600 text-white h-10 w-10 text-xs">
+                      {(m.avatar || m.name).split(' ').map(p => p[0]).join('').slice(0,2)}
+                      <AvatarGroupTooltip className="max-w-xs">
+                        <div className="font-medium">{m.name}</div>
+                        <div className="text-white/90 text-xs">{m.role}</div>
+                      </AvatarGroupTooltip>
+                    </div>
+                  ))}
+                </AvatarGroup>
+              </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
                 <div className="flex items-center space-x-3">

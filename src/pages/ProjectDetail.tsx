@@ -84,7 +84,8 @@ interface Task {
   status: 'not-started' | 'in-progress' | 'completed' | 'on-hold'
   priority: 'low' | 'medium' | 'high' | 'critical'
   dueDate: string
-  assignee: ProjectMember
+  assignee?: ProjectMember
+  assignees?: ProjectMember[]
   phaseId: string
   createdAt: string
   updatedAt: string
@@ -141,8 +142,9 @@ const ProjectDetail: React.FC = () => {
     title: '',
     description: '',
     priority: 'medium',
+    startDate: '',
     dueDate: '',
-    assigneeId: ''
+    assigneeIds: [] as string[]
   })
   
   // View toggle and modals
@@ -152,8 +154,101 @@ const ProjectDetail: React.FC = () => {
   const [editingPhase, setEditingPhase] = useState<Phase | null>(null)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
 
+  const formatDate = (d?: string) => (d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '')
+  
+  // Helper: reload project from API
+  const reloadProject = async () => {
+    if (!id) return
+    const base = (import.meta as any).env.VITE_API_URL || 'http://localhost:4000'
+    const res = await fetch(`${base}/projects/${id}`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const data = await res.json()
+    const apiPhases = (data.phases || []).map((p: any) => ({
+      id: p.id,
+      title: p.name,
+      description: p.description || '',
+      startDate: p.startDate ? new Date(p.startDate).toISOString().split('T')[0] : '',
+      endDate: p.endDate ? new Date(p.endDate).toISOString().split('T')[0] : '',
+      status: 'active',
+      projectId: data.id,
+      assignees: [],
+      tasks: (p.tasks || []).map((t: any) => ({
+        id: t.id,
+        title: t.title,
+        description: t.description || '',
+        status: (t.status || 'NOT_STARTED').toString().toLowerCase().replace('_', '-') as any,
+        priority: 'medium',
+        dueDate: t.dueDate || '',
+        assignee: { id: '', name: '', email: '', role: '', department: '' },
+        phaseId: p.id,
+        createdAt: '',
+        updatedAt: ''
+      }))
+    }))
+    const teamMembers: ProjectMember[] = (data.memberships || []).map((m: any) => ({
+      id: m.user?.id || m.userId,
+      name: m.user?.name || 'Unknown',
+      email: m.user?.email || '',
+      role: (m.role || 'member').toString().toLowerCase(),
+      department: m.user?.department?.name || '',
+      avatar: (m.user?.name || 'U').split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase(),
+    }))
+
+    const mapped: Project = {
+      id: data.id,
+      title: data.title,
+      description: data.description || '',
+      startDate: data.startDate ? new Date(data.startDate).toISOString() : undefined as any,
+      endDate: data.endDate ? new Date(data.endDate).toISOString() : undefined as any,
+      status: (data.status || 'PLANNING').toString().toLowerCase().replace('_', '-') as any,
+      progress: data.progress ?? 0,
+      team: teamMembers,
+      phases: apiPhases,
+      priority: 'medium',
+      createdAt: data.createdAt,
+      updatedAt: data.updatedAt,
+    }
+    setProject(mapped)
+  }
+
+  // Load project on mount and when id changes
+  useEffect(() => {
+    reloadProject().catch(err => console.error('Failed to load project', err))
+  }, [id])
+
+  const submitAddPhase = async () => {
+    if (!id) return
+    if (!phaseData.title.trim()) {
+      alert('Please enter a phase name')
+      return
+    }
+    try {
+      const base = (import.meta as any).env.VITE_API_URL || 'http://localhost:4000'
+      const res = await fetch(`${base}/projects/${id}/phases`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: phaseData.title,
+          description: phaseData.description || undefined,
+          startDate: phaseData.startDate ? new Date(phaseData.startDate).toISOString() : undefined,
+          endDate: phaseData.endDate ? new Date(phaseData.endDate).toISOString() : undefined,
+        }),
+      })
+      if (!res.ok) {
+        const txt = await res.text()
+        throw new Error(txt || `Failed to add phase: ${res.status}`)
+      }
+      await reloadProject()
+      setIsAddPhaseModalOpen(false)
+      setPhaseData({ title: '', description: '', startDate: '', endDate: '' })
+    } catch (e: any) {
+      console.error(e)
+      alert(e.message || 'Failed to add phase')
+    }
+  }
+
   // Mock project data
-  const initialProject: Project = {
+  const _initialProject: Project = {
     id: id || '1',
     title: 'Mobile App Redesign',
     description: 'Complete redesign of the mobile application with modern UI/UX principles, improved performance, and enhanced user experience.',
@@ -396,10 +491,21 @@ const ProjectDetail: React.FC = () => {
     ]
   }
 
-  // Initialize project state
-  useEffect(() => {
-    setProject(initialProject)
-  }, [])
+  // Mark mock data as referenced to satisfy TS noUnusedLocals without affecting runtime
+  void _initialProject
+
+  // Remove older duplicate loader that overwrote dates with blanks
+
+  // Map UI status to API enum
+  const toApiStatus = (s: string): 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED' | 'ON_HOLD' | undefined => {
+    switch (s) {
+      case 'not-started': return 'NOT_STARTED'
+      case 'in-progress': return 'IN_PROGRESS'
+      case 'completed': return 'COMPLETED'
+      case 'on-hold': return 'ON_HOLD'
+      default: return undefined
+    }
+  }
 
   // Task management functions
   const updateTaskStatus = (phaseId: string, taskId: string, newStatus: string) => {
@@ -438,6 +544,26 @@ const ProjectDetail: React.FC = () => {
         progress: newProgress
       }
     })
+
+    // Persist status change to backend (fire-and-forget)
+    ;(async () => {
+      try {
+        const apiStatus = toApiStatus(newStatus)
+        if (!apiStatus) return
+        const base = (import.meta as any).env.VITE_API_URL || 'http://localhost:4000'
+        const res = await fetch(`${base}/tasks/${taskId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: apiStatus })
+        })
+        if (!res.ok) {
+          // On failure, reload to sync actual state
+          await reloadProject()
+        }
+      } catch (e) {
+        console.error('Failed to persist task status', e)
+      }
+    })()
   }
 
   const toggleTaskCompletion = (phaseId: string, taskId: string) => {
@@ -464,38 +590,7 @@ const ProjectDetail: React.FC = () => {
     })
   }
 
-  const handlePhaseSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!project || !phaseData.title.trim()) return
-
-    const newPhase: Phase = {
-      id: `phase-${Date.now()}`,
-      title: phaseData.title,
-      description: phaseData.description,
-      startDate: phaseData.startDate || new Date().toISOString().split('T')[0],
-      endDate: phaseData.endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      status: 'planning',
-      tasks: [],
-      projectId: project.id,
-      assignees: []
-    }
-
-    setProject(prevProject => {
-      if (!prevProject) return null
-      return {
-        ...prevProject,
-        phases: [...prevProject.phases, newPhase]
-      }
-    })
-
-    setIsAddPhaseModalOpen(false)
-    setPhaseData({
-      title: '',
-      description: '',
-      startDate: '',
-      endDate: ''
-    })
-  }
+  // removed local-only handlePhaseSubmit; using submitAddPhase to persist to backend
 
   // Task management functions
   const handleAddTask = (phaseId: string) => {
@@ -505,58 +600,43 @@ const ProjectDetail: React.FC = () => {
       title: '',
       description: '',
       priority: 'medium',
+      startDate: '',
       dueDate: '',
-      assigneeId: project?.team[0]?.id || ''
+      assigneeIds: []
     })
   }
 
-  const handleTaskSubmit = (e: React.FormEvent) => {
+  const handleTaskSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!project || !selectedPhaseForTask || !taskData.title.trim()) return
 
-    const phase = project.phases.find(p => p.id === selectedPhaseForTask)
-    if (!phase) return
-
-    const assignee = project.team.find(member => member.id === taskData.assigneeId) || project.team[0]
-
-    const newTask: Task = {
-      id: `task-${Date.now()}`,
-      title: taskData.title,
-      description: taskData.description,
-      status: 'not-started',
-      priority: taskData.priority as 'low' | 'medium' | 'high' | 'critical',
-      dueDate: taskData.dueDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      assignee: assignee,
-      phaseId: selectedPhaseForTask,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }
-
-    setProject(prevProject => {
-      if (!prevProject) return null
-      return {
-        ...prevProject,
-        phases: prevProject.phases.map(phase => {
-          if (phase.id === selectedPhaseForTask) {
-            return {
-              ...phase,
-              tasks: [...phase.tasks, newTask]
-            }
-          }
-          return phase
-        })
+    try {
+      const base = (import.meta as any).env.VITE_API_URL || 'http://localhost:4000'
+      const payload = {
+        title: taskData.title.trim(),
+        description: taskData.description || '',
+        startDate: taskData.startDate ? new Date(taskData.startDate).toISOString() : undefined,
+        dueDate: taskData.dueDate ? new Date(taskData.dueDate).toISOString() : undefined,
+        status: 'NOT_STARTED',
+        assigneeUserIds: taskData.assigneeIds || [],
       }
-    })
-
-    setIsAddTaskModalOpen(false)
-    setSelectedPhaseForTask(null)
-    setTaskData({
-      title: '',
-      description: '',
-      priority: 'medium',
-      dueDate: '',
-      assigneeId: ''
-    })
+      const res = await fetch(`${base}/projects/${id}/phases/${selectedPhaseForTask}/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        const txt = await res.text()
+        throw new Error(txt || `Failed to create task: ${res.status}`)
+      }
+      await reloadProject()
+      setIsAddTaskModalOpen(false)
+      setSelectedPhaseForTask(null)
+      setTaskData({ title: '', description: '', priority: 'medium', startDate: '', dueDate: '', assigneeIds: [] })
+    } catch (err: any) {
+      console.error('Failed to create task', err)
+      alert(err?.message || 'Failed to create task')
+    }
   }
 
   // Gantt chart handlers
@@ -611,25 +691,40 @@ const ProjectDetail: React.FC = () => {
     })
   }
 
-  const handleSavePhase = (updatedPhase: any) => {
-    setProject(prev => {
-      if (!prev) return null
-      
-      const updatedProject = {
-        ...prev,
-        phases: prev.phases.map(phase => 
-          phase.id === updatedPhase.id ? { ...phase, ...updatedPhase } : phase
-        )
+  const handleSavePhase = async (updatedPhase: any) => {
+    try {
+      if (!id || !updatedPhase?.id) return
+      const base = (import.meta as any).env.VITE_API_URL || 'http://localhost:4000'
+      const payload: any = {
+        name: updatedPhase.title,
+        description: updatedPhase.description ?? null,
+        startDate: updatedPhase.startDate ? new Date(updatedPhase.startDate).toISOString() : null,
+        endDate: updatedPhase.endDate ? new Date(updatedPhase.endDate).toISOString() : null,
       }
-
-      // Recalculate project progress based on task completion
-      const newProgress = calculateProjectProgress(convertPhasesForProgress(updatedProject.phases))
-      
-      return {
-        ...updatedProject,
-        progress: newProgress
-      }
-    })
+      const res = await fetch(`${base}/projects/${id}/phases/${updatedPhase.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      await reloadProject()
+      setIsEditPhaseModalOpen(false)
+      setEditingPhase(null)
+    } catch (e) {
+      console.error('Failed to save phase', e)
+      // Fallback: update local state so user sees change even if backend failed
+      setProject(prev => {
+        if (!prev) return prev
+        const updatedProject = {
+          ...prev,
+          phases: prev.phases.map(phase =>
+            phase.id === updatedPhase.id ? { ...phase, ...updatedPhase } : phase
+          )
+        }
+        const newProgress = calculateProjectProgress(convertPhasesForProgress(updatedProject.phases))
+        return { ...updatedProject, progress: newProgress }
+      })
+    }
   }
 
   const getStatusColor = (status: string) => {
@@ -682,16 +777,29 @@ const ProjectDetail: React.FC = () => {
   }
 
   const calculatePhaseProgress = (phase: Phase) => {
+    const total = phase.tasks.length || 0
+    if (total === 0) return 0
     const completedTasks = phase.tasks.filter(task => task.status === 'completed').length
-    return Math.round((completedTasks / phase.tasks.length) * 100)
+    return Math.round((completedTasks / total) * 100)
   }
 
   const calculateDaysActive = (startDate: string) => {
+    if (!startDate) return 0
     const start = new Date(startDate)
     const today = new Date()
     const diffTime = today.getTime() - start.getTime()
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
     return Math.max(0, diffDays)
+  }
+
+  // Helper to render phase duration with sensible fallbacks
+  const getDurationLabel = (phase: Phase) => {
+    const s = phase.startDate
+    const e = phase.endDate
+    if (s && e) return `${formatDate(s)} - ${formatDate(e)}`
+    if (s) return `Start: ${formatDate(s)}`
+    if (e) return `Due: ${formatDate(e)}`
+    return 'No dates'
   }
 
 
@@ -798,7 +906,14 @@ const ProjectDetail: React.FC = () => {
                 <div>
                   <p className="text-sm text-gray-600 dark:text-gray-400">Duration</p>
                   <p className="font-semibold text-gray-900 dark:text-white">
-                    {new Date(project.startDate).toLocaleDateString()} - {new Date(project.endDate).toLocaleDateString()}
+                    {(() => {
+                      const start = project.startDate
+                      const end = project.endDate
+                      if (start && end) return `${formatDate(start)} - ${formatDate(end)}`
+                      if (start) return `Start: ${formatDate(start)}`
+                      if (end) return `Due: ${formatDate(end)}`
+                      return 'No due date'
+                    })()}
                   </p>
                 </div>
               </div>
@@ -892,7 +1007,9 @@ const ProjectDetail: React.FC = () => {
                 end: task.dueDate || new Date().toISOString().split('T')[0],
                 progress: task.status === 'completed' ? 100 : task.status === 'in-progress' ? 50 : 0,
                 phaseId: phase.id,
-                assignees: [task.assignee.name],
+                assignees: task.assignees && task.assignees.length > 0
+                  ? task.assignees.map(a => a.name)
+                  : (task.assignee ? [task.assignee.name] : []),
                 status: task.status,
                 description: task.description
               }))
@@ -977,10 +1094,10 @@ const ProjectDetail: React.FC = () => {
                         <div>
                           <p className="text-xs text-gray-600 dark:text-gray-400">Duration</p>
                           <p className="text-sm font-medium text-gray-900 dark:text-white">
-                            {new Date(phase.startDate).toLocaleDateString()} - {new Date(phase.endDate).toLocaleDateString()}
+                            {getDurationLabel(phase)}
                           </p>
+                          </div>
                         </div>
-                      </div>
                       
                       <div className="flex items-center space-x-2">
                         <TrendingUp className="h-4 w-4 text-gray-400" />
@@ -1092,7 +1209,9 @@ const ProjectDetail: React.FC = () => {
                             priority: task.priority,
                             dueDate: task.dueDate,
                             projectId: id,
-                            assignees: [task.assignee.name],
+                            assignees: task.assignees && task.assignees.length > 0 
+                              ? task.assignees.map(a => a.name) 
+                              : (task.assignee ? [task.assignee.name] : []),
                             isDone: task.status === 'completed',
                             createdAt: task.createdAt,
                             updatedAt: task.updatedAt,
@@ -1120,7 +1239,11 @@ const ProjectDetail: React.FC = () => {
                             <div className="flex items-center space-x-4 text-xs text-gray-500 dark:text-gray-400">
                               <div className="flex items-center space-x-1">
                                 <User className="h-3 w-3" />
-                                <span>{task.assignee.name}</span>
+                                <span>{
+                                  task.assignees && task.assignees.length > 0
+                                    ? task.assignees.map(a => a.name).join(', ')
+                                    : (task.assignee?.name || 'Unassigned')
+                                }</span>
                               </div>
                               <div className="flex items-center space-x-1">
                                 <CalendarDays className="h-3 w-3" />
@@ -1201,7 +1324,7 @@ const ProjectDetail: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handlePhaseSubmit} className="space-y-4">
+            <form onSubmit={(e) => { e.preventDefault(); submitAddPhase(); }} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Phase Title *
@@ -1316,21 +1439,17 @@ const ProjectDetail: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Priority
+                    Start Date
                   </label>
-                  <select
-                    value={taskData.priority}
-                    onChange={(e) => setTaskData({ ...taskData, priority: e.target.value })}
+                  <input
+                    type="date"
+                    value={taskData.startDate}
+                    onChange={(e) => setTaskData({ ...taskData, startDate: e.target.value })}
                     className="input-field"
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="critical">Critical</option>
-                  </select>
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -1347,19 +1466,40 @@ const ProjectDetail: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Assign to
+                  Priority
                 </label>
                 <select
-                  value={taskData.assigneeId}
-                  onChange={(e) => setTaskData({ ...taskData, assigneeId: e.target.value })}
+                  value={taskData.priority}
+                  onChange={(e) => setTaskData({ ...taskData, priority: e.target.value })}
                   className="input-field"
                 >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Assign to (optional)
+                </label>
+                <select
+                  value={taskData.assigneeIds[0] || ''}
+                  onChange={(e) => {
+                    const val = e.currentTarget.value
+                    setTaskData({ ...taskData, assigneeIds: val ? [val] : [] })
+                  }}
+                  className="input-field"
+                >
+                  <option value="">Unassigned</option>
                   {project?.team.map((member) => (
                     <option key={member.id} value={member.id}>
                       {member.name}
                     </option>
                   ))}
                 </select>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Choose one member or leave as Unassigned.</p>
               </div>
 
               <div className="flex justify-end space-x-3 pt-4">

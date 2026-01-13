@@ -21,7 +21,7 @@ async function main() {
   // Ensure Roles
   const roleNames = ['Director', 'Manager', 'Lead', 'Consultant', 'Client']
   const roles = await Promise.all(
-    roleNames.map(name => prisma.role.upsert({ where: { name }, update: {}, create: { name } }))
+    roleNames.map(name => prisma.appRole.upsert({ where: { name }, update: {}, create: { name } }))
   )
   const roleByName = Object.fromEntries(roles.map(r => [r.name, r]))
 
@@ -90,7 +90,7 @@ async function main() {
       title: 'Mobile App Tree Design',
       description: 'Designing the mobile app information architecture',
       status: ProjectStatus.IN_PROGRESS,
-      ownerId: director.id,
+      ownerId: mohan.id,
       visibility: Visibility.TEAM,
       allocatedHours: 120,
       startDate: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000),
@@ -105,7 +105,7 @@ async function main() {
       title: 'Backend API Development',
       description: 'Build core services and endpoints',
       status: ProjectStatus.PLANNING,
-      ownerId: manager.id,
+      ownerId: gayan.id,
       visibility: Visibility.TEAM,
       allocatedHours: 160,
       startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
@@ -115,30 +115,30 @@ async function main() {
 
   // Memberships
   await prisma.projectMembership.upsert({
-    where: { projectId_userId: { projectId: mobile.id, userId: director.id } },
+    where: { projectId_userId: { projectId: mobile.id, userId: mohan.id } },
     update: {},
-    create: { projectId: mobile.id, userId: director.id, role: ProjectRole.DIRECTOR },
+    create: { projectId: mobile.id, userId: mohan.id, role: ProjectRole.DIRECTOR },
   })
   await prisma.projectMembership.upsert({
-    where: { projectId_userId: { projectId: mobile.id, userId: engineer1.id } },
+    where: { projectId_userId: { projectId: mobile.id, userId: shanuka.id } },
     update: {},
-    create: { projectId: mobile.id, userId: engineer1.id, role: ProjectRole.ENGINEER },
+    create: { projectId: mobile.id, userId: shanuka.id, role: ProjectRole.ENGINEER },
   })
   await prisma.projectMembership.upsert({
-    where: { projectId_userId: { projectId: mobile.id, userId: engineer2.id } },
+    where: { projectId_userId: { projectId: mobile.id, userId: nuwan.id } },
     update: {},
-    create: { projectId: mobile.id, userId: engineer2.id, role: ProjectRole.ENGINEER },
+    create: { projectId: mobile.id, userId: nuwan.id, role: ProjectRole.ENGINEER },
   })
 
   await prisma.projectMembership.upsert({
-    where: { projectId_userId: { projectId: backend.id, userId: manager.id } },
+    where: { projectId_userId: { projectId: backend.id, userId: gayan.id } },
     update: {},
-    create: { projectId: backend.id, userId: manager.id, role: ProjectRole.MANAGER },
+    create: { projectId: backend.id, userId: gayan.id, role: ProjectRole.MANAGER },
   })
   await prisma.projectMembership.upsert({
-    where: { projectId_userId: { projectId: backend.id, userId: engineer1.id } },
+    where: { projectId_userId: { projectId: backend.id, userId: shanuka.id } },
     update: {},
-    create: { projectId: backend.id, userId: engineer1.id, role: ProjectRole.ENGINEER },
+    create: { projectId: backend.id, userId: shanuka.id, role: ProjectRole.ENGINEER },
   })
 
   // Phases & Tasks
@@ -147,7 +147,7 @@ async function main() {
     update: {},
     create: { name: 'Planning', projectId: mobile.id },
   })
-  const backendPhase1 = await prisma.phase.create({ name: 'Sprint 1', projectId: backend.id })
+  const backendPhase1 = await prisma.phase.create({ data: { name: 'Sprint 1', projectId: backend.id } })
 
   const taskA = await prisma.task.create({
     data: { title: 'User journey mapping', description: 'Interview stakeholders and map journeys', status: TaskStatus.COMPLETED, phaseId: mobilePhase1.id },
@@ -163,24 +163,24 @@ async function main() {
   const now = new Date()
   const earlier = new Date(now.getTime() - 2 * 60 * 60 * 1000)
   await prisma.timeLog.create({
-    data: { taskId: taskA.id, userId: engineer1.id, startedAt: earlier, endedAt: now, durationMins: 120, description: 'Journey research' },
+    data: { taskId: taskA.id, userId: shanuka.id, startedAt: earlier, endedAt: now, durationMins: 120, description: 'Journey research' },
   })
   await prisma.timeLog.create({
-    data: { taskId: taskA.id, userId: engineer2.id, startedAt: earlier, endedAt: now, durationMins: 60, description: 'Notes and flow' },
+    data: { taskId: taskA.id, userId: nuwan.id, startedAt: earlier, endedAt: now, durationMins: 60, description: 'Notes and flow' },
   })
   // Additional logs to make usedHours visible across projects
   const earlier2 = new Date(now.getTime() - 4 * 60 * 60 * 1000)
   const earlier3 = new Date(now.getTime() - 24 * 60 * 60 * 1000)
   // Mobile project extra logs
   await prisma.timeLog.create({
-    data: { taskId: taskB.id, userId: engineer1.id, startedAt: earlier2, endedAt: now, durationMins: 90, description: 'Drafting component tree' },
+    data: { taskId: taskB.id, userId: shanuka.id, startedAt: earlier2, endedAt: now, durationMins: 90, description: 'Drafting component tree' },
   })
   // Backend project logs
   await prisma.timeLog.create({
-    data: { taskId: taskC.id, userId: manager.id, startedAt: earlier3, endedAt: new Date(earlier3.getTime() + 90 * 60000), durationMins: 90, description: 'Auth service planning' },
+    data: { taskId: taskC.id, userId: gayan.id, startedAt: earlier3, endedAt: new Date(earlier3.getTime() + 90 * 60000), durationMins: 90, description: 'Auth service planning' },
   })
   await prisma.timeLog.create({
-    data: { taskId: taskC.id, userId: engineer1.id, startedAt: earlier3, endedAt: new Date(earlier3.getTime() + 120 * 60000), durationMins: 120, description: 'Scaffold endpoints' },
+    data: { taskId: taskC.id, userId: shanuka.id, startedAt: earlier3, endedAt: new Date(earlier3.getTime() + 120 * 60000), durationMins: 120, description: 'Scaffold endpoints' },
   })
 
   console.log('Seed complete.')

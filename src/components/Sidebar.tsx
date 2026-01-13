@@ -8,14 +8,13 @@ import {
   BarChart3,
   Users,
   FolderOpen,
-  CheckSquare,
   UserCog,
   FileText,
-  ClipboardList,
   Settings,
   CheckCircle,
   Calendar,
-  Receipt
+  Receipt,
+  Shield
 } from 'lucide-react'
 
 const Sidebar: React.FC = () => {
@@ -41,28 +40,21 @@ const Sidebar: React.FC = () => {
       name: 'Projects', 
       href: '/projects', 
       icon: FolderOpen, 
-      roles: ['director', 'manager', 'member'],
+      roles: ['director', 'manager', 'member', 'client', 'consultant', 'lead'],
       description: 'Project portfolio'
     },
     { 
       name: 'Completed Projects', 
       href: '/completed-projects', 
       icon: CheckCircle, 
-      roles: ['director', 'manager', 'member'],
+      roles: ['director', 'manager', 'member', 'client', 'consultant', 'lead'],
       description: 'Finished projects'
-    },
-    { 
-      name: 'Tasks', 
-      href: '/tasks', 
-      icon: CheckSquare, 
-      roles: ['director', 'manager', 'member'],
-      description: 'Task management'
     },
     { 
       name: 'Calendar', 
       href: '/calendar', 
       icon: Calendar, 
-      roles: ['director', 'manager', 'member'],
+      roles: ['admin', 'director', 'manager', 'member', 'client', 'consultant', 'lead'],
       description: 'Schedule & events'
     },
     { 
@@ -80,31 +72,47 @@ const Sidebar: React.FC = () => {
       description: 'Team & permissions'
     },
     { 
+      name: 'Pending Approvals', 
+      href: '/admin/approvals', 
+      icon: Users, 
+      roles: ['admin', 'director', 'manager', 'lead'],
+      description: 'Approve new users'
+    },
+    { 
+      name: 'Permissions', 
+      href: '/admin/permissions', 
+      icon: Shield, 
+      roles: ['admin', 'director'],
+      description: 'RBAC management'
+    },
+    { 
+      name: 'Register User', 
+      href: '/admin/register-user', 
+      icon: UserCog, 
+      roles: ['director', 'manager'],
+      description: 'Create new user accounts'
+    },
+    { 
       name: 'Documents', 
       href: '/documents', 
       icon: FileText, 
-      roles: ['director', 'manager', 'member'],
+      roles: ['director', 'manager', 'member', 'client', 'consultant', 'lead'],
       description: 'Document library'
-    },
-    { 
-      name: 'Reviews', 
-      href: '/reviews', 
-      icon: ClipboardList, 
-      roles: ['director', 'manager', 'member'],
-      description: 'Review & feedback'
     },
     { 
       name: 'Profile', 
       href: '/profile', 
       icon: Settings, 
-      roles: ['director', 'manager', 'member'],
+      roles: ['director', 'manager', 'member', 'client', 'consultant', 'lead'],
       description: 'Account settings'
     },
   ]
 
-  const filteredNavigation = navigation.filter(item => 
-    user?.role && item.roles.includes(user.role)
-  )
+  const isAdmin = user?.role === 'admin'
+  const filteredNavigation = navigation.filter(item => {
+    if (isAdmin) return true
+    return user?.role ? item.roles.includes(user.role) : false
+  })
 
   return (
     <div className="hidden lg:flex lg:flex-shrink-0">

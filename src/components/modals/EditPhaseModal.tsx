@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { HiX } from 'react-icons/hi'
-import { Calendar, Users, FileText } from 'lucide-react'
+import { Calendar, FileText } from 'lucide-react'
 
 interface Phase {
   id: string
@@ -35,7 +35,7 @@ const EditPhaseModal: React.FC<EditPhaseModalProps> = ({
     assignees: []
   })
 
-  const [newAssignee, setNewAssignee] = useState('')
+  // Team members section removed per request
 
   useEffect(() => {
     if (phase) {
@@ -51,22 +51,7 @@ const EditPhaseModal: React.FC<EditPhaseModalProps> = ({
     }))
   }
 
-  const handleAddAssignee = () => {
-    if (newAssignee.trim() && !formData.assignees.includes(newAssignee.trim())) {
-      setFormData(prev => ({
-        ...prev,
-        assignees: [...prev.assignees, newAssignee.trim()]
-      }))
-      setNewAssignee('')
-    }
-  }
-
-  const handleRemoveAssignee = (assignee: string) => {
-    setFormData(prev => ({
-      ...prev,
-      assignees: prev.assignees.filter(a => a !== assignee)
-    }))
-  }
+  // Removed add/remove assignee handlers
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -210,53 +195,7 @@ const EditPhaseModal: React.FC<EditPhaseModalProps> = ({
             </select>
           </div>
 
-          {/* Assignees */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              <Users className="h-4 w-4 inline mr-2" />
-              Team Members
-            </label>
-            
-            {/* Add Assignee */}
-            <div className="flex space-x-2 mb-3">
-              <input
-                type="text"
-                value={newAssignee}
-                onChange={(e) => setNewAssignee(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddAssignee())}
-                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-                placeholder="Enter team member name"
-              />
-              <button
-                type="button"
-                onClick={handleAddAssignee}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Add
-              </button>
-            </div>
-
-            {/* Assignee List */}
-            {formData.assignees.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {formData.assignees.map((assignee, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center space-x-2 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 px-3 py-1 rounded-full text-sm"
-                  >
-                    <span>{assignee}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveAssignee(assignee)}
-                      className="hover:bg-blue-200 dark:hover:bg-blue-800 rounded-full p-0.5"
-                    >
-                      <HiX className="h-3 w-3" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* Team Members section intentionally removed in edit phase */}
 
           {/* Actions */}
           <div className="flex items-center justify-end space-x-3 pt-6 border-t border-gray-200 dark:border-gray-700">

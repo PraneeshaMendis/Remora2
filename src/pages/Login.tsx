@@ -110,12 +110,20 @@ const Login: React.FC = () => {
             </button>
           </div>
 
-          <div className="text-center">
+          <div className="flex items-center justify-between text-sm">
             <button
               type="button"
-              className="text-sm text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
+              className="text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
+              onClick={() => navigate('/forgot-password')}
             >
-              Forgot your password?
+              Forgot password?
+            </button>
+            <button
+              type="button"
+              className="text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
+              onClick={() => navigate('/signup')}
+            >
+              Create an account
             </button>
           </div>
         </form>

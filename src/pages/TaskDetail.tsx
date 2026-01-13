@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, Link, useLocation } from 'react-router-dom'
-import { Task, DailyLog, User, Document, Comment, TimeLog, Project } from '../types/index.ts'
+import { Task, User, Comment, TimeLog, Project } from '../types/index.ts'
 import { HiArrowLeft, HiClock, HiDocument, HiChat, HiCheckCircle, HiCalendar, HiTrendingUp, HiEye, HiDownload, HiPlay, HiStop, HiUser, HiUsers } from 'react-icons/hi'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { apiGet, apiJson, API_BASE } from '../services/api'
+import { getCurrentUser } from '../services/usersAPI'
 
 const TaskDetail: React.FC = () => {
   const { projectId, taskId } = useParams<{ projectId: string; taskId: string }>()
@@ -13,6 +15,7 @@ const TaskDetail: React.FC = () => {
   const [project, setProject] = useState<Project | null>(null)
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [projectTimeLogs, setProjectTimeLogs] = useState<TimeLog[]>([])
+  const [taskTimeLogs, setTaskTimeLogs] = useState<Array<{ durationMins: number; startedAt: string; endedAt: string; description: string; userId: string; userName?: string; attachmentPath?: string | null }>>([])
   const [isMarkingDone, setIsMarkingDone] = useState(false)
   const [isTimerRunning, setIsTimerRunning] = useState(false)
   const [timerStartTime, setTimerStartTime] = useState<Date | null>(null)
@@ -22,6 +25,34 @@ const TaskDetail: React.FC = () => {
   const [newLogHours, setNewLogHours] = useState(0)
   const [isSavingLog, setIsSavingLog] = useState(false)
   const [newComment, setNewComment] = useState('')
+  const [comments, setComments] = useState<Comment[]>([])
+  const [activity, setActivity] = useState<Array<{ id: string; description: string; timestamp: string; by?: string }>>([])
+  type TimelineItem = {
+    id: string
+    type: 'history' | 'document' | 'timelog'
+    title: string
+    by?: string
+    timestamp: string
+    url?: string
+    hours?: number
+  }
+  const [timeline, setTimeline] = useState<TimelineItem[]>([])
+  // Speech-to-Text states (AssemblyAI via server proxy)
+  const [isRecLog, setIsRecLog] = useState(false)
+  const [isRecComment, setIsRecComment] = useState(false)
+  const [isTranscribing, setIsTranscribing] = useState(false)
+  const recChunksLog = React.useRef<BlobPart[]>([])
+  const recChunksComment = React.useRef<BlobPart[]>([])
+  const mediaRecLog = React.useRef<MediaRecorder | null>(null)
+  const mediaRecComment = React.useRef<MediaRecorder | null>(null)
+  // Realtime dictation
+  const [isLiveLog, setIsLiveLog] = useState(false)
+  const [isLiveComment, setIsLiveComment] = useState(false)
+  const wsRef = React.useRef<WebSocket | null>(null)
+  const audioCtxRef = React.useRef<AudioContext | null>(null)
+  const sourceRef = React.useRef<MediaStreamAudioSourceNode | null>(null)
+  const processorRef = React.useRef<ScriptProcessorNode | null>(null)
+  const liveBaseTextRef = React.useRef<{ log: string; comment: string }>({ log: '', comment: '' })
   const [isSavingComment, setIsSavingComment] = useState(false)
   const [replyingTo, setReplyingTo] = useState<string | null>(null)
   const [replyText, setReplyText] = useState('')
@@ -31,8 +62,27 @@ const TaskDetail: React.FC = () => {
   const [mentionPosition, setMentionPosition] = useState(0)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
+  const [newLogFile, setNewLogFile] = useState<File | null>(null)
   const [activeTab, setActiveTab] = useState<'overview' | 'time' | 'comments' | 'documents' | 'history'>('overview')
   const [timeLogFilter, setTimeLogFilter] = useState<'all' | 'mine'>('all')
+  const [docName, setDocName] = useState('')
+  const [docReviewerId, setDocReviewerId] = useState('')
+  const [taskDocuments, setTaskDocuments] = useState<Array<{
+    id: string
+    name: string
+    fileUrl: string
+    status: string
+    createdAt: string
+    createdBy?: { id: string; name: string; email: string } | null
+  }>>([])
+
+  // Helper to normalize relative file paths to full API URLs
+  const buildFileUrl = (key?: string | null): string => {
+    if (!key) return ''
+    if (/^https?:\/\//i.test(key)) return key
+    const k = key.startsWith('/') ? key : `/${key}`
+    return `${API_BASE}${k}`
+  }
 
   // Get task data from location state or use mock data
   const taskData = location.state?.task
@@ -56,12 +106,7 @@ const TaskDetail: React.FC = () => {
     phaseId: 'phase-1'
   }
 
-  const teamMembers = [
-    { id: '1', name: 'Alex Rodriguez', email: 'alex@company.com', role: 'member' as const, department: 'Design', isActive: true, lastActive: '2024-01-20T10:30:00Z' },
-    { id: '2', name: 'Sarah Johnson', email: 'sarah@company.com', role: 'manager' as const, department: 'Design', isActive: true, lastActive: '2024-01-20T11:00:00Z' },
-    { id: '3', name: 'Mike Chen', email: 'mike@company.com', role: 'member' as const, department: 'Design', isActive: true, lastActive: '2024-01-20T15:30:00Z' },
-    { id: '4', name: 'Emma Wilson', email: 'emma@company.com', role: 'member' as const, department: 'Design', isActive: true, lastActive: '2024-01-20T14:20:00Z' }
-  ]
+  const [teamMembers, setTeamMembers] = useState<Array<{ id: string; name: string; email: string; role: 'director' | 'manager' | 'member' | 'consultant' | 'lead' | 'client' | string; department: string; isActive: boolean; lastActive: string }>>([])
 
   // Mock project data with time allocation
   const mockProject: Project = {
@@ -78,7 +123,7 @@ const TaskDetail: React.FC = () => {
     priority: 'high',
     phases: [],
     tasks: [],
-    members: teamMembers,
+    members: [],
     allocatedHours: 200, // Total allocated hours for the project
     loggedHours: 45.5,   // Hours already logged by team members
     remainingHours: 154.5 // Calculated remaining hours
@@ -184,72 +229,9 @@ const TaskDetail: React.FC = () => {
     }
   ]
 
-  // Collaborative daily logs with multiple users
-  const dailyLogs: DailyLog[] = [
-    {
-      id: '1',
-      taskId: taskId || '1',
-      date: '2024-01-20',
-      content: 'Started working on the main navigation wireframes. Created initial layout for the bottom tab navigation.',
-      attachment: 'wireframe-nav.png',
-      createdAt: '2024-01-20T10:30:00Z',
-      hours: 6.5,
-      userId: '1',
-      userName: 'Alex Rodriguez'
-    },
-    {
-      id: '2',
-      taskId: taskId || '1',
-      date: '2024-01-20',
-      content: 'Reviewed Alex\'s navigation wireframes and provided feedback. Suggested improvements for accessibility.',
-      createdAt: '2024-01-20T11:15:00Z',
-      hours: 2.0,
-      userId: '2',
-      userName: 'Sarah Johnson'
-    },
-    {
-      id: '3',
-      taskId: taskId || '1',
-      date: '2024-01-20',
-      content: 'Implemented Sarah\'s feedback and updated the navigation structure. Also started working on user profile wireframes.',
-      createdAt: '2024-01-20T14:00:00Z',
-      hours: 4.5,
-      userId: '1',
-      userName: 'Alex Rodriguez'
-    },
-    {
-      id: '4',
-      taskId: taskId || '1',
-      date: '2024-01-19',
-      content: 'Reviewed design requirements and user research data. Identified key user flows that need to be wireframed.',
-      createdAt: '2024-01-19T14:15:00Z',
-      hours: 4.0,
-      userId: '2',
-      userName: 'Sarah Johnson'
-    },
-    {
-      id: '5',
-      taskId: taskId || '1',
-      date: '2024-01-19',
-      content: 'Set up the wireframing tool and created the project structure. Started with the user profile screen wireframe.',
-      createdAt: '2024-01-19T09:00:00Z',
-      hours: 7.5,
-      userId: '1',
-      userName: 'Alex Rodriguez'
-    },
-    {
-      id: '6',
-      taskId: taskId || '1',
-      date: '2024-01-18',
-      content: 'Initial project setup and research phase. Gathered requirements from stakeholders.',
-      createdAt: '2024-01-18T16:30:00Z',
-      hours: 3.0,
-      userId: '3',
-      userName: 'Mike Chen'
-    }
-  ]
+  // Removed local mock daily logs; using real time logs for totals
 
-  const comments: Comment[] = [
+  const mockComments: Comment[] = [
     {
       id: '1',
       taskId: taskId || '1',
@@ -311,70 +293,9 @@ const TaskDetail: React.FC = () => {
     }
   ]
 
-  const documents: Document[] = [
-    {
-      id: '1',
-      name: 'Navigation Wireframes v2 (Updated)',
-      fileName: 'wireframe-nav-v2.png',
-      status: 'approved',
-      uploadedBy: 'Alex Rodriguez',
-      uploadedAt: '2024-01-20T14:00:00Z',
-      projectId: projectId || '1',
-      taskId: taskId || '1',
-      sentTo: ['Sarah Johnson', 'Mike Chen'],
-      dateSubmitted: '2024-01-20T14:00:00Z',
-      fileSize: 1024000,
-      fileType: 'image/png',
-      version: 2
-    },
-    {
-      id: '2',
-      name: 'User Profile Wireframes',
-      fileName: 'wireframe-profile.png',
-      status: 'in-review',
-      uploadedBy: 'Alex Rodriguez',
-      uploadedAt: '2024-01-20T15:30:00Z',
-      projectId: projectId || '1',
-      taskId: taskId || '1',
-      sentTo: ['Sarah Johnson'],
-      dateSubmitted: '2024-01-20T15:30:00Z',
-      fileSize: 856000,
-      fileType: 'image/png',
-      version: 1
-    },
-    {
-      id: '3',
-      name: 'Design Requirements Document',
-      fileName: 'design-requirements.pdf',
-      status: 'approved',
-      uploadedBy: 'Sarah Johnson',
-      uploadedAt: '2024-01-19T10:00:00Z',
-      projectId: projectId || '1',
-      taskId: taskId || '1',
-      sentTo: ['Alex Rodriguez', 'Mike Chen', 'Emma Wilson'],
-      dateSubmitted: '2024-01-19T10:00:00Z',
-      fileSize: 2048000,
-      fileType: 'application/pdf',
-      version: 1
-    },
-    {
-      id: '4',
-      name: 'Settings Screen Wireframes',
-      fileName: 'wireframe-settings.png',
-      status: 'draft',
-      uploadedBy: 'Emma Wilson',
-      uploadedAt: '2024-01-20T16:45:00Z',
-      projectId: projectId || '1',
-      taskId: taskId || '1',
-      sentTo: [],
-      dateSubmitted: '2024-01-20T16:45:00Z',
-      fileSize: 920000,
-      fileType: 'image/png',
-      version: 1
-    }
-  ]
+  // Replace mock documents with DB-backed list for this task
 
-  const activity = [
+  const mockActivity = [
     {
       id: '1',
       type: 'created',
@@ -467,29 +388,134 @@ const TaskDetail: React.FC = () => {
       user: 'Emma Wilson'
     }
   ]
+  // Silence TS unused for mocks retained for reference
+  void mockComments; void mockActivity
 
   // Calculate task statistics
-  const totalHoursLogged = dailyLogs.reduce((sum, log) => sum + (log.hours || 0), 0)
-  const daysActive = Math.ceil((new Date().getTime() - new Date(task?.createdAt || '').getTime()) / (1000 * 60 * 60 * 24))
-  const daysLeft = Math.ceil((new Date(task?.dueDate || '').getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+  const totalDurationMins = React.useMemo(() => {
+    return taskTimeLogs.reduce((sum, l) => sum + (Number(l.durationMins) || 0), 0)
+  }, [taskTimeLogs])
+  const daysActive = React.useMemo(() => {
+    const created = task?.createdAt ? new Date(task.createdAt) : null
+    if (!created || isNaN(created.getTime())) return 0
+    const diff = Date.now() - created.getTime()
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
+  }, [task?.createdAt])
+  const daysLeft = React.useMemo(() => {
+    if (!task?.dueDate) return 0
+    const due = new Date(task.dueDate)
+    if (isNaN(due.getTime())) return 0
+    const diff = due.getTime() - Date.now()
+    return Math.ceil(diff / (1000 * 60 * 60 * 24))
+  }, [task?.dueDate])
   const isOverdue = daysLeft < 0
 
-  // Daily activity data for charts
-  const dailyActivityData = [
-    { day: 'Mon', hours: 0, comments: 0, documents: 0 },
-    { day: 'Tue', hours: 0, comments: 0, documents: 0 },
-    { day: 'Wed', hours: 7.5, comments: 1, documents: 1 },
-    { day: 'Thu', hours: 4.0, comments: 0, documents: 1 },
-    { day: 'Fri', hours: 6.5, comments: 2, documents: 1 },
-    { day: 'Sat', hours: 0, comments: 0, documents: 0 },
-    { day: 'Sun', hours: 0, comments: 0, documents: 0 }
-  ]
+  // Daily activity (last 7 days) and weekly breakdown (last 4 weeks) from real data
+  const dailyActivityData = React.useMemo(() => {
+    const order = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    const now = new Date()
+    const cutoff = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000)
+    const acc: Record<string, { hours: number; comments: number; documents: number }> = {}
+    for (const d of order) acc[d] = { hours: 0, comments: 0, documents: 0 }
 
-  const weeklyData = [
-    { week: 'Week 1', hours: 12, comments: 3, documents: 2 },
-    { week: 'Week 2', hours: 18, comments: 5, documents: 3 },
-    { week: 'Week 3', hours: 15, comments: 4, documents: 1 }
-  ]
+    // Hours from task time logs
+    ;(taskTimeLogs || []).forEach(l => {
+      const ts = new Date(l.endedAt || l.startedAt)
+      if (isNaN(ts.getTime()) || ts < cutoff) return
+      const day = order[new Date(ts).getDay() === 0 ? 6 : new Date(ts).getDay() - 1] // Map Mon..Sun
+      const hrs = Math.max(0, Number(l.durationMins) || 0) / 60
+      acc[day].hours += Math.round(hrs * 100) / 100
+    })
+
+    // Comments (top-level + replies)
+    ;(comments || []).forEach(c => {
+      const ts = new Date(c.createdAt)
+      if (!isNaN(ts.getTime()) && ts >= cutoff) {
+        const day = order[new Date(ts).getDay() === 0 ? 6 : new Date(ts).getDay() - 1]
+        acc[day].comments += 1
+      }
+      ;(c.replies || []).forEach(r => {
+        const tr = new Date(r.createdAt)
+        if (!isNaN(tr.getTime()) && tr >= cutoff) {
+          const day = order[new Date(tr).getDay() === 0 ? 6 : new Date(tr).getDay() - 1]
+          acc[day].comments += 1
+        }
+      })
+    })
+
+    // Documents uploaded for this task
+    ;(taskDocuments || []).forEach(d => {
+      const ts = new Date(d.createdAt)
+      if (isNaN(ts.getTime()) || ts < cutoff) return
+      const day = order[new Date(ts).getDay() === 0 ? 6 : new Date(ts).getDay() - 1]
+      acc[day].documents += 1
+    })
+
+    return order.map(day => ({ day, ...acc[day] }))
+  }, [taskTimeLogs, comments, taskDocuments])
+
+  const weeklyData = React.useMemo(() => {
+    function startOfWeek(d: Date) {
+      const x = new Date(d)
+      const day = x.getDay()
+      const diff = (day === 0 ? -6 : 1) - day // Monday as start
+      x.setDate(x.getDate() + diff)
+      x.setHours(0, 0, 0, 0)
+      return x
+    }
+    function endOfWeek(s: Date) {
+      const e = new Date(s)
+      e.setDate(e.getDate() + 7)
+      return e
+    }
+    function isoWeekNumber(d: Date) {
+      const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
+      const dayNum = date.getUTCDay() || 7
+      date.setUTCDate(date.getUTCDate() + 4 - dayNum)
+      const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
+      return Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+    }
+
+    const now = new Date()
+    const weeks: Array<{ label: string; start: Date; end: Date }> = []
+    const curStart = startOfWeek(now)
+    for (let i = 3; i >= 0; i--) {
+      const start = new Date(curStart)
+      start.setDate(start.getDate() - i * 7)
+      const end = endOfWeek(start)
+      const label = `W${isoWeekNumber(start)}`
+      weeks.push({ label, start, end })
+    }
+
+    const agg = weeks.map(w => ({ week: w.label, hours: 0, comments: 0, documents: 0 }))
+
+    ;(taskTimeLogs || []).forEach(l => {
+      const ts = new Date(l.endedAt || l.startedAt)
+      if (isNaN(ts.getTime())) return
+      weeks.forEach((w, idx) => {
+        if (ts >= w.start && ts < w.end) {
+          agg[idx].hours += Math.round(((Number(l.durationMins) || 0) / 60) * 100) / 100
+        }
+      })
+    })
+    ;(comments || []).forEach(c => {
+      const ts = new Date(c.createdAt)
+      if (isNaN(ts.getTime())) return
+      weeks.forEach((w, idx) => { if (ts >= w.start && ts < w.end) agg[idx].comments += 1 })
+      ;(c.replies || []).forEach(r => {
+        const tr = new Date(r.createdAt)
+        if (isNaN(tr.getTime())) return
+        weeks.forEach((w, idx) => { if (tr >= w.start && tr < w.end) agg[idx].comments += 1 })
+      })
+    })
+    ;(taskDocuments || []).forEach(d => {
+      const ts = new Date(d.createdAt)
+      if (isNaN(ts.getTime())) return
+      weeks.forEach((w, idx) => { if (ts >= w.start && ts < w.end) agg[idx].documents += 1 })
+    })
+
+    return agg
+  }, [taskTimeLogs, comments, taskDocuments])
 
   // Timer functionality
   useEffect(() => {
@@ -519,34 +545,335 @@ const TaskDetail: React.FC = () => {
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
+  const formatHoursMinutesFromMins = (mins: number) => {
+    const m = Math.max(0, Math.round(Number(mins) || 0))
+    const h = Math.floor(m / 60)
+    const r = m % 60
+    return `${h}h ${r}m`
+  }
+
+  const formatHoursMinutesFromHours = (hours: number) => {
+    const totalMins = Math.max(0, Math.round((Number(hours) || 0) * 60))
+    return formatHoursMinutesFromMins(totalMins)
+  }
+
+  // Normalize status to match ProjectDetail set: not-started | in-progress | completed | on-hold
+  const normalizeStatus = (s?: string) => {
+    switch ((s || '').toLowerCase()) {
+      case 'planning': return 'not-started'
+      case 'not-started': return 'not-started'
+      case 'in-progress': return 'in-progress'
+      case 'done':
+      case 'completed': return 'completed'
+      case 'blocked':
+      case 'in-review':
+      case 'on-hold': return 'on-hold'
+      default: return 'in-progress'
+    }
+  }
+
   // Initialize task, project, and current user
   useEffect(() => {
     // Use task data from location state or fallback to mock data
-    setTask(taskData || mockTask)
+    if (taskData) {
+      setTask({ ...taskData, status: normalizeStatus(taskData.status) as any })
+    } else {
+      setTask({ ...mockTask, status: normalizeStatus(mockTask.status) as any })
+    }
     
-    // Set project data
+    // Set initial project data (will be overridden with real values if available)
     setProject(mockProject)
-    
+
     // Set time logs
     setProjectTimeLogs(mockProjectTimeLogs)
     
-    // Set current user (in a real app, this would come from auth context)
-    setCurrentUser({
-      id: '1',
-      name: 'Alex Rodriguez',
-      email: 'alex@company.com',
-      role: 'consultant',
-      department: 'Design',
-      isActive: true,
-      lastActive: new Date().toISOString()
-    })
+    // Load current user from API using x-user-id header
+    ;(async () => {
+      try {
+        const me = await getCurrentUser()
+        if (me) {
+          setCurrentUser({
+            id: String(me.id),
+            name: String(me.name || ''),
+            email: String(me.email || ''),
+            role: (me.role || 'member') as any,
+            department: String(me.department || ''),
+            isActive: true,
+            lastActive: new Date().toISOString(),
+          })
+        }
+      } catch (e) {
+        console.warn('No current user; ensure x-user-id header is set')
+      }
+    })()
+
+    // Load actual project members from API (assignees of the project)
+    ;(async () => {
+      if (!projectId) return
+      try {
+        // Prefer lightweight members endpoint if available
+        const users = await apiGet(`/projects/${projectId}/members`).catch(() => null)
+        if (Array.isArray(users) && users.length > 0) {
+          const mapped = users.map((u: any) => ({
+            id: String(u.id),
+            name: String(u.name || ''),
+            email: String(u.email || ''),
+            role: String(u?.role?.name || u?.role || 'member').toLowerCase(),
+            department: String(u?.department?.name || u?.department || ''),
+            isActive: true,
+            lastActive: new Date().toISOString(),
+          }))
+          setTeamMembers(mapped)
+          // Do not return; still fetch project meta to sync allocated/logged hours
+        }
+        // Fallback: fetch full project and derive members from memberships
+        const projectData = await apiGet(`/projects/${projectId}`).catch(() => null)
+        if (projectData && Array.isArray(projectData.memberships)) {
+          const mapped = projectData.memberships.map((m: any) => ({
+            id: String(m.user?.id || m.userId),
+            name: String(m.user?.name || 'Unknown'),
+            email: String(m.user?.email || ''),
+            role: String(m.role || 'member').toLowerCase(),
+            department: String(m.user?.department?.name || ''),
+            isActive: true,
+            lastActive: new Date().toISOString(),
+          }))
+          setTeamMembers(mapped)
+        }
+
+        // If project was fetched, sync its allocated/logged/remaining hours from backend
+        if (projectData) {
+          const allocated = Number(projectData.allocatedHours) || 0
+          const used = Number(projectData.usedHours ?? projectData.loggedHours) || 0
+          const left = Number(
+            projectData.leftHours ?? projectData.remainingHours ?? Math.max(allocated - used, 0)
+          )
+          setProject(prev => prev ? {
+            ...prev,
+            allocatedHours: allocated,
+            loggedHours: used,
+            remainingHours: left,
+          } : {
+            // Minimal fallback shape focusing on hours used by the UI
+            id: String(projectId),
+            name: projectName,
+            description: projectData.description || '',
+            owner: projectData.owner?.name || '',
+            status: 'in-progress',
+            progress: Number(projectData.progress ?? 0),
+            startDate: projectData.startDate || '',
+            dueDate: projectData.endDate || '',
+            team: [],
+            tags: [],
+            priority: 'medium',
+            phases: [],
+            tasks: [],
+            members: [],
+            allocatedHours: allocated,
+            loggedHours: used,
+            remainingHours: left,
+          } as any)
+        }
+      } catch (e) {
+        console.error('Failed to load project members', e)
+        setTeamMembers([])
+      }
+    })()
+
+    // Load actual task assignees and details from API
+    ;(async () => {
+      try {
+        if (!taskId) return
+        const t = await apiGet(`/tasks/${taskId}`)
+        if (!t) return
+        const mapStatus = (s: string) => {
+          const m: any = { NOT_STARTED: 'not-started', IN_PROGRESS: 'in-progress', COMPLETED: 'completed', ON_HOLD: 'on-hold' }
+          return m[String(s).toUpperCase()] || 'in-progress'
+        }
+        const due = t.dueDate ? new Date(t.dueDate).toISOString().split('T')[0] : ''
+        const names: string[] = Array.isArray(t.assignees) ? t.assignees.map((a: any) => a.user?.name).filter(Boolean) : []
+        setTask(prev => prev ? {
+          ...prev,
+          title: t.title || prev.title,
+          description: t.description || prev.description,
+          status: mapStatus(t.status),
+          dueDate: due,
+          assignees: names.length ? names : prev.assignees,
+          projectId: t.phase?.project?.id || prev.projectId,
+          phaseId: t.phaseId || prev.phaseId,
+        } : {
+          id: t.id,
+          title: t.title,
+          description: t.description || '',
+          status: mapStatus(t.status),
+          priority: 'medium',
+          dueDate: due,
+          projectId: t.phase?.project?.id || projectId || '',
+          assignees: names,
+          isDone: t.status === 'COMPLETED',
+          createdAt: t.createdAt || '',
+          updatedAt: t.updatedAt || '',
+          progress: t.status === 'COMPLETED' ? 100 : (t.status === 'IN_PROGRESS' ? 65 : 0),
+          phaseId: t.phaseId || '',
+        } as any)
+      } catch (e) {
+        console.error('Failed to load task', e)
+      }
+    })()
+
+    // Load task time logs for Hours Logged metric
+    ;(async () => {
+      try {
+        if (!taskId) return
+        const logs = await apiGet(`/timelogs/tasks/${taskId}/timelogs`)
+        if (Array.isArray(logs)) {
+          setTaskTimeLogs(logs.map((l: any) => ({
+            durationMins: Number(l.durationMins) || 0,
+            startedAt: l.startedAt,
+            endedAt: l.endedAt,
+            description: l.description,
+            userId: String(l.userId),
+            userName: l.userName || l.user?.name || undefined,
+            attachmentPath: l.attachment?.filePath || null,
+          })))
+        }
+      } catch (e) {
+        console.error('Failed to load task time logs', e)
+        setTaskTimeLogs([])
+      }
+    })()
+
+    // Load comments for this task
+    ;(async () => {
+      try {
+        if (!taskId) return
+        const list = await apiGet(`/tasks/${taskId}/comments`)
+        if (Array.isArray(list)) {
+          const mapped: Comment[] = list.map((c: any) => ({
+            id: c.id,
+            taskId: c.taskId,
+            content: c.content,
+            author: {
+              id: c.author?.id || '',
+              name: c.author?.name || 'Unknown',
+              email: c.author?.email || '',
+              avatar: (c.author?.name || 'U').split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase(),
+            },
+            createdAt: c.createdAt,
+            replies: (c.replies || []).map((r: any) => ({
+              id: r.id,
+              content: r.content,
+              author: {
+                id: r.author?.id || '',
+                name: r.author?.name || 'Unknown',
+                email: r.author?.email || '',
+                avatar: (r.author?.name || 'U').split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase(),
+              },
+              createdAt: r.createdAt,
+            })),
+          }))
+          setComments(mapped)
+        }
+      } catch (e) {
+        console.error('Failed to load comments', e)
+        setComments([])
+      }
+    })()
+
+    // Load activity/history for this task
+    ;(async () => {
+      try {
+        if (!taskId) return
+        const list = await apiGet(`/tasks/${taskId}/history`)
+        if (Array.isArray(list)) {
+          const mapped = list.map((h: any) => ({
+            id: h.id,
+            description: h.message || 'Update',
+            timestamp: h.createdAt,
+            by: h.createdBy?.name || undefined,
+          }))
+          setActivity(mapped)
+        }
+      } catch (e) {
+        console.error('Failed to load history', e)
+        setActivity([])
+      }
+    })()
+
+    // Load documents for this task from API
+    ;(async () => {
+      try {
+        if (!taskId) return
+        const list = await apiGet(`/api/documents/by-task/${taskId}`)
+        if (Array.isArray(list)) {
+          const mapped = list.map((d: any) => ({
+            id: d.id,
+            name: d.name,
+            fileUrl: buildFileUrl(d.fileUrl || (d.filePath ? `/${String(d.filePath).replace(/^\\+/, '')}` : '')),
+            status: String(d.status || 'in-review'),
+            createdAt: d.createdAt,
+            createdBy: d.createdBy || null,
+          }))
+          setTaskDocuments(mapped)
+        }
+      } catch (e) {
+        console.error('Failed to load task documents', e)
+        setTaskDocuments([])
+      }
+    })()
   }, [taskId, taskData])
+
+  // Map task time logs + team members into visible "Time Logs" list
+  useEffect(() => {
+    const nameById: Record<string, string> = {}
+    teamMembers.forEach(tm => { nameById[tm.id] = tm.name })
+    if (currentUser) nameById[currentUser.id] = currentUser.name
+    const uiLogs = (taskTimeLogs || []).map((l: any) => {
+      const uid = String(l.userId)
+      const fallbackMine = (uid === currentUser?.id) ? (currentUser?.name || 'You') : undefined
+      // Prefer server-provided name, then known team list, then mine, then Unknown
+      const displayName = l.userName || nameById[uid] || fallbackMine || 'Unknown User'
+      const attachmentUrl = l.attachmentPath ? `${API_BASE}/${String(l.attachmentPath).replace(/^\\+/, '')}` : undefined
+      const attachmentFileName = l.attachmentPath ? String(l.attachmentPath).split('/').pop() : undefined
+      return ({
+        id: String(l.id || `${l.userId}-${l.startedAt}`),
+        userId: uid,
+        userName: displayName,
+        projectId: String(projectId || ''),
+        taskId: String(task?.id || ''),
+        phaseId: String(task?.phaseId || ''),
+        hours: Math.round(((Number(l.durationMins) || 0) / 60) * 100) / 100,
+        description: l.description,
+        loggedAt: l.endedAt || l.startedAt,
+        createdAt: l.createdAt || l.endedAt || l.startedAt,
+        attachmentUrl,
+        attachmentFileName,
+      })
+    })
+    setProjectTimeLogs(uiLogs)
+  }, [taskTimeLogs, teamMembers, currentUser, projectId, task?.phaseId, task?.id])
+
+  // Build unified timeline from history + documents + time logs
+  useEffect(() => {
+    const items: TimelineItem[] = []
+    items.push(...activity.map(a => ({ id: `h-${a.id}`, type: 'history' as const, title: a.description, timestamp: a.timestamp, by: a.by })))
+    items.push(...taskDocuments.map(d => ({ id: `d-${d.id}`, type: 'document' as const, title: d.name, timestamp: d.createdAt, url: d.fileUrl, by: d.createdBy?.name })))
+    items.push(...projectTimeLogs.map(l => ({ id: `t-${l.id}`, type: 'timelog' as const, title: l.description || 'Time logged', timestamp: l.createdAt, hours: l.hours, by: l.userName })))
+    items.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    setTimeline(items)
+  }, [activity, taskDocuments, projectTimeLogs])
 
   const handleMarkDone = async () => {
     setIsMarkingDone(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      setTask(prev => prev ? { ...prev, status: 'done', isDone: true, progress: 100 } : null)
+      // Persist to backend if we have an id
+      if (task?.id) {
+        try {
+          const { apiJson } = await import('../services/api')
+          await apiJson(`/tasks/${task.id}`, 'PATCH', { status: 'COMPLETED' })
+        } catch (e) { /* ignore, keep optimistic */ }
+      }
+      setTask(prev => prev ? { ...prev, status: 'completed' as any, isDone: true, progress: 100 } : null)
     } catch (error) {
       console.error('Failed to mark task as done:', error)
     } finally {
@@ -555,45 +882,112 @@ const TaskDetail: React.FC = () => {
   }
 
   const handleTimeLogSubmit = async () => {
-    if (!newLogContent.trim() || newLogHours <= 0 || !currentUser || !project) return
+    if (!newLogContent.trim() || !currentUser || !project || !task?.id) return
 
     setIsSavingLog(true)
     try {
-      const newTimeLog: TimeLog = {
-        id: Date.now().toString(),
-        userId: currentUser.id,
-        userName: currentUser.name,
-        projectId: project.id,
-        taskId: task?.id || '',
-        phaseId: task?.phaseId || '',
-        hours: newLogHours,
-        description: newLogContent,
-        loggedAt: new Date().toISOString(),
-        createdAt: new Date().toISOString()
+      // Ensure x-user-id is set so backend attributes the log to this user
+      try {
+        const existingUid = localStorage.getItem('userId')
+        if (!existingUid && currentUser?.id) {
+          localStorage.setItem('userId', currentUser.id)
+        }
+      } catch (_) { /* ignore storage errors */ }
+
+      // Compute startedAt/endedAt
+      let startedAt: Date | null = null
+      let endedAt: Date | null = null
+      let hoursFloat = newLogHours
+
+      if (isTimerRunning && timerStartTime) {
+        // If timer is still running, finalize it at submit time
+        endedAt = new Date()
+        startedAt = new Date(timerStartTime)
+        const secs = Math.max(0, Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000))
+        hoursFloat = Math.round((secs / 3600) * 100) / 100
+        // Stop the timer UI
+        setIsTimerRunning(false)
+        setElapsedTime(secs)
+      } else if (timerStartTime && elapsedTime > 0) {
+        // Timer was previously stopped; use captured duration
+        startedAt = new Date(timerStartTime)
+        endedAt = new Date(timerStartTime.getTime() + elapsedTime * 1000)
+        const secs = Math.max(0, Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000))
+        hoursFloat = Math.round((secs / 3600) * 100) / 100
+      } else {
+        // Manual entry based on date + hours
+        const base = new Date(`${newLogDate}T12:00:00`)
+        endedAt = isNaN(base.getTime()) ? new Date() : base
+        const durationMs = Math.max(0, Math.round((Number(hoursFloat) || 0) * 60 * 60 * 1000))
+        startedAt = new Date(endedAt.getTime() - durationMs)
       }
 
-      // Add to project time logs
-      setProjectTimeLogs(prev => [newTimeLog, ...prev])
+      if (!startedAt || !endedAt) return
+      const payload = {
+        startedAt: startedAt.toISOString(),
+        endedAt: endedAt.toISOString(),
+        description: newLogContent.trim(),
+      }
 
-      // Update project's logged hours and remaining hours
-      const newLoggedHours = project.loggedHours + newLogHours
-      const newRemainingHours = project.allocatedHours - newLoggedHours
-      
-      setProject(prev => prev ? {
-        ...prev,
-        loggedHours: newLoggedHours,
-        remainingHours: newRemainingHours
-      } : null)
+      // Persist to backend (multipart if file is present)
+      const base = (import.meta as any).env.VITE_API_URL || 'http://localhost:4000'
+      const uid = localStorage.getItem('userId')
+      if (newLogFile) {
+        const form = new FormData()
+        form.append('startedAt', payload.startedAt)
+        form.append('endedAt', payload.endedAt)
+        form.append('description', payload.description)
+        form.append('file', newLogFile)
+        const res = await fetch(`${base}/timelogs/tasks/${task.id}/timelogs`, {
+          method: 'POST',
+          headers: { ...(uid ? { 'x-user-id': uid } : {}) },
+          body: form,
+        })
+        if (!res.ok) throw new Error(await res.text())
+        await res.json()
+      } else {
+        await apiJson(`/timelogs/tasks/${task.id}/timelogs`, 'POST', payload)
+      }
 
-      // Reset form
+      // Update task hours metric by reloading logs
+      try {
+        const logs = await apiGet(`/timelogs/tasks/${task.id}/timelogs`)
+        if (Array.isArray(logs)) {
+          setTaskTimeLogs(logs.map((l: any) => ({
+            durationMins: Number(l.durationMins) || 0,
+            startedAt: l.startedAt,
+            endedAt: l.endedAt,
+            description: l.description,
+            userId: String(l.userId),
+            userName: l.userName || l.user?.name || undefined,
+            attachmentPath: l.attachment?.filePath || null,
+          })))
+        }
+      } catch (_) { /* ignore */ }
+
+      // Refresh project meta to sync used/remaining hours from backend
+      try {
+        if (project?.id) {
+          const pData = await apiGet(`/projects/${project.id}`)
+          if (pData) {
+            const allocated = Number(pData.allocatedHours) || 0
+            const used = Number(pData.usedHours ?? pData.loggedHours) || 0
+            const left = Number(pData.leftHours ?? pData.remainingHours ?? Math.max(allocated - used, 0))
+            setProject(prev => prev ? { ...prev, allocatedHours: allocated, loggedHours: used, remainingHours: left } : prev)
+          }
+        }
+      } catch (_) { /* ignore refresh errors */ }
+
+      // Reset form and timer fields
       setNewLogContent('')
       setNewLogHours(0)
       setNewLogDate(new Date().toISOString().split('T')[0])
-      
-      // Stop timer if running
-      if (isTimerRunning) {
-        stopTimer()
-      }
+      setNewLogFile(null)
+      setTimerStartTime(null)
+      setElapsedTime(0)
+    } catch (e) {
+      console.error('Failed to save time log:', e)
+      alert('Failed to save time log. Please try again.')
     } finally {
       setIsSavingLog(false)
     }
@@ -601,8 +995,19 @@ const TaskDetail: React.FC = () => {
 
   const handleStatusChange = async (newStatus: string) => {
     try {
-      await new Promise(resolve => setTimeout(resolve, 500))
+      // Optimistic update
       setTask(prev => prev ? { ...prev, status: newStatus as any } : null)
+      // Persist to backend mapping to API enum
+      if (task?.id) {
+        const map: Record<string, string> = {
+          'not-started': 'NOT_STARTED',
+          'in-progress': 'IN_PROGRESS',
+          'completed': 'COMPLETED',
+          'on-hold': 'ON_HOLD',
+        }
+        const { apiJson } = await import('../services/api')
+        await apiJson(`/tasks/${task.id}`, 'PATCH', { status: map[newStatus] || 'NOT_STARTED' })
+      }
     } catch (error) {
       console.error('Failed to change status:', error)
     }
@@ -615,8 +1020,59 @@ const TaskDetail: React.FC = () => {
 
     setIsSavingComment(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      console.log('Saving comment:', newComment)
+      if (!task?.id) throw new Error('Task not loaded')
+      // Ensure auth header uses a user id
+      try {
+        const existingUid = localStorage.getItem('userId')
+        if (!existingUid && currentUser?.id) {
+          localStorage.setItem('userId', currentUser.id)
+        }
+      } catch {}
+      // Extract mentions by name and map to user IDs when possible
+      const names = Array.from(new Set((newComment.match(/@([\w\- ]+)/g) || []).map(s => s.slice(1).trim()))).filter(Boolean)
+      const mentionUserIds = teamMembers
+        .filter(m => names.some(n => n.toLowerCase() === m.name.toLowerCase()))
+        .map(m => m.id)
+      await apiJson(`/tasks/${task.id}/comments`, 'POST', {
+        content: newComment.trim(),
+        ...(mentionUserIds.length ? { mentionUserIds } : {}),
+      })
+      // Reload comments and history
+      try {
+        const list = await apiGet(`/tasks/${task.id}/comments`)
+        if (Array.isArray(list)) {
+          const mapped: Comment[] = list.map((c: any) => ({
+            id: c.id,
+            taskId: c.taskId,
+            content: c.content,
+            author: {
+              id: c.author?.id || '',
+              name: c.author?.name || 'Unknown',
+              email: c.author?.email || '',
+              avatar: (c.author?.name || 'U').split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase(),
+            },
+            createdAt: c.createdAt,
+            replies: (c.replies || []).map((r: any) => ({
+              id: r.id,
+              content: r.content,
+              author: {
+                id: r.author?.id || '',
+                name: r.author?.name || 'Unknown',
+                email: r.author?.email || '',
+                avatar: (r.author?.name || 'U').split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase(),
+              },
+              createdAt: r.createdAt,
+            })),
+          }))
+          setComments(mapped)
+        }
+      } catch {}
+      try {
+        const list = await apiGet(`/tasks/${task.id}/history`)
+        if (Array.isArray(list)) {
+          setActivity(list.map((h: any) => ({ id: h.id, description: h.message || 'Update', timestamp: h.createdAt })))
+        }
+      } catch {}
       setNewComment('')
       setShowMentionDropdown(false)
     } catch (error) {
@@ -631,8 +1087,44 @@ const TaskDetail: React.FC = () => {
 
     setIsSavingReply(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      console.log('Saving reply:', replyText, 'to comment:', commentId)
+      if (!task?.id) throw new Error('Task not loaded')
+      try {
+        const existingUid = localStorage.getItem('userId')
+        if (!existingUid && currentUser?.id) {
+          localStorage.setItem('userId', currentUser.id)
+        }
+      } catch {}
+      await apiJson(`/tasks/${task.id}/comments`, 'POST', { content: replyText.trim(), parentId: commentId })
+      // Reload comments (replies included)
+      try {
+        const list = await apiGet(`/tasks/${task.id}/comments`)
+        if (Array.isArray(list)) {
+          const mapped: Comment[] = list.map((c: any) => ({
+            id: c.id,
+            taskId: c.taskId,
+            content: c.content,
+            author: {
+              id: c.author?.id || '',
+              name: c.author?.name || 'Unknown',
+              email: c.author?.email || '',
+              avatar: (c.author?.name || 'U').split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase(),
+            },
+            createdAt: c.createdAt,
+            replies: (c.replies || []).map((r: any) => ({
+              id: r.id,
+              content: r.content,
+              author: {
+                id: r.author?.id || '',
+                name: r.author?.name || 'Unknown',
+                email: r.author?.email || '',
+                avatar: (r.author?.name || 'U').split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase(),
+              },
+              createdAt: r.createdAt,
+            })),
+          }))
+          setComments(mapped)
+        }
+      } catch {}
       setReplyText('')
       setReplyingTo(null)
     } catch (error) {
@@ -682,13 +1174,40 @@ const TaskDetail: React.FC = () => {
 
   const handleFileUpload = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedFile) return
+    if (!selectedFile || !projectId || !task?.phaseId || !docReviewerId) return
 
     setIsUploading(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      console.log('Uploading file:', selectedFile.name)
+      const form = new FormData()
+      form.append('projectId', String(projectId))
+      form.append('phaseId', String(task.phaseId))
+      form.append('taskId', String(task.id))
+      form.append('reviewerId', String(docReviewerId))
+      form.append('status', 'in-review')
+      if (docName) form.append('name', docName)
+      form.append('files', selectedFile)
+      const uid = localStorage.getItem('userId') || ''
+      const token = localStorage.getItem('authToken') || ''
+      const headers: Record<string,string> = token ? { authorization: `Bearer ${token}` } : { 'x-user-id': uid }
+      const res = await fetch(`${API_BASE}/api/documents/upload`, { method: 'POST', headers, body: form, credentials: 'include' })
+      if (!res.ok) throw new Error(await res.text())
+      const created = await res.json()
+      // Prepend new docs
+      if (Array.isArray(created) && created.length) {
+        const mapped = created.map((d: any) => ({
+          id: d.id,
+          name: d.name,
+          fileUrl: buildFileUrl(d.fileUrl || (d.filePath ? `/${String(d.filePath).replace(/^\\+/, '')}` : '')),
+          status: String(d.status || 'in-review'),
+          createdAt: d.createdAt,
+          createdBy: d.createdBy || null,
+        }))
+        setTaskDocuments(prev => [...mapped, ...prev])
+      }
+      // Reset form fields
       setSelectedFile(null)
+      setDocName('')
+      setDocReviewerId('')
     } catch (error) {
       console.error('Failed to upload file:', error)
     } finally {
@@ -698,11 +1217,10 @@ const TaskDetail: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'done': return 'badge-success'
+      case 'completed': return 'badge-success'
       case 'in-progress': return 'badge-info'
-      case 'planning': return 'badge-warning'
-      case 'blocked': return 'badge-danger'
-      case 'in-review': return 'badge-warning'
+      case 'not-started': return 'badge-info'
+      case 'on-hold': return 'badge-warning'
       default: return 'badge-info'
     }
   }
@@ -717,10 +1235,168 @@ const TaskDetail: React.FC = () => {
     }
   }
 
+  // --- Speech to text helpers ---
+  const startRecording = async (kind: 'log' | 'comment') => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mr = new MediaRecorder(stream, { mimeType: 'audio/webm' })
+      const chunksRef = kind === 'log' ? recChunksLog : recChunksComment
+      chunksRef.current = []
+      mr.ondataavailable = (e: BlobEvent) => { if (e.data && e.data.size > 0) chunksRef.current.push(e.data) }
+      mr.onstop = async () => {
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+        await transcribeBlob(blob, kind)
+        stream.getTracks().forEach(t => t.stop())
+      }
+      if (kind === 'log') { mediaRecLog.current = mr; setIsRecLog(true) } else { mediaRecComment.current = mr; setIsRecComment(true) }
+      mr.start()
+    } catch (e) {
+      alert('Microphone access denied or not available')
+    }
+  }
+
+  const stopRecording = (kind: 'log' | 'comment') => {
+    const mr = kind === 'log' ? mediaRecLog.current : mediaRecComment.current
+    if (mr && mr.state !== 'inactive') mr.stop()
+    if (kind === 'log') setIsRecLog(false); else setIsRecComment(false)
+  }
+
+  const transcribeBlob = async (blob: Blob, kind: 'log' | 'comment') => {
+    try {
+      setIsTranscribing(true)
+      const form = new FormData()
+      form.append('audio', blob, 'audio.webm')
+      const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
+      const uid = localStorage.getItem('userId') || ''
+      const token = localStorage.getItem('authToken') || ''
+      const headers: Record<string,string> = token ? { authorization: `Bearer ${token}` } : { 'x-user-id': uid }
+      const res = await fetch(`${String(base).replace(/\/+$/, '')}/api/speech/transcribe`, { method: 'POST', headers, body: form })
+      if (!res.ok) throw new Error(await res.text())
+      const data = await res.json()
+      const text: string = String(data?.text || '')
+      if (text) {
+        if (kind === 'log') setNewLogContent(prev => prev ? (prev + (prev.endsWith(' ') ? '' : ' ') + text) : text)
+        else setNewComment(prev => prev ? (prev + (prev.endsWith(' ') ? '' : ' ') + text) : text)
+      }
+    } catch (e: any) {
+      alert(e?.message || 'Transcription failed')
+    } finally {
+      setIsTranscribing(false)
+    }
+  }
+
+  // --- Realtime dictation (AssemblyAI Realtime WS) ---
+  const startLiveDictation = async (kind: 'log' | 'comment') => {
+    try {
+      const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
+      // Request an ephemeral token (server coerces deprecated models to universal and retries if needed)
+      const tokenRes = await fetch(`${String(base).replace(/\/+$/, '')}/api/speech/realtime-token?model=universal`)
+      if (!tokenRes.ok) throw new Error(await tokenRes.text())
+      const { token } = await tokenRes.json()
+      const sampleRate = 16000
+      // Connect to AssemblyAI realtime. Token encodes model; avoid extra params that may cause deprecation errors.
+      const ws = new WebSocket(`wss://api.assemblyai.com/v2/realtime/ws?sample_rate=${sampleRate}&token=${encodeURIComponent(token)}`)
+      wsRef.current = ws
+      liveBaseTextRef.current[kind] = kind === 'log' ? newLogContent : newComment
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data)
+          const text = String(msg?.text || '')
+          if (text) {
+            if (kind === 'log') {
+              setNewLogContent(`${liveBaseTextRef.current.log}${liveBaseTextRef.current.log ? ' ' : ''}${text}`)
+            } else {
+              setNewComment(`${liveBaseTextRef.current.comment}${liveBaseTextRef.current.comment ? ' ' : ''}${text}`)
+            }
+          }
+        } catch {}
+      }
+      ws.onerror = (ev) => { console.error('WS error', ev) }
+      ws.onclose = () => stopLiveDictation(kind)
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const source = audioCtx.createMediaStreamSource(stream)
+      const processor = audioCtx.createScriptProcessor(4096, 1, 1)
+      source.connect(processor)
+      processor.connect(audioCtx.destination)
+      processor.onaudioprocess = (e: AudioProcessingEvent) => {
+        const input = e.inputBuffer.getChannelData(0)
+        const down = downsampleBuffer(input, audioCtx.sampleRate, sampleRate)
+        const pcm = floatTo16BitPCM(down)
+        const b64 = arrayBufferToBase64(pcm.buffer)
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ audio_data: b64 }))
+        }
+      }
+      audioCtxRef.current = audioCtx
+      sourceRef.current = source
+      processorRef.current = processor
+      if (kind === 'log') setIsLiveLog(true); else setIsLiveComment(true)
+    } catch (e: any) {
+      alert(e?.message || 'Failed to start live dictation')
+    }
+  }
+
+  const stopLiveDictation = (kind: 'log' | 'comment') => {
+    try {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        try { wsRef.current.send(JSON.stringify({ terminate_session: true })) } catch {}
+      }
+      wsRef.current?.close()
+    } catch {}
+    try { processorRef.current?.disconnect() } catch {}
+    try { sourceRef.current?.disconnect() } catch {}
+    try { audioCtxRef.current?.close() } catch {}
+    wsRef.current = null
+    processorRef.current = null
+    sourceRef.current = null
+    audioCtxRef.current = null
+    if (kind === 'log') setIsLiveLog(false); else setIsLiveComment(false)
+  }
+
+  function downsampleBuffer(buffer: Float32Array, sampleRate: number, outRate: number) {
+    if (outRate === sampleRate) return buffer
+    const sampleRateRatio = sampleRate / outRate
+    const newLength = Math.round(buffer.length / sampleRateRatio)
+    const result = new Float32Array(newLength)
+    let offsetResult = 0
+    let offsetBuffer = 0
+    while (offsetResult < result.length) {
+      const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio)
+      let accum = 0, count = 0
+      for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+        accum += buffer[i]
+        count++
+      }
+      result[offsetResult] = accum / count
+      offsetResult++
+      offsetBuffer = nextOffsetBuffer
+    }
+    return result
+  }
+  function floatTo16BitPCM(input: Float32Array) {
+    const buffer = new ArrayBuffer(input.length * 2)
+    const view = new DataView(buffer)
+    let offset = 0
+    for (let i = 0; i < input.length; i++, offset += 2) {
+      let s = Math.max(-1, Math.min(1, input[i]))
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true)
+    }
+    return view
+  }
+  function arrayBufferToBase64(buffer: ArrayBuffer) {
+    let binary = ''
+    const bytes = new Uint8Array(buffer)
+    const len = bytes.byteLength
+    for (let i = 0; i < len; i++) binary += String.fromCharCode(bytes[i])
+    return btoa(binary)
+  }
+
   const getDocumentStatusColor = (status: string) => {
     switch (status) {
       case 'approved': return 'text-green-600 dark:text-green-400'
-      case 'pending': return 'text-yellow-600 dark:text-yellow-400'
+      case 'pending':
+      case 'in-review': return 'text-yellow-600 dark:text-yellow-400'
       case 'rejected': return 'text-red-600 dark:text-red-400'
       case 'needs-changes': return 'text-orange-600 dark:text-orange-400'
       default: return 'text-gray-600 dark:text-gray-400'
@@ -799,8 +1475,8 @@ const TaskDetail: React.FC = () => {
         <div className="card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Hours Logged</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{totalHoursLogged}</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Task Hours Logged</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">{formatHoursMinutesFromMins(totalDurationMins)}</p>
             </div>
             <HiTrendingUp className="h-8 w-8 text-green-600" />
           </div>
@@ -872,11 +1548,10 @@ const TaskDetail: React.FC = () => {
                       onChange={(e) => handleStatusChange(e.target.value)}
                       className="input-field"
                     >
-                      <option value="planning">Planning</option>
+                      <option value="not-started">Not Started</option>
                       <option value="in-progress">In Progress</option>
-                      <option value="in-review">In Review</option>
-                      <option value="done">Done</option>
-                      <option value="blocked">Blocked</option>
+                      <option value="completed">Completed</option>
+                      <option value="on-hold">On Hold</option>
                     </select>
                   </div>
 
@@ -896,6 +1571,7 @@ const TaskDetail: React.FC = () => {
                     <input
                       type="date"
                       value={task.dueDate}
+                      readOnly
                       className="input-field"
                     />
                   </div>
@@ -1032,22 +1708,22 @@ const TaskDetail: React.FC = () => {
                 </div>
                 <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
                   <div className="text-2xl font-bold text-green-600 dark:text-green-400">{project.loggedHours}h</div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Hours Logged</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Project Hours Logged</div>
                 </div>
                 <div className="text-center p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
                   <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">{project.remainingHours}h</div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Time Remaining</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Project Time Remaining</div>
                 </div>
               </div>
               <div className="mt-4">
                 <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
                   <span>Progress</span>
-                  <span>{Math.round((project.loggedHours / project.allocatedHours) * 100)}%</span>
+                  <span>{project.allocatedHours > 0 ? Math.round((project.loggedHours / project.allocatedHours) * 100) : 0}%</span>
                 </div>
                 <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                   <div 
                     className="bg-gradient-to-r from-blue-500 to-green-500 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${Math.min(100, (project.loggedHours / project.allocatedHours) * 100)}%` }}
+                    style={{ width: `${project.allocatedHours > 0 ? Math.min(100, (project.loggedHours / project.allocatedHours) * 100) : 0}%` }}
                   ></div>
                 </div>
               </div>
@@ -1085,8 +1761,8 @@ const TaskDetail: React.FC = () => {
               </div>
               
               <div className="text-right">
-                <p className="text-sm text-gray-600 dark:text-gray-400">Total Hours Logged</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{totalHoursLogged}</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Task Hours Logged</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">{formatHoursMinutesFromMins(totalDurationMins)}</p>
               </div>
             </div>
 
@@ -1125,6 +1801,7 @@ const TaskDetail: React.FC = () => {
                     <input
                       type="file"
                       className="input-field"
+                      onChange={(e) => setNewLogFile(e.target.files?.[0] || null)}
                     />
                   </div>
                 </div>
@@ -1133,6 +1810,23 @@ const TaskDetail: React.FC = () => {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     What did you work on?
                   </label>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-gray-500 dark:text-gray-400">Use mic to dictate your log</span>
+                    <div className="space-x-2">
+                      {!isRecLog ? (
+                        <button type="button" onClick={() => startRecording('log')} className="text-xs px-2 py-1 rounded-md bg-primary-600 text-white disabled:opacity-50">
+                          {isTranscribing ? 'Transcribing…' : '🎤 Speak'}
+                        </button>
+                      ) : (
+                        <button type="button" onClick={() => stopRecording('log')} className="text-xs px-2 py-1 rounded-md bg-red-600 text-white">Stop</button>
+                      )}
+                      {!isLiveLog ? (
+                        <button type="button" onClick={() => startLiveDictation('log')} className="text-xs px-2 py-1 rounded-md bg-green-600 text-white">🎙 Live</button>
+                      ) : (
+                        <button type="button" onClick={() => stopLiveDictation('log')} className="text-xs px-2 py-1 rounded-md bg-orange-600 text-white">Stop Live</button>
+                      )}
+                    </div>
+                  </div>
                   <textarea
                     value={newLogContent}
                     onChange={(e) => setNewLogContent(e.target.value)}
@@ -1224,15 +1918,27 @@ const TaskDetail: React.FC = () => {
                         </div>
                         <div className="text-right">
                           <div className="text-lg font-bold text-primary-600 dark:text-primary-400">
-                            {log.hours}h
+                            {formatHoursMinutesFromHours(log.hours)}
                           </div>
                           <div className="text-xs text-gray-500 dark:text-gray-400">logged</div>
                         </div>
                       </div>
-                      <div className="mt-3">
+
+                      <div className="mt-3 space-y-2">
                         <p className="text-sm text-gray-700 dark:text-gray-300">
                           {log.description || 'No description provided'}
                         </p>
+                        {log.attachmentUrl && (
+                          <a
+                            href={log.attachmentUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center text-xs text-primary-600 dark:text-primary-400 hover:underline"
+                          >
+                            <HiDownload className="h-4 w-4 mr-1" />
+                            {log.attachmentFileName || 'View attachment'}
+                          </a>
+                        )}
                       </div>
                     </div>
                   )
@@ -1283,6 +1989,23 @@ const TaskDetail: React.FC = () => {
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Add Comment</h3>
             <form onSubmit={handleSaveComment} className="space-y-4">
               <div className="relative">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Use mic to dictate your comment</span>
+                  <div className="space-x-2">
+                    {!isRecComment ? (
+                      <button type="button" onClick={() => startRecording('comment')} className="text-xs px-2 py-1 rounded-md bg-primary-600 text-white disabled:opacity-50">
+                        {isTranscribing ? 'Transcribing…' : '🎤 Speak'}
+                      </button>
+                    ) : (
+                      <button type="button" onClick={() => stopRecording('comment')} className="text-xs px-2 py-1 rounded-md bg-red-600 text-white">Stop</button>
+                    )}
+                    {!isLiveComment ? (
+                      <button type="button" onClick={() => startLiveDictation('comment')} className="text-xs px-2 py-1 rounded-md bg-green-600 text-white">🎙 Live</button>
+                    ) : (
+                      <button type="button" onClick={() => stopLiveDictation('comment')} className="text-xs px-2 py-1 rounded-md bg-orange-600 text-white">Stop Live</button>
+                    )}
+                  </div>
+                </div>
                 <textarea
                   value={newComment}
                   onChange={handleMentionInput}
@@ -1471,6 +2194,8 @@ const TaskDetail: React.FC = () => {
                     type="text"
                     className="input-field"
                     placeholder="Enter document name"
+                    value={docName}
+                    onChange={(e) => setDocName(e.target.value)}
                     required
                   />
                 </div>
@@ -1478,7 +2203,7 @@ const TaskDetail: React.FC = () => {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Assign Reviewer
                   </label>
-                  <select className="input-field">
+                  <select className="input-field" value={docReviewerId} onChange={(e) => setDocReviewerId(e.target.value)} required>
                     <option value="">Select reviewer</option>
                     {teamMembers.map((member) => (
                       <option key={member.id} value={member.id}>{member.name}</option>
@@ -1513,7 +2238,7 @@ const TaskDetail: React.FC = () => {
           <div className="card">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Documents</h3>
             <div className="space-y-4">
-              {documents.map((doc) => (
+              {taskDocuments.map((doc) => (
                 <div key={doc.id} className="border border-gray-200 dark:border-gray-700 rounded-xl p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
@@ -1521,17 +2246,19 @@ const TaskDetail: React.FC = () => {
                       <div>
                         <h4 className="text-sm font-medium text-gray-900 dark:text-white">{doc.name}</h4>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
-                          Uploaded by {doc.uploadedBy} • {new Date(doc.uploadedAt).toLocaleDateString()}
+                          Uploaded by {doc.createdBy?.name || 'Unknown'} • {new Date(doc.createdAt).toLocaleDateString()}
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
                       <span className={`text-sm font-medium ${getDocumentStatusColor(doc.status)}`}>
-                        {doc.status.toUpperCase()}
+                        {String(doc.status || '').toUpperCase()}
                       </span>
-                      <button className="text-primary-600 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-200">
-                        <HiDownload className="h-4 w-4" />
-                      </button>
+                      {doc.fileUrl && (
+                        <a href={doc.fileUrl} target="_blank" rel="noreferrer" className="text-primary-600 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-200" title="Open document">
+                          <HiDownload className="h-4 w-4" />
+                        </a>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1544,22 +2271,64 @@ const TaskDetail: React.FC = () => {
       {activeTab === 'history' && (
         <div className="card">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Activity Timeline</h3>
-          <div className="space-y-4">
-            {activity.map((item) => (
-              <div key={item.id} className="flex items-start space-x-3">
-                <div className="flex-shrink-0">
-                  <div className="h-8 w-8 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center">
-                    <span className="text-xs">📝</span>
+          <div className="space-y-6">
+            {(() => {
+              // Group by Month Year
+              const groups: Record<string, TimelineItem[]> = {}
+              const order: string[] = []
+              timeline.forEach(it => {
+                const d = new Date(it.timestamp)
+                const label = d.toLocaleString('en-US', { month: 'long', year: 'numeric' })
+                if (!groups[label]) { groups[label] = []; order.push(label) }
+                groups[label].push(it)
+              })
+              return order.map(label => (
+                <div key={label}>
+                  <div className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">{label}</div>
+                  <div className="space-y-3">
+                    {groups[label].map((it) => (
+                      <div key={it.id} className="flex items-start justify-between p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                        <div className="flex items-start space-x-3">
+                          <div className={`h-8 w-8 rounded-full flex items-center justify-center text-white ${it.type === 'document' ? 'bg-blue-600' : it.type === 'timelog' ? 'bg-green-600' : 'bg-gray-600'}`}>
+                            {it.type === 'document' ? '📄' : it.type === 'timelog' ? '⏱️' : '📝'}
+                          </div>
+                          <div>
+                            <div className="text-sm text-gray-900 dark:text-white flex items-center flex-wrap gap-2">
+                              {it.type === 'timelog' && it.hours !== undefined ? (
+                                <>
+                                  <span>
+                                    Logged <span className="font-semibold">{it.hours}h</span>{it.title ? ` on ${it.title}` : ''}
+                                  </span>
+                                  <span className="inline-block text-xs px-2 py-0.5 rounded-md bg-orange-700 text-white dark:bg-orange-800">
+                                    {it.hours}h
+                                  </span>
+                                </>
+                              ) : (
+                                <>{it.title}</>
+                              )}
+                            </div>
+                            {it.by && (
+                              <div className="text-xs text-gray-500 dark:text-gray-400">
+                                {`by ${it.by}`}
+                              </div>
+                            )}
+                            {it.type === 'document' && it.url && (
+                              <div className="mt-1 text-xs">
+                                <a href={it.url} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline mr-3">View</a>
+                                <a href={it.url} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline">Download</a>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 ml-3 whitespace-nowrap">
+                          {new Date(it.timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-gray-900 dark:text-white">{item.description}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    {new Date(item.timestamp).toLocaleString()}
-                  </p>
-                </div>
-              </div>
-            ))}
+              ))
+            })()}
           </div>
         </div>
       )}

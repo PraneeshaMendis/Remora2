@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { 
   Calendar, 
   Clock, 
@@ -11,6 +11,8 @@ import {
   Trash2
 } from 'lucide-react'
 import EventModal from '../components/modals/EventModal'
+import CountrySelect from '../components/CountrySelect'
+import { useAuth } from '../contexts/AuthContext'
 
 // Types
 interface CalendarEvent {
@@ -32,10 +34,37 @@ interface CalendarEvent {
   recurrenceType?: 'daily' | 'weekly' | 'monthly'
   createdBy: string
   createdAt: string
+  // New: origin info (which calendar/source)
+  sourceName?: string
+  sourceType?: CalendarSourceType | 'local'
+  sourceColor?: string
 }
 
 interface DayEvents {
   [date: string]: CalendarEvent[]
+}
+
+// External calendar source
+type CalendarSourceType = 'google' | 'outlook' | 'ics-upload' | 'ics-url' | 'holidays'
+interface CalendarSource {
+  id: string
+  type: CalendarSourceType
+  name: string
+  color: string
+  enabled: boolean
+  // For ICS URL sources
+  url?: string
+  // Parsed events from this source
+  events: CalendarEvent[]
+  lastSyncAt?: string
+}
+
+// Helper function to format date as YYYY-MM-DD without timezone issues
+const formatDateString = (date: Date): string => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 // Mock Data
@@ -48,7 +77,7 @@ const mockEvents: CalendarEvent[] = [
     type: 'meeting',
     startTime: '10:00',
     endTime: '10:15',
-    date: new Date().toISOString().split('T')[0],
+    date: formatDateString(new Date()),
     priority: 'high',
     status: 'scheduled',
     assignee: 'Sarah Johnson',
@@ -66,7 +95,7 @@ const mockEvents: CalendarEvent[] = [
     type: 'meeting',
     startTime: '14:00',
     endTime: '15:00',
-    date: new Date().toISOString().split('T')[0],
+    date: formatDateString(new Date()),
     priority: 'high',
     status: 'scheduled',
     assignee: 'Sarah Johnson',
@@ -84,7 +113,7 @@ const mockEvents: CalendarEvent[] = [
     type: 'task',
     startTime: '09:00',
     endTime: '10:00',
-    date: new Date().toISOString().split('T')[0],
+    date: formatDateString(new Date()),
     priority: 'high',
     status: 'scheduled',
     assignee: 'Sarah Johnson',
@@ -204,23 +233,383 @@ const mockEvents: CalendarEvent[] = [
     project: 'Design System',
     createdBy: 'Sarah Johnson',
     createdAt: '2025-01-14T10:00:00Z'
+  },
+  // Sample events for October 12th to test the fix
+  {
+    id: 'oct-12-1',
+    title: 'October 12th Meeting',
+    description: 'This event should stay on October 12th',
+    type: 'meeting',
+    startTime: '10:00',
+    endTime: '11:00',
+    date: '2024-10-12',
+    priority: 'high',
+    status: 'scheduled',
+    assignee: 'Sarah Johnson',
+    project: 'Test Project',
+    platform: 'teams',
+    meetingLink: 'https://teams.microsoft.com/l/meetup-join/oct-12-test',
+    attendees: ['Sarah Johnson', 'Test Team'],
+    createdBy: 'Sarah Johnson',
+    createdAt: '2024-10-10T10:00:00Z'
+  },
+  {
+    id: 'oct-12-2',
+    title: 'October 12th Task',
+    description: 'This task should also stay on October 12th',
+    type: 'task',
+    startTime: '14:00',
+    endTime: '15:00',
+    date: '2024-10-12',
+    priority: 'medium',
+    status: 'scheduled',
+    assignee: 'Sarah Johnson',
+    project: 'Test Project',
+    createdBy: 'Sarah Johnson',
+    createdAt: '2024-10-10T10:00:00Z'
   }
 ]
 
 const CalendarDashboard: React.FC = () => {
+  const { user } = useAuth()
   const [currentDate, setCurrentDate] = useState(new Date())
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('month')
   const [selectedDate, setSelectedDate] = useState<string>('')
-  const [events, setEvents] = useState<CalendarEvent[]>(mockEvents)
+  // Local events represent events you create in-app
+  const [localEvents, setLocalEvents] = useState<CalendarEvent[]>([])
+  // External connected sources (google/outlook/ics). Now loaded per-user from backend.
+  const [sources, setSources] = useState<CalendarSource[]>([])
+  // Combined events from local + enabled sources
+  const events: CalendarEvent[] = useMemo(() => {
+    const ext = sources.filter(s => s.enabled).flatMap(s => s.events || [])
+    const localDecorated = localEvents.map(ev => ({
+      ...ev,
+      sourceName: ev.sourceName || 'My Calendar',
+      sourceType: ev.sourceType || 'local',
+      sourceColor: ev.sourceColor || '#6b7280', // gray-500
+    }))
+    return [...localDecorated, ...ext]
+  }, [localEvents, sources])
   const [isEventModalOpen, setIsEventModalOpen] = useState(false)
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null)
   const [selectedDayEvents, setSelectedDayEvents] = useState<CalendarEvent[]>([])
   const [filterType, setFilterType] = useState<string>('all')
   const [isDayEventsModalOpen, setIsDayEventsModalOpen] = useState(false)
   const [selectedDayDate, setSelectedDayDate] = useState<string>('')
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [newIcsUrl, setNewIcsUrl] = useState('')
+  const [newIcsName, setNewIcsName] = useState('')
+  const [showAddIcs, setShowAddIcs] = useState(false)
+  const [errorBanner, setErrorBanner] = useState<string | null>(null)
+  const syncedOnce = React.useRef<Set<string>>(new Set())
+  // Holidays toggle + country code (persisted per user)
+  const [showHolidays, setShowHolidays] = useState<boolean>(() => {
+    try {
+      const uid = user?.id || 'guest'
+      const v = localStorage.getItem(`calendar.showHolidays.${uid}`)
+      return v ? v === 'true' : true
+    } catch { return true }
+  })
+  const [holidayCountry, setHolidayCountry] = useState<string>(() => {
+    try {
+      const uid = user?.id || 'guest'
+      return localStorage.getItem(`calendar.holidayCountry.${uid}`) || 'LK'
+    } catch { return 'LK' }
+  })
+
+  // Extract a clean http(s) URL from user input (handles pasted error blobs)
+  const sanitizeUrlInput = (s: string): string | null => {
+    try {
+      const match = s.match(/https?:\/\/\S+/)
+      const candidate = match ? match[0] : s.trim()
+      const u = new URL(candidate)
+      if (!/^https?:$/i.test(u.protocol)) return null
+      return u.toString()
+    } catch {
+      return null
+    }
+  }
+
+  // Include auth headers (x-user-id / bearer) for backend per-user routes
+  const authHeaders = (): Record<string, string> => {
+    try {
+      let uid = localStorage.getItem('userId')
+      if (!uid) {
+        const raw = localStorage.getItem('user')
+        if (raw) {
+          try { uid = String(JSON.parse(raw)?.id || '') } catch {}
+        }
+      }
+      const token = localStorage.getItem('authToken')
+      return {
+        ...(uid ? { 'x-user-id': uid } : {}),
+        ...(token ? { 'authorization': `Bearer ${token}` } : {}),
+      }
+    } catch { return {} }
+  }
+
+  // Remove URLs from descriptions to avoid duplicating Join links in UI
+  const stripUrls = (s: string): string => {
+    try {
+      const removed = String(s || '').replace(/https?:\/\/\S+/g, '')
+      // Tidy whitespace and excessive blank lines
+      return removed
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim()
+    } catch {
+      return String(s || '')
+    }
+  }
+
+  // Load per-user local events on auth change
+  useEffect(() => {
+    try {
+      const uid = user?.id || 'guest'
+      const saved = localStorage.getItem(`calendar.localEvents.${uid}`)
+      setLocalEvents(saved ? JSON.parse(saved) : mockEvents)
+    } catch {
+      setLocalEvents(mockEvents)
+    }
+  }, [user?.id])
+
+  // Persist local events per user
+  useEffect(() => {
+    try {
+      const uid = user?.id || 'guest'
+      localStorage.setItem(`calendar.localEvents.${uid}`, JSON.stringify(localEvents))
+    } catch {}
+  }, [localEvents, user?.id])
+  // Persisted by backend; no localStorage write
+  // Persist holidays prefs per user
+  useEffect(() => {
+    try { const uid = user?.id || 'guest'; localStorage.setItem(`calendar.showHolidays.${uid}`, String(showHolidays)) } catch {}
+  }, [showHolidays, user?.id])
+  useEffect(() => {
+    try { const uid = user?.id || 'guest'; localStorage.setItem(`calendar.holidayCountry.${uid}`, holidayCountry) } catch {}
+  }, [holidayCountry, user?.id])
+
+  // Detect linked accounts and per-user ICS sources from backend
+  useEffect(() => {
+    const loadAccounts = async () => {
+      try {
+        // Reset sources when user changes to avoid leaking prior user's state
+        setSources([])
+        syncedOnce.current = new Set()
+        const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
+        const res = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/accounts`, { headers: { 'Content-Type': 'application/json', ...authHeaders() }, cache: 'no-store' })
+        if (!res.ok) return
+        const accounts = await res.json()
+        if (!Array.isArray(accounts)) return
+        // Map accounts to placeholder sources if not present
+        setSources(prev => {
+          const next = [...prev]
+          const has = (type: CalendarSourceType) => next.some(s => s.type === type)
+          for (const a of accounts) {
+            const type: CalendarSourceType = String(a.provider).toLowerCase() === 'microsoft' ? 'outlook' : 'google'
+            if (!has(type)) {
+              next.push({
+                id: `${type}-${Date.now()}`,
+                type,
+                name: type === 'google' ? (a.email ? `Google (${a.email})` : 'Google Calendar') : (a.email ? `Outlook (${a.email})` : 'Outlook Calendar'),
+                color: type === 'google' ? '#3b82f6' : '#2563eb',
+                enabled: true,
+                events: [],
+                lastSyncAt: a.updatedAt,
+              })
+            }
+          }
+          return next
+        })
+        // Load per-user ICS URL sources from backend
+        const res2 = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/sources`, { headers: { ...authHeaders() }, cache: 'no-store' })
+        if (res2.ok) {
+          const list = await res2.json()
+          if (Array.isArray(list)) {
+            setSources(prev => {
+              const next = [...prev]
+              for (const s of list) {
+                if (!next.find(n => n.id === s.id)) {
+                  next.push({ id: s.id, type: 'ics-url', name: s.name, color: s.color || '#10b981', enabled: !!s.enabled, url: s.url, events: [], lastSyncAt: s.updatedAt })
+                }
+              }
+              // Ensure holidays source is present when toggle is on
+              if (showHolidays && !next.find(n => n.type === 'holidays')) {
+                next.push({ id: 'holidays', type: 'holidays', name: 'Public Holidays', color: '#ef4444', enabled: true, events: [] })
+              }
+              return next
+            })
+          }
+        }
+        // If there were no sources at all (no accounts/ICS), still inject holidays when enabled
+        setSources(prev => {
+          if (!showHolidays) return prev
+          const exists = prev.some(s => s.type === 'holidays')
+          return exists ? prev : [...prev, { id: 'holidays', type: 'holidays', name: 'Public Holidays', color: '#ef4444', enabled: true, events: [] }]
+        })
+      } catch {}
+    }
+    loadAccounts()
+  }, [user?.id, showHolidays])
+
+  // Helper: fetch events for a single source (without UI spinners)
+  const fetchEventsForSource = async (src: CalendarSource) => {
+    try {
+      const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
+      if (src.type === 'ics-url') {
+        const res = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/sources/${src.id}/events`, { headers: { ...authHeaders() }, cache: 'no-store' })
+        if (!res.ok) return null
+        const events = await res.json()
+        return (events || []).map((ev: any) => ({ ...ev, sourceName: src.name, sourceType: src.type, sourceColor: src.color }))
+      }
+      if (src.type === 'google') {
+        const res = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/google/events`, { headers: { ...authHeaders(), 'Cache-Control': 'no-cache' } })
+        if (!res.ok) return null
+        const list = await res.json()
+        const detectPlatform = (url: string): CalendarEvent['platform'] | undefined => {
+          const u = (url || '').toLowerCase()
+          if (u.includes('zoom.us')) return 'zoom'
+          if (u.includes('meet.google.com')) return 'google-meet'
+          if (u.includes('teams.microsoft')) return 'teams'
+          return undefined
+        }
+        const extractLink = (ev: any): string | undefined => {
+          const hangout = ev.hangoutLink
+          const conf = ev.conferenceData?.entryPoints?.find((e: any) => e.entryPointType === 'video')?.uri
+          const loc = typeof ev.location === 'string' && /https?:\/\//i.test(ev.location) ? ev.location : undefined
+          const descLink = typeof ev.description === 'string' ? (ev.description.match(/https?:\/\/\S+/)?.[0]) : undefined
+          return conf || hangout || loc || descLink
+        }
+        return Array.isArray(list) ? list.map((ev: any) => {
+          const startStr = String(ev.start?.dateTime || ev.start?.date || '')
+          const endStr = String(ev.end?.dateTime || ev.end?.date || '')
+          const date = startStr.slice(0, 10)
+          const startTime = startStr.length > 10 ? startStr.slice(11, 16) : '00:00'
+          const endTime = endStr.length > 10 ? endStr.slice(11, 16) : startTime
+          const link = extractLink(ev)
+          const platform = link ? detectPlatform(link) : undefined
+          const attendees: string[] = Array.isArray(ev.attendees) ? ev.attendees.map((a: any) => a.displayName || a.email || '').filter(Boolean) : []
+          const isAllDay = !!ev.start?.date && !ev.start?.dateTime
+          const type: CalendarEvent['type'] = link ? 'meeting' : (isAllDay ? 'reminder' : 'task')
+          return ({ id: String(ev.id || `g-${Math.random()}`), title: String(ev.summary || ev.title || '(No title)'), description: stripUrls(String(ev.description || '')), type, startTime, endTime, date, priority: 'medium', status: 'scheduled', platform, meetingLink: link, attendees, createdBy: String(ev.organizer?.displayName || ev.organizer?.email || 'Google'), createdAt: new Date().toISOString(), sourceName: src.name, sourceType: src.type, sourceColor: src.color })
+        }) : []
+      }
+      if (src.type === 'outlook') {
+        const res = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/microsoft/events`, { headers: { ...authHeaders(), 'Cache-Control': 'no-cache' } })
+        if (!res.ok) return null
+        const list = await res.json()
+        const detectPlatformMs = (ev: any): CalendarEvent['platform'] | undefined => {
+          const prov = String(ev.onlineMeetingProvider || '').toLowerCase()
+          if (prov.includes('teams')) return 'teams'
+          const link = String(ev.onlineMeeting?.joinUrl || ev.onlineMeetingUrl || '').toLowerCase()
+          if (link.includes('teams.microsoft')) return 'teams'
+          if (link.includes('zoom.us')) return 'zoom'
+          if (link.includes('meet.google.com')) return 'google-meet'
+          return undefined
+        }
+        const extractLinkMs = (ev: any): string | undefined => ev.onlineMeeting?.joinUrl || ev.onlineMeetingUrl || undefined
+        return Array.isArray(list) ? list.map((ev: any) => {
+          const startStr = String(ev.start?.dateTime || '')
+          const endStr = String(ev.end?.dateTime || '')
+          const date = startStr.slice(0, 10)
+          const startTime = startStr.length > 10 ? startStr.slice(11, 16) : '00:00'
+          const endTime = endStr.length > 10 ? endStr.slice(11, 16) : startTime
+          const link = extractLinkMs(ev)
+          const platform = detectPlatformMs(ev)
+          const attendees: string[] = Array.isArray(ev.attendees) ? ev.attendees.map((a: any) => a.emailAddress?.name || a.emailAddress?.address || '').filter(Boolean) : []
+          const type: CalendarEvent['type'] = link ? 'meeting' : 'task'
+          return ({ id: String(ev.id || `o-${Math.random()}`), title: String(ev.subject || ev.title || '(No title)'), description: stripUrls(String(ev.bodyPreview || '')), type, startTime, endTime, date, priority: 'medium', status: 'scheduled', platform, meetingLink: link, attendees, createdBy: String(ev.organizer?.emailAddress?.name || 'Outlook'), createdAt: new Date().toISOString(), sourceName: src.name, sourceType: src.type, sourceColor: src.color })
+        }) : []
+      }
+      if (src.type === 'holidays') {
+        const year = currentDate.getFullYear()
+        const endpoint = holidayCountry.toUpperCase() === 'LK'
+          ? `/api/calendar/public/lk-holidays?year=${year}`
+          : `/api/calendar/holidays?country=${encodeURIComponent(holidayCountry)}&year=${year}`
+        const res = await fetch(`${String(base).replace(/\/+$/, '')}${endpoint}`, { headers: { ...authHeaders(), 'Cache-Control': 'no-cache' } })
+        if (!res.ok) return null
+        const list = await res.json()
+        return Array.isArray(list) ? list.map((h: any) => ({
+          id: String(h.id || `holiday-${Math.random()}`),
+          title: String(h.title || h.name || 'Public Holiday'),
+          description: String(h.description || 'Public holiday'),
+          type: 'reminder' as const,
+          startTime: String(h.startTime || '00:00'),
+          endTime: String(h.endTime || '23:59'),
+          date: String(h.date || '').slice(0,10),
+          priority: 'low' as const,
+          status: 'scheduled' as const,
+          createdBy: 'Public Holidays',
+          createdAt: new Date().toISOString(),
+          sourceName: src.name,
+          sourceType: src.type,
+          sourceColor: src.color,
+        })) : []
+      }
+      return null
+    } catch {
+      return null
+    }
+  }
+
+  // Ensure a Holidays source exists when enabled; remove when disabled
+  useEffect(() => {
+    if (showHolidays) {
+      setSources(prev => prev.some(s => s.type === 'holidays')
+        ? prev
+        : [...prev, { id: 'holidays', type: 'holidays', name: 'Public Holidays', color: '#ef4444', enabled: true, events: [] }])
+    } else {
+      setSources(prev => prev.filter(s => s.type !== 'holidays'))
+    }
+  }, [showHolidays])
+
+  // Re-fetch holidays when toggled on and month/country changes
+  useEffect(() => {
+    if (!showHolidays) return
+    const src = sources.find(s => s.type === 'holidays' && s.enabled)
+    if (!src) return
+    ;(async () => {
+      const evs = await fetchEventsForSource(src)
+      if (evs) {
+        setSources(prev => prev.map(s => s.id === src.id ? { ...s, events: evs, lastSyncAt: new Date().toISOString() } : s))
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showHolidays, holidayCountry, currentDate])
+
+  // Auto-sync new/unsynced sources on load or whenever sources list changes
+  useEffect(() => {
+    if (!sources || sources.length === 0) return
+    const pending = sources.filter(s => s.enabled && (!s.events || s.events.length === 0) && !syncedOnce.current.has(s.id))
+    if (pending.length === 0) return
+    ;(async () => {
+      for (const src of pending) {
+        const evs = await fetchEventsForSource(src)
+        if (evs) {
+          setSources(prev => prev.map(s => s.id === src.id ? { ...s, events: evs, lastSyncAt: new Date().toISOString() } : s))
+        }
+        syncedOnce.current.add(src.id)
+      }
+    })()
+  }, [sources])
+
+  // Periodic auto-refresh (every 10 minutes)
+  useEffect(() => {
+    if (!sources || sources.length === 0) return
+    const interval = setInterval(async () => {
+      const enabled = sources.filter(s => s.enabled)
+      for (const src of enabled) {
+        const evs = await fetchEventsForSource(src)
+        if (evs) {
+          setSources(prev => prev.map(s => s.id === src.id ? { ...s, events: evs, lastSyncAt: new Date().toISOString() } : s))
+        }
+      }
+    }, 10 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [sources])
 
   // Get today's date in YYYY-MM-DD format
-  const today = new Date().toISOString().split('T')[0]
+  const today = formatDateString(new Date())
   
   // Get today's events
   const todayEvents = events.filter(event => event.date === today)
@@ -276,7 +665,7 @@ const CalendarDashboard: React.FC = () => {
 
   // Handle date click
   const handleDateClick = (date: Date) => {
-    const dateString = date.toISOString().split('T')[0]
+    const dateString = formatDateString(date)
     const dayEvents = eventsByDate[dateString] || []
     
     setSelectedDate(dateString)
@@ -309,15 +698,13 @@ const CalendarDashboard: React.FC = () => {
   const handleSaveEvent = (eventData: CalendarEvent) => {
     if (editingEvent) {
       // Update existing event
-      setEvents(prev => prev.map(event => 
-        event.id === eventData.id ? eventData : event
-      ))
+      setLocalEvents(prev => prev.map(event => event.id === eventData.id ? eventData : event))
       setSelectedDayEvents(prev => prev.map(event => 
         event.id === eventData.id ? eventData : event
       ))
     } else {
       // Create new event
-      setEvents(prev => [...prev, eventData])
+      setLocalEvents(prev => [...prev, eventData])
       if (eventData.date === selectedDate) {
         setSelectedDayEvents(prev => [...prev, eventData])
       }
@@ -326,7 +713,7 @@ const CalendarDashboard: React.FC = () => {
 
   // Handle event delete
   const handleDeleteEvent = (eventId: string) => {
-    setEvents(prev => prev.filter(event => event.id !== eventId))
+    setLocalEvents(prev => prev.filter(event => event.id !== eventId))
     setSelectedDayEvents(prev => prev.filter(event => event.id !== eventId))
   }
 
@@ -371,6 +758,304 @@ const CalendarDashboard: React.FC = () => {
     ? selectedDayEvents 
     : selectedDayEvents.filter(event => event.type === filterType)
 
+  // --- Calendar sync helpers ---
+  const parseICalDate = (val: string): { date: string; time: string } => {
+    // Handles formats like 20250120, 20250120T130000Z, 20250120T130000
+    const m = String(val).trim()
+    const datePart = m.slice(0, 8)
+    const year = Number(datePart.slice(0, 4))
+    const month = Number(datePart.slice(4, 6))
+    const day = Number(datePart.slice(6, 8))
+    let hours = 0, minutes = 0
+    if (m.length >= 15 && m[8] === 'T') {
+      hours = Number(m.slice(9, 11))
+      minutes = Number(m.slice(11, 13))
+    }
+    const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    const time = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+    return { date, time }
+  }
+
+  const parseICS = (text: string, sourceName: string): CalendarEvent[] => {
+    // Unfold lines (join lines that start with space)
+    const rawLines = text.split(/\r?\n/)
+    const lines: string[] = []
+    for (let i = 0; i < rawLines.length; i++) {
+      const l = rawLines[i]
+      if (l.startsWith(' ') && lines.length > 0) {
+        lines[lines.length - 1] += l.slice(1)
+      } else {
+        lines.push(l)
+      }
+    }
+    const events: CalendarEvent[] = []
+    let cursor: Record<string, string> | null = null
+    for (const l of lines) {
+      if (l.startsWith('BEGIN:VEVENT')) { cursor = {} }
+      else if (l.startsWith('END:VEVENT')) {
+        if (cursor) {
+          const uid = cursor['UID'] || Math.random().toString(36).slice(2)
+          const summary = cursor['SUMMARY'] || '(No title)'
+          const descRaw = (cursor['DESCRIPTION'] || '').replace(/\\n/g, '\n')
+          const dtstart = cursor['DTSTART'] || cursor['DTSTART;VALUE=DATE'] || ''
+          const dtend = cursor['DTEND'] || cursor['DTEND;VALUE=DATE'] || ''
+          const st = dtstart ? parseICalDate(dtstart) : { date: formatDateString(new Date()), time: '00:00' }
+          const et = dtend ? parseICalDate(dtend) : st
+          const location = cursor['LOCATION'] || ''
+          const urlProp = cursor['URL'] || ''
+          // Collect URLs from URL/DESCRIPTION/LOCATION and prefer meeting providers
+          const all = `${urlProp}\n${descRaw}\n${location}`
+          const urls = (all.match(/https?:\/\/\S+/g) || []) as string[]
+          const pick = (...preds: ((u: string) => boolean)[]) => urls.find(u => preds.some(p => p(u.toLowerCase())))
+          const firstUrl = pick(u => u.includes('teams.microsoft'), u => u.includes('zoom.us'), u => u.includes('meet.google.com')) || urls[0]
+          const detectPlatform = (u?: string): CalendarEvent['platform'] | undefined => {
+            const s = String(u || '').toLowerCase()
+            if (s.includes('aka.ms/jointeams')) return 'teams'
+            if (s.includes('teams.microsoft')) return 'teams'
+            if (s.includes('zoom.us')) return 'zoom'
+            if (s.includes('meet.google.com')) return 'google-meet'
+            return undefined
+          }
+          const hasTime = !!(dtstart && !/VALUE=DATE/i.test(dtstart))
+          const isAllDay = !hasTime
+          const inferredType: CalendarEvent['type'] = firstUrl ? 'meeting' : (isAllDay ? 'reminder' : 'task')
+          events.push({
+            id: `ics-${uid}`,
+            title: summary,
+            description: stripUrls(descRaw),
+            type: inferredType,
+            startTime: st.time || '00:00',
+            endTime: et.time || st.time || '00:00',
+            date: st.date,
+            priority: 'medium',
+            status: 'scheduled',
+            assignee: '',
+            project: sourceName,
+            platform: detectPlatform(firstUrl),
+            meetingLink: firstUrl,
+            attendees: [],
+            isRecurring: undefined,
+            recurrenceType: undefined,
+            createdBy: sourceName,
+            createdAt: new Date().toISOString(),
+          })
+        }
+        cursor = null
+      } else if (cursor) {
+        const idx = l.indexOf(':')
+        if (idx > 0) {
+          const key = l.slice(0, idx).split(';')[0].toUpperCase()
+          const value = l.slice(idx + 1)
+          cursor[key] = value
+        }
+      }
+    }
+    return events
+  }
+
+  const addIcsUrlSource = async () => {
+    if (!newIcsUrl.trim() || !newIcsName.trim()) return
+    setIsSyncing(true)
+    setErrorBanner(null)
+    try {
+      const cleaned = sanitizeUrlInput(newIcsUrl)
+      if (!cleaned) {
+        setErrorBanner('Please paste a valid ICS link (must start with http/https).')
+        setIsSyncing(false)
+        return
+      }
+      const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
+      // Persist source for current user (URL never stored on client; sent once to server)
+      const create = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/sources`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify({ name: newIcsName, url: cleaned, color: '#10b981' }) })
+      if (!create.ok) throw new Error(await create.text())
+      const created = await create.json()
+      // After creation, fetch events from server-side endpoint
+      const evRes = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/sources/${created.id}/events`, { headers: { ...authHeaders() }, cache: 'no-store' })
+      const events = evRes.ok ? await evRes.json() : []
+      const src: CalendarSource = { id: created.id, type: 'ics-url', name: created.name, color: created.color || '#10b981', enabled: !!created.enabled, url: cleaned, events: (events || []).map((e: any) => ({ ...e, sourceName: created.name, sourceType: 'ics-url', sourceColor: created.color || '#10b981' })), lastSyncAt: new Date().toISOString() }
+      setSources(prev => [...prev, src])
+      setNewIcsUrl('')
+      setNewIcsName('')
+      setShowAddIcs(false)
+    } catch (e: any) {
+      setErrorBanner(e?.message || 'Unable to add ICS URL (CORS may block direct fetch). Consider uploading .ics file or enabling a server proxy.')
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
+  const handleIcsUpload = async (file: File) => {
+    setIsSyncing(true)
+    setErrorBanner(null)
+    try {
+      const text = await file.text()
+      const parsed = parseICS(text, file.name)
+      const src: CalendarSource = {
+        id: `ics-upload-${Date.now()}`,
+        type: 'ics-upload',
+        name: file.name.replace(/\.ics$/i, ''),
+        color: '#8b5cf6',
+        enabled: true,
+        events: parsed.map(ev => ({ ...ev, sourceName: file.name.replace(/\.ics$/i, ''), sourceType: 'ics-upload', sourceColor: '#8b5cf6' })),
+        lastSyncAt: new Date().toISOString(),
+      }
+      setSources(prev => [...prev, src])
+    } catch (e: any) {
+      setErrorBanner(e?.message || 'Failed to parse ICS file')
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
+  const syncSource = async (src: CalendarSource) => {
+    setIsSyncing(true)
+    setErrorBanner(null)
+    try {
+      if (src.type === 'ics-url') {
+        const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
+        const res = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/sources/${src.id}/events`, { headers: { ...authHeaders() }, cache: 'no-store' })
+        if (!res.ok) throw new Error(await res.text())
+        const events = await res.json()
+        const parsed = (events || []).map((ev: any) => ({ ...ev, sourceName: src.name, sourceType: src.type, sourceColor: src.color }))
+        setSources(prev => prev.map(s => s.id === src.id ? { ...s, events: parsed, lastSyncAt: new Date().toISOString() } : s))
+      } else if (src.type === 'google') {
+        // Expect backend endpoint: GET /api/calendar/google/events
+        const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
+        const res = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/google/events`, { headers: { 'Cache-Control': 'no-cache', ...authHeaders() } })
+        if (!res.ok) throw new Error('Google calendar sync endpoint not available. See setup notes below.')
+        const list = await res.json()
+        const detectPlatform = (url: string): CalendarEvent['platform'] | undefined => {
+          const u = (url || '').toLowerCase()
+          if (u.includes('zoom.us')) return 'zoom'
+          if (u.includes('meet.google.com')) return 'google-meet'
+          if (u.includes('teams.microsoft')) return 'teams'
+          return undefined
+        }
+        const extractLink = (ev: any): string | undefined => {
+          const hangout = ev.hangoutLink
+          const conf = ev.conferenceData?.entryPoints?.find((e: any) => e.entryPointType === 'video')?.uri
+          const loc = typeof ev.location === 'string' && /https?:\/\//i.test(ev.location) ? ev.location : undefined
+          const descLink = typeof ev.description === 'string' ? (ev.description.match(/https?:\/\/\S+/)?.[0]) : undefined
+          return conf || hangout || loc || descLink
+        }
+        const parsed: CalendarEvent[] = Array.isArray(list) ? list.map((ev: any) => {
+          const startStr = String(ev.start?.dateTime || ev.start?.date || '')
+          const endStr = String(ev.end?.dateTime || ev.end?.date || '')
+          const date = startStr.slice(0, 10)
+          const startTime = startStr.length > 10 ? startStr.slice(11, 16) : '00:00'
+          const endTime = endStr.length > 10 ? endStr.slice(11, 16) : startTime
+          const link = extractLink(ev)
+          const platform = link ? detectPlatform(link) : undefined
+          const attendees: string[] = Array.isArray(ev.attendees) ? ev.attendees.map((a: any) => a.displayName || a.email || '').filter(Boolean) : []
+          // If there's a meeting link, treat as meeting; otherwise keep as task/reminder based on allDay/date
+          const isAllDay = !!ev.start?.date && !ev.start?.dateTime
+          const type: CalendarEvent['type'] = link ? 'meeting' : (isAllDay ? 'reminder' : 'task')
+          return ({
+            id: String(ev.id || `g-${Math.random()}`),
+            title: String(ev.summary || ev.title || '(No title)'),
+            description: stripUrls(String(ev.description || '')),
+            type,
+            startTime,
+            endTime,
+            date,
+            priority: 'medium',
+            status: 'scheduled',
+            platform,
+            meetingLink: link,
+            attendees,
+            createdBy: String(ev.organizer?.displayName || ev.organizer?.email || 'Google'),
+            createdAt: new Date().toISOString(),
+            sourceName: src.name,
+            sourceType: src.type,
+            sourceColor: src.color,
+          })
+        }) : []
+        setSources(prev => prev.map(s => s.id === src.id ? { ...s, events: parsed, lastSyncAt: new Date().toISOString() } : s))
+      } else if (src.type === 'outlook') {
+        // Expect backend endpoint: GET /api/calendar/microsoft/events
+        const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
+        const res = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/microsoft/events`, { headers: { 'Cache-Control': 'no-cache', ...authHeaders() } })
+        if (!res.ok) throw new Error('Outlook calendar sync endpoint not available. See setup notes below.')
+        const list = await res.json()
+        const detectPlatformMs = (ev: any): CalendarEvent['platform'] | undefined => {
+          const prov = String(ev.onlineMeetingProvider || '').toLowerCase()
+          if (prov.includes('teams')) return 'teams'
+          const link = String(ev.onlineMeeting?.joinUrl || ev.onlineMeetingUrl || '').toLowerCase()
+          if (link.includes('teams.microsoft')) return 'teams'
+          if (link.includes('zoom.us')) return 'zoom'
+          if (link.includes('meet.google.com')) return 'google-meet'
+          return undefined
+        }
+        const extractLinkMs = (ev: any): string | undefined => {
+          return ev.onlineMeeting?.joinUrl || ev.onlineMeetingUrl || undefined
+        }
+        const parsed: CalendarEvent[] = Array.isArray(list) ? list.map((ev: any) => {
+          const startStr = String(ev.start?.dateTime || '')
+          const endStr = String(ev.end?.dateTime || '')
+          const date = startStr.slice(0, 10)
+          const startTime = startStr.length > 10 ? startStr.slice(11, 16) : '00:00'
+          const endTime = endStr.length > 10 ? endStr.slice(11, 16) : startTime
+          const link = extractLinkMs(ev)
+          const platform = detectPlatformMs(ev)
+          const attendees: string[] = Array.isArray(ev.attendees) ? ev.attendees.map((a: any) => a.emailAddress?.name || a.emailAddress?.address || '').filter(Boolean) : []
+          const type: CalendarEvent['type'] = link ? 'meeting' : 'task'
+          return ({
+            id: String(ev.id || `o-${Math.random()}`),
+            title: String(ev.subject || ev.title || '(No title)'),
+            description: stripUrls(String(ev.bodyPreview || '')),
+            type,
+            startTime,
+            endTime,
+            date,
+            priority: 'medium',
+            status: 'scheduled',
+            platform,
+            meetingLink: link,
+            attendees,
+            createdBy: String(ev.organizer?.emailAddress?.name || 'Outlook'),
+            createdAt: new Date().toISOString(),
+            sourceName: src.name,
+            sourceType: src.type,
+            sourceColor: src.color,
+          })
+        }) : []
+        setSources(prev => prev.map(s => s.id === src.id ? { ...s, events: parsed, lastSyncAt: new Date().toISOString() } : s))
+      } else if (src.type === 'holidays') {
+        const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
+        const year = currentDate.getFullYear()
+        const endpoint = holidayCountry.toUpperCase() === 'LK'
+          ? `/api/calendar/public/lk-holidays?year=${year}`
+          : `/api/calendar/holidays?country=${encodeURIComponent(holidayCountry)}&year=${year}`
+        const res = await fetch(`${String(base).replace(/\/+$/, '')}${endpoint}`, { headers: { ...authHeaders(), 'Cache-Control': 'no-cache' } })
+        if (!res.ok) throw new Error(await res.text())
+        const list = await res.json()
+        const parsed: CalendarEvent[] = Array.isArray(list) ? list.map((h: any) => ({
+          id: String(h.id || `holiday-${Math.random()}`),
+          title: String(h.title || h.name || 'Public Holiday'),
+          description: String(h.description || 'Public holiday'),
+          type: 'reminder',
+          startTime: String(h.startTime || '00:00'),
+          endTime: String(h.endTime || '23:59'),
+          date: String(h.date || '').slice(0,10),
+          priority: 'low',
+          status: 'scheduled',
+          createdBy: 'Public Holidays',
+          createdAt: new Date().toISOString(),
+          sourceName: src.name,
+          sourceType: src.type,
+          sourceColor: src.color,
+        })) : []
+        setSources(prev => prev.map(s => s.id === src.id ? { ...s, events: parsed, lastSyncAt: new Date().toISOString() } : s))
+      }
+    } catch (e: any) {
+      setErrorBanner(e?.message || 'Sync failed')
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
+  // Provider connection now redirects to backend OAuth endpoints; placeholder removed
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header */}
@@ -414,6 +1099,25 @@ const CalendarDashboard: React.FC = () => {
             </div>
             
             <div className="flex items-center space-x-4">
+              {/* Sync status */}
+              {isSyncing && (
+                <span className="text-sm text-gray-500 dark:text-gray-400">Syncing…</span>
+              )}
+              {/* Holidays toggle */}
+              <div className="flex items-center space-x-2">
+                <label className="text-sm text-gray-600 dark:text-gray-400">Holidays</label>
+                <input
+                  type="checkbox"
+                  checked={showHolidays}
+                  onChange={(e) => setShowHolidays(e.target.checked)}
+                />
+                {showHolidays && (
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Country</span>
+                    <CountrySelect value={holidayCountry} onChange={(code) => setHolidayCountry(code.toUpperCase())} />
+                  </div>
+                )}
+              </div>
               {/* Filter */}
               <select
                 value={filterType}
@@ -442,6 +1146,125 @@ const CalendarDashboard: React.FC = () => {
       </div>
 
       <div className="p-6">
+        {/* Connected Calendars */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 mb-6">
+          <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Connected Calendars</h2>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={async () => {
+                  const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
+                  try {
+                    const res = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/google/session`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() } })
+                    if (!res.ok) throw new Error(await res.text())
+                    const data = await res.json()
+                    window.location.href = data.redirectUrl
+                  } catch (e) { alert('Failed to start Google OAuth. Please ensure you are logged in.')} 
+                }}
+                className="px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600"
+                title="Connect Google Calendar (requires backend OAuth setup)"
+              >Connect Google</button>
+              <button
+                onClick={async () => {
+                  const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
+                  try {
+                    const res = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/microsoft/session`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() } })
+                    if (!res.ok) throw new Error(await res.text())
+                    const data = await res.json()
+                    window.location.href = data.redirectUrl
+                  } catch (e) { alert('Failed to start Microsoft OAuth. Please ensure you are logged in.') }
+                }}
+                className="px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600"
+                title="Connect Outlook Calendar (requires backend OAuth setup)"
+              >Connect Outlook</button>
+              <button
+                onClick={() => setShowAddIcs(v => !v)}
+                className="px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600"
+              >{showAddIcs ? 'Cancel' : 'Add ICS URL'}</button>
+              <label className="px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 cursor-pointer">
+                Upload .ics
+                <input type="file" accept=".ics,text/calendar" className="hidden" onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) handleIcsUpload(f)
+                  e.currentTarget.value = ''
+                }} />
+              </label>
+            </div>
+          </div>
+          {errorBanner && (
+            <div className="px-6 py-3 text-sm text-red-700 bg-red-50 dark:bg-red-900/20 dark:text-red-300 border-b border-red-200 dark:border-red-800">{errorBanner}</div>
+          )}
+          {showAddIcs && (
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center space-x-3">
+              <input
+                value={newIcsName}
+                onChange={(e) => setNewIcsName(e.target.value)}
+                placeholder="Calendar name"
+                className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              />
+              <input
+                value={newIcsUrl}
+                onChange={(e) => setNewIcsUrl(e.target.value)}
+                placeholder="https://... (ICS feed URL)"
+                className="flex-[2] px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              />
+              <button
+                onClick={addIcsUrlSource}
+                disabled={isSyncing || !newIcsUrl.trim() || !newIcsName.trim()}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50"
+              >Add</button>
+            </div>
+          )}
+          <div className="p-6">
+            {sources.length === 0 ? (
+              <p className="text-sm text-gray-600 dark:text-gray-400">No calendars connected. Connect Google/Outlook (requires backend), or add an ICS URL or upload an .ics file.</p>
+            ) : (
+              <div className="space-y-3">
+                {sources.map(src => (
+                  <div key={src.id} className="flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: src.color }} />
+                      <div>
+                        <div className="text-sm font-medium text-gray-900 dark:text-white">{src.name}</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">{src.type} {src.lastSyncAt ? `• synced ${new Date(src.lastSyncAt).toLocaleString()}` : ''}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <label className="text-sm text-gray-600 dark:text-gray-300 flex items-center space-x-1 cursor-pointer">
+                        <input type="checkbox" checked={src.enabled} onChange={async (e) => {
+                          const checked = e.target.checked
+                          setSources(prev => prev.map(s => s.id === src.id ? { ...s, enabled: checked } : s))
+                          // Persist only for ICS URL sources
+                          if (src.type === 'ics-url') {
+                            try {
+                              const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
+                            await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/sources/${src.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify({ enabled: checked }) })
+                            } catch {}
+                          }
+                        }} />
+                        <span>Show</span>
+                      </label>
+                      <button onClick={() => syncSource(src)} className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600">Sync</button>
+                      <button onClick={async () => {
+                        if (src.type === 'ics-url') {
+                          try {
+                            const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
+                            await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/sources/${src.id}`, { method: 'DELETE', headers: { ...authHeaders() } })
+                          } catch {}
+                        }
+                        setSources(prev => prev.filter(s => s.id !== src.id))
+                      }} className="px-3 py-1.5 text-sm bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded hover:bg-red-100 dark:hover:bg-red-900/40">Remove</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
+            To enable Google/Outlook login and live sync, set up backend OAuth routes:
+            GET /api/calendar/google/events, GET /api/calendar/microsoft/events and corresponding connect/login flows. I can add these server routes if you want.
+          </div>
+        </div>
         {/* Calendar - Full Width */}
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 mb-6">
           {/* Calendar Header */}
@@ -497,7 +1320,7 @@ const CalendarDashboard: React.FC = () => {
                   )
                 }
 
-                const dayString = day.toISOString().split('T')[0]
+                const dayString = formatDateString(day)
                 const dayEvents = eventsByDate[dayString] || []
                 const isToday = dayString === today
                 const isSelected = dayString === selectedDate
@@ -831,24 +1654,31 @@ const CalendarDashboard: React.FC = () => {
                         <p className="text-sm text-gray-500 dark:text-gray-400">
                           {event.startTime} - {event.endTime}
                         </p>
+                        {/* Source indicator */}
+                        <div className="mt-1 flex items-center text-xs text-gray-500 dark:text-gray-400">
+                          <span className="inline-block w-2 h-2 rounded-full mr-2" style={{ backgroundColor: event.sourceColor || '#9ca3af' }} />
+                          <span>From {event.sourceName || 'My Calendar'}</span>
+                        </div>
                         
                         {/* Meeting Platform and Join Button */}
-                        {event.type === 'meeting' && event.platform && (
+                        {event.type === 'meeting' && (
                           <div className="mt-3">
-                            <div className="flex items-center space-x-2 mb-2">
-                              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                              </svg>
-                              <span className="text-sm text-gray-600 dark:text-gray-400">
-                                {event.platform === 'teams' ? 'Teams' :
-                                 event.platform === 'zoom' ? 'Zoom' :
-                                 event.platform === 'google-meet' ? 'Google Meet' :
-                                 'Physical'}
-                              </span>
-                            </div>
-                            
-                            {/* Join Button for Online Meetings */}
-                            {(event.platform === 'teams' || event.platform === 'zoom' || event.platform === 'google-meet') && event.meetingLink && (
+                            {event.platform && (
+                              <div className="flex items-center space-x-2 mb-2">
+                                <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                </svg>
+                                <span className="text-sm text-gray-600 dark:text-gray-400">
+                                  {event.platform === 'teams' ? 'Teams' :
+                                   event.platform === 'zoom' ? 'Zoom' :
+                                   event.platform === 'google-meet' ? 'Google Meet' :
+                                   'Physical'}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Join Button for Online Meetings (platform-specific or generic) */}
+                            {event.meetingLink && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation()
@@ -859,7 +1689,12 @@ const CalendarDashboard: React.FC = () => {
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                                 </svg>
-                                <span>Join via {event.platform === 'teams' ? 'Teams' : event.platform === 'zoom' ? 'Zoom' : 'Google Meet'}</span>
+                                <span>
+                                  {event.platform === 'teams' ? 'Join via Teams' :
+                                   event.platform === 'zoom' ? 'Join via Zoom' :
+                                   event.platform === 'google-meet' ? 'Join via Google Meet' :
+                                   'Open Meeting'}
+                                </span>
                               </button>
                             )}
                           </div>

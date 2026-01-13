@@ -26,6 +26,8 @@ export interface PaymentReceipt {
   id: string
   paymentRequestId?: string
   invoiceId?: string
+  matchedInvoiceNo?: string
+  receiptCode?: string
   projectId: string
   phaseId: string
   projectName: string
@@ -161,6 +163,8 @@ export interface ReceiptFilters {
   projectId?: string
   phaseId?: string
   flags?: string[]
+  source?: string[]
+  confidenceThreshold?: number
 }
 
 export interface BankCreditFilters {
@@ -181,6 +185,7 @@ export interface ExceptionFilters {
   type?: string[]
   projectId?: string
   phaseId?: string
+  archivedOnly?: boolean
   dateRange?: {
     start: string
     end: string

@@ -1,6 +1,8 @@
-import React, { useState } from 'react'
-import { Invoice, InvoiceFilters } from '../types/slips-invoices'
+import React, { useState, useEffect } from 'react'
+import { Invoice, InvoiceFilters, PaymentReceipt } from '../types/slips-invoices'
 import { slipsInvoicesAPI } from '../services/slipsInvoicesMockAPI'
+import { getProjectsWithPhases } from '../services/projectsAPI'
+import { apiGet } from '../services/api'
 
 interface InvoicesTableProps {
   invoices: Invoice[]
@@ -20,10 +22,40 @@ const InvoicesTable: React.FC<InvoicesTableProps> = ({
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null)
+  const [isSendModalOpen, setIsSendModalOpen] = useState(false)
+  const [sendingInvoice, setSendingInvoice] = useState<Invoice | null>(null)
   const [isCommentModalOpen, setIsCommentModalOpen] = useState(false)
   const [selectedComment, setSelectedComment] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [receiptMap, setReceiptMap] = useState<Record<string, { submitted: number; verified: number }>>({})
+
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      try {
+        const r = await slipsInvoicesAPI.getReceipts({})
+        if (!r.success) return
+        const recs = r.data.data as PaymentReceipt[]
+        const map: Record<string, { submitted: number; verified: number }> = {}
+        for (const rec of recs) {
+          const invId = rec.matchedInvoiceId || (rec as any).invoiceId
+          if (!invId) continue
+          if (!map[invId]) map[invId] = { submitted: 0, verified: 0 }
+          if (rec.status === 'Verified') map[invId].verified++
+          else map[invId].submitted++
+        }
+        if (active) setReceiptMap(map)
+      } catch {}
+    })()
+    return () => { active = false }
+  }, [invoices])
+
+  const displayStatusFor = (inv: Invoice) => {
+    const rec = receiptMap[inv.id]
+    if (rec && rec.submitted > 0 && !['Paid', 'PartiallyPaid'].includes(inv.status)) return 'Received'
+    return inv.status
+  }
 
   const handleViewInvoice = (invoice: Invoice) => {
     setSelectedInvoice(invoice)
@@ -59,34 +91,9 @@ const InvoicesTable: React.FC<InvoicesTableProps> = ({
     }
   }
 
-  const handleSendInvoice = async (invoice: Invoice) => {
-    try {
-      setLoading(true)
-      
-      // If it's a draft, update status to Sent first
-      if (invoice.status === 'Draft') {
-        const updatedInvoice = { ...invoice, status: 'Sent' as const, updatedAt: new Date().toISOString() }
-        const updateResponse = await slipsInvoicesAPI.updateInvoice(invoice.id, updatedInvoice)
-        
-        if (!updateResponse.success) {
-          setError(updateResponse.message || 'Failed to update invoice status')
-          return
-        }
-      }
-      
-      const response = await slipsInvoicesAPI.sendInvoice(invoice.id)
-      
-      if (response.success) {
-        onRefresh()
-        setError(null)
-      } else {
-        setError(response.message || 'Failed to send invoice')
-      }
-    } catch (err) {
-      setError('Error sending invoice')
-    } finally {
-      setLoading(false)
-    }
+  const handleSendInvoice = (invoice: Invoice) => {
+    setSendingInvoice(invoice)
+    setIsSendModalOpen(true)
   }
 
   const handleEditInvoice = (invoice: Invoice) => {
@@ -150,6 +157,8 @@ const InvoicesTable: React.FC<InvoicesTableProps> = ({
         return `${baseClasses} bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`
       case 'PartiallyPaid':
         return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`
+      case 'Received':
+        return `${baseClasses} bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200`
       case 'Overdue':
         return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`
       case 'Sent':
@@ -184,6 +193,7 @@ const InvoicesTable: React.FC<InvoicesTableProps> = ({
 
   if (invoices.length === 0) {
     return (
+      <>
       <div className="text-center py-12">
         <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -192,15 +202,30 @@ const InvoicesTable: React.FC<InvoicesTableProps> = ({
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
           {filters.overdueOnly ? 'No overdue invoices this week.' : 'No invoices issued this week.'}
         </p>
-        {filters.overdueOnly && (
+        <div className="mt-6 flex items-center justify-center gap-3">
           <button
-            onClick={() => onFiltersChange({ ...filters, overdueOnly: false })}
-            className="mt-3 text-sm text-primary-600 hover:text-primary-500"
+            onClick={() => setIsCreateModalOpen(true)}
+            className="btn-primary"
           >
-            View all invoices
+            Create Invoice
           </button>
-        )}
+          {filters.overdueOnly && (
+            <button
+              onClick={() => onFiltersChange({ ...filters, overdueOnly: false })}
+              className="text-sm text-primary-600 hover:text-primary-500"
+            >
+              View all invoices
+            </button>
+          )}
+        </div>
       </div>
+      {isCreateModalOpen && (
+        <CreateInvoiceModal
+          onClose={() => setIsCreateModalOpen(false)}
+          onRefresh={onRefresh}
+        />
+      )}
+      </>
     )
   }
 
@@ -405,8 +430,8 @@ const InvoicesTable: React.FC<InvoicesTableProps> = ({
                       <option value="Overdue">Overdue</option>
                     </select>
                   ) : (
-                    <span className={getStatusBadge(invoice.status)}>
-                      {invoice.status}
+                    <span className={getStatusBadge(displayStatusFor(invoice))}>
+                      {displayStatusFor(invoice)}
                     </span>
                   )}
                 </td>
@@ -514,6 +539,15 @@ const InvoicesTable: React.FC<InvoicesTableProps> = ({
         />
       )}
 
+      {/* Send Invoice Modal */}
+      {isSendModalOpen && sendingInvoice && (
+        <SendInvoiceModal
+          invoice={sendingInvoice}
+          onClose={() => { setIsSendModalOpen(false); setSendingInvoice(null) }}
+          onSent={() => { setIsSendModalOpen(false); setSendingInvoice(null); onRefresh() }}
+        />
+      )}
+
       {/* Edit Invoice Modal */}
       {isEditModalOpen && editingInvoice && (
         <EditInvoiceModal
@@ -577,20 +611,7 @@ const InvoiceDrawer: React.FC<{
     }
   }
 
-  const handleSendInvoice = async () => {
-    try {
-      const response = await slipsInvoicesAPI.sendInvoice(invoice.id)
-      
-      if (response.success) {
-        onRefresh()
-        setError(null)
-      } else {
-        setError('Failed to send invoice')
-      }
-    } catch (err) {
-      setError('Error sending invoice')
-    }
-  }
+  const [showSend, setShowSend] = useState(false)
 
   const formatCurrency = (amount: number, currency: string = 'USD') => {
     return new Intl.NumberFormat('en-US', {
@@ -800,7 +821,7 @@ const InvoiceDrawer: React.FC<{
             )}
             
             <button
-              onClick={handleSendInvoice}
+              onClick={() => setShowSend(true)}
               disabled={loading}
               className="btn-primary"
             >
@@ -808,6 +829,14 @@ const InvoiceDrawer: React.FC<{
             </button>
           </div>
         </div>
+
+        {showSend && (
+          <SendInvoiceModal
+            invoice={invoice}
+            onClose={() => setShowSend(false)}
+            onSent={() => { setShowSend(false); onRefresh() }}
+          />
+        )}
       </div>
     </div>
   )
@@ -833,36 +862,22 @@ const CreateInvoiceModal: React.FC<{
     notes: ''
   })
 
-  // Mock projects and phases data
-  const projects = [
-    {
-      id: 'proj-1',
-      name: 'Mobile App Redesign',
-      phases: [
-        { id: 'phase-1', name: 'Design Phase', completed: true, allocatedHours: 40 },
-        { id: 'phase-2', name: 'Development Phase', completed: false, allocatedHours: 80 },
-        { id: 'phase-3', name: 'Testing Phase', completed: false, allocatedHours: 20 }
-      ]
-    },
-    {
-      id: 'proj-2',
-      name: 'Backend API Development',
-      phases: [
-        { id: 'phase-4', name: 'API Design', completed: true, allocatedHours: 30 },
-        { id: 'phase-5', name: 'Implementation', completed: true, allocatedHours: 60 },
-        { id: 'phase-6', name: 'Documentation', completed: false, allocatedHours: 15 }
-      ]
-    },
-    {
-      id: 'proj-3',
-      name: 'Design System',
-      phases: [
-        { id: 'phase-7', name: 'Research', completed: true, allocatedHours: 25 },
-        { id: 'phase-8', name: 'Design', completed: false, allocatedHours: 45 },
-        { id: 'phase-9', name: 'Implementation', completed: false, allocatedHours: 35 }
-      ]
-    }
-  ]
+  const [projects, setProjects] = React.useState<Array<{ id: string; name: string; phases: Array<{ id: string; name: string; completed?: boolean; allocatedHours?: number }> }>>([])
+  React.useEffect(() => {
+    ;(async () => {
+      try {
+        const list = await getProjectsWithPhases()
+        const mapped = list.map(p => ({
+          id: p.id,
+          name: p.name,
+          phases: p.phases.map(ph => ({ id: ph.id, name: ph.name, completed: false, allocatedHours: 0 })),
+        }))
+        setProjects(mapped)
+      } catch (e) {
+        setProjects([])
+      }
+    })()
+  }, [])
 
   const selectedProject = projects.find(p => p.id === formData.projectId)
   const selectedPhase = selectedProject?.phases.find(p => p.id === formData.phaseId)
@@ -1180,36 +1195,22 @@ const EditInvoiceModal: React.FC<{
     notes: invoice.notes || ''
   })
 
-  // Mock projects and phases data (same as CreateInvoiceModal)
-  const projects = [
-    {
-      id: 'proj-1',
-      name: 'Mobile App Redesign',
-      phases: [
-        { id: 'phase-1', name: 'Design Phase', completed: true, allocatedHours: 40 },
-        { id: 'phase-2', name: 'Development Phase', completed: false, allocatedHours: 80 },
-        { id: 'phase-3', name: 'Testing Phase', completed: false, allocatedHours: 20 }
-      ]
-    },
-    {
-      id: 'proj-2',
-      name: 'Backend API Development',
-      phases: [
-        { id: 'phase-4', name: 'API Design', completed: true, allocatedHours: 30 },
-        { id: 'phase-5', name: 'Implementation', completed: true, allocatedHours: 60 },
-        { id: 'phase-6', name: 'Documentation', completed: false, allocatedHours: 15 }
-      ]
-    },
-    {
-      id: 'proj-3',
-      name: 'Design System',
-      phases: [
-        { id: 'phase-7', name: 'Research', completed: true, allocatedHours: 25 },
-        { id: 'phase-8', name: 'Design', completed: false, allocatedHours: 45 },
-        { id: 'phase-9', name: 'Implementation', completed: false, allocatedHours: 35 }
-      ]
-    }
-  ]
+  const [projects, setProjects] = useState<Array<{ id: string; name: string; phases: Array<{ id: string; name: string; completed?: boolean; allocatedHours?: number }> }>>([])
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const list = await getProjectsWithPhases()
+        const mapped = list.map(p => ({
+          id: p.id,
+          name: p.name,
+          phases: p.phases.map(ph => ({ id: ph.id, name: ph.name, completed: false, allocatedHours: 0 })),
+        }))
+        setProjects(mapped)
+      } catch (e) {
+        setProjects([])
+      }
+    })()
+  }, [])
 
   const selectedProject = projects.find(p => p.id === formData.projectId)
   const selectedPhase = selectedProject?.phases.find(p => p.id === formData.phaseId)
@@ -1551,3 +1552,81 @@ const CommentModal: React.FC<{
 }
 
 export default InvoicesTable
+
+// Send Invoice Modal Component
+const SendInvoiceModal: React.FC<{
+  invoice: Invoice
+  onClose: () => void
+  onSent: () => void
+}> = ({ invoice, onClose, onSent }) => {
+  const [email, setEmail] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const p = await apiGet(`/projects/${invoice.projectId}`)
+        const guess = p?.owner?.email || (Array.isArray(p?.memberships) ? (p.memberships.find((m: any) => m?.user?.email)?.user?.email) : '')
+        setEmail(String(guess || ''))
+      } catch {
+        setEmail('')
+      }
+    })()
+  }, [invoice.projectId])
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError('Please enter a valid email')
+      return
+    }
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await slipsInvoicesAPI.sendInvoice(invoice.id, email)
+      if (!res.success) throw new Error(res.message || 'Failed to send invoice')
+      onSent()
+    } catch (err: any) {
+      setError(err?.message || 'Failed to send invoice')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md overflow-hidden">
+        <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Send Invoice</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+            ✕
+          </button>
+        </div>
+        <form onSubmit={handleSend} className="p-5 space-y-4">
+          {error && (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-3 text-sm text-red-700 dark:text-red-300">
+              {error}
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Recipient Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="client@example.com"
+              className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              required
+            />
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">We’ll send from your connected Gmail account.</p>
+          </div>
+          <div className="flex items-center justify-end space-x-3 pt-2">
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={loading} className="btn-primary">{loading ? 'Sending…' : 'Send'}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}

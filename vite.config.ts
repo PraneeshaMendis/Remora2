@@ -9,4 +9,11 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  optimizeDeps: {
+    include: [
+      'motion/react',
+      'motion/react-client',
+      '@floating-ui/react'
+    ],
+  },
 })

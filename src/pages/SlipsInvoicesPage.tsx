@@ -12,6 +12,7 @@ import {
 } from '../types/slips-invoices'
 import { slipsInvoicesAPI } from '../services/slipsInvoicesMockAPI'
 import InvoicesTable from '../components/InvoicesTable'
+import { gmailStatus, startGmailSession } from '../services/gmailAPI'
 import ReceiptsTable from '../components/ReceiptsTable'
 import BankCreditsTable from '../components/BankCreditsTable'
 import ExceptionsTable from '../components/ExceptionsTable'
@@ -36,10 +37,22 @@ const SlipsInvoicesPage: React.FC = () => {
 
   // Week state
   const [currentWeek, setCurrentWeek] = useState('2024-W04')
+  const [gmailConnected, setGmailConnected] = useState<boolean>(false)
+  const [gmailEmail, setGmailEmail] = useState<string | null>(null)
 
   // Load initial data
   useEffect(() => {
     loadData()
+    // Check Gmail connection
+    ;(async () => {
+      try {
+        const st = await gmailStatus()
+        const scope = String(st?.scope || '')
+        const hasGmail = /gmail\.(readonly|send)/.test(scope)
+        setGmailConnected(!!st?.connected && hasGmail)
+        setGmailEmail(st?.email || null)
+      } catch {}
+    })()
   }, [currentWeek])
 
   const loadData = async () => {
@@ -181,22 +194,38 @@ const SlipsInvoicesPage: React.FC = () => {
         </div>
         
         {/* Week Selector */}
-        <div className="flex items-center space-x-4">
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            Week:
-          </label>
-          <select
-            value={currentWeek}
-            onChange={(e) => handleWeekChange(e.target.value)}
-            className="text-sm border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-          >
-            <option value="2024-W01">2024-W01</option>
-            <option value="2024-W02">2024-W02</option>
-            <option value="2024-W03">2024-W03</option>
-            <option value="2024-W04">2024-W04</option>
-            <option value="2024-W05">2024-W05</option>
-          </select>
-        </div>
+      <div className="flex items-center space-x-4">
+        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          Week:
+        </label>
+        <select
+          value={currentWeek}
+          onChange={(e) => handleWeekChange(e.target.value)}
+          className="text-sm border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+        >
+          <option value="2024-W01">2024-W01</option>
+          <option value="2024-W02">2024-W02</option>
+          <option value="2024-W03">2024-W03</option>
+          <option value="2024-W04">2024-W04</option>
+          <option value="2024-W05">2024-W05</option>
+        </select>
+
+        {/* Gmail connect/status (compact, does not change layout) */}
+        <button
+          onClick={async () => {
+            try {
+              const url = await startGmailSession()
+              window.location.href = url
+            } catch (e) {
+              alert('Failed to start Google session')
+            }
+          }}
+          className={`text-sm px-3 py-2 rounded-md border ${gmailConnected ? 'border-green-300 text-green-700 bg-green-50 dark:bg-green-900/20' : 'border-gray-300 text-gray-700 bg-gray-50 dark:bg-gray-800'}`}
+          title={gmailConnected ? `Connected: ${gmailEmail || 'Gmail'}` : 'Connect Gmail to send and ingest emails'}
+        >
+          {gmailConnected ? (gmailEmail || 'Gmail Connected') : 'Connect Gmail'}
+        </button>
+      </div>
       </div>
 
       {/* KPI Strip */}
@@ -324,27 +353,75 @@ const SlipsInvoicesPage: React.FC = () => {
           )}
           
           {activeTab === 'receipts' && (
-            <ReceiptsTable 
-              receipts={receipts}
-              filters={receiptFilters}
-              onFiltersChange={(filters) => {
-                setReceiptFilters(filters)
-                loadTabData('receipts', filters)
-              }}
-              onRefresh={() => loadTabData('receipts')}
-            />
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  Pull client reply emails with attachments (payment slips) from Gmail.
+                </div>
+                <button
+                  onClick={async () => {
+                    try {
+                      const r = await slipsInvoicesAPI.ingestReceiptsFromGmail?.()
+                      if (r?.success) {
+                        loadTabData('receipts')
+                      } else {
+                        alert(r?.message || 'Failed to sync from Gmail')
+                      }
+                    } catch {
+                      alert('Failed to sync from Gmail')
+                    }
+                  }}
+                  className="text-sm px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50"
+                >
+                  Sync Client Slips
+                </button>
+              </div>
+              <ReceiptsTable 
+                receipts={receipts}
+                filters={receiptFilters}
+                onFiltersChange={(filters) => {
+                  setReceiptFilters(filters)
+                  loadTabData('receipts', filters)
+                }}
+                onRefresh={() => loadTabData('receipts')}
+              />
+            </div>
           )}
           
           {activeTab === 'bank-credits' && (
-            <BankCreditsTable 
-              bankCredits={bankCredits}
-              filters={bankCreditFilters}
-              onFiltersChange={(filters) => {
-                setBankCreditFilters(filters)
-                loadTabData('bank-credits', filters)
-              }}
-              onRefresh={() => loadTabData('bank-credits')}
-            />
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  Pull recent bank emails from Gmail and predict matches.
+                </div>
+                <button
+                  onClick={async () => {
+                    try {
+                      const r = await slipsInvoicesAPI.ingestBankEmailsFromGmail?.()
+                      if (r?.success) {
+                        loadTabData('bank-credits')
+                      } else {
+                        alert(r?.message || 'Failed to sync from Gmail')
+                      }
+                    } catch {
+                      alert('Failed to sync from Gmail')
+                    }
+                  }}
+                  className="text-sm px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50"
+                >
+                  Sync Bank Emails
+                </button>
+              </div>
+              <BankCreditsTable 
+                bankCredits={bankCredits}
+                filters={bankCreditFilters}
+                onFiltersChange={(filters) => {
+                  setBankCreditFilters(filters)
+                  loadTabData('bank-credits', filters)
+                }}
+                onRefresh={() => loadTabData('bank-credits')}
+              />
+            </div>
           )}
           
           {activeTab === 'exceptions' && (

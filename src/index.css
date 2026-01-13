@@ -3,28 +3,164 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --background: 220 20% 97%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 238 75% 58%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 214 32% 91%;
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 32% 88%;
+    --input: 214 32% 91%;
+    --ring: 238 75% 58%;
+
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+
+    --card: 224 32% 14%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 224 32% 14%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 238 75% 58%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 217 33% 18%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217 33% 18%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 217 33% 18%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217 33% 22%;
+    --input: 217 33% 18%;
+    --ring: 238 75% 58%;
+  }
+
+  /* Tighter borders for Permissions page in dark mode to avoid light seams */
+  .dark .permissions-page {
+    /* Slightly darken border color to blend with cards */
+    --border: 220 13% 15%;
+  }
+  .dark .permissions-page .border,
+  .dark .permissions-page .border-b,
+  .dark .permissions-page .border-t,
+  .dark .permissions-page .border-l,
+  .dark .permissions-page .border-r {
+    border-color: hsl(var(--border)) !important;
+  }
   html {
     font-family: 'Inter', system-ui, sans-serif;
   }
   
   body {
-    @apply bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100;
+    @apply bg-background text-foreground;
+  }
+
+  /* Registration page helpers */
+  .bg-gradient-subtle {
+    background: radial-gradient(1200px 400px at 50% -100px, hsl(0 0% 100% / 0.9), transparent),
+                linear-gradient(to bottom, hsl(220 20% 98%), hsl(220 20% 96%));
+  }
+  .dark .bg-gradient-subtle {
+    background: radial-gradient(1200px 400px at 50% -100px, hsl(222 47% 13% / 0.8), transparent),
+                linear-gradient(to bottom, hsl(222 47% 11%), hsl(222 47% 10%));
+  }
+  .shadow-soft {
+    box-shadow: 0 10px 30px hsl(220 10% 20% / 0.08), 0 2px 8px hsl(220 10% 20% / 0.05);
+  }
+  .bg-gradient-primary {
+    background: linear-gradient(135deg, #7C3AED, #2563EB);
+  }
+  .animate-confetti {
+    animation: confetti-fall 1s ease-out forwards;
   }
 }
 
 @layer components {
+  /* Modern button system */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 disabled:opacity-50 disabled:cursor-not-allowed select-none;
+  }
+
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs;
+  }
+
+  .btn-compact {
+    @apply px-2 py-1 text-xs rounded-md gap-1 shadow-none;
+  }
+
+  .icon-sm {
+    @apply h-3 w-3;
+  }
+
+  .icon-xs {
+    @apply h-2.5 w-2.5;
+  }
+
   .btn-primary {
-    @apply bg-primary-600 hover:bg-primary-700 text-white font-medium py-2 px-4 rounded-xl transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply btn bg-gradient-to-r from-primary-600 to-blue-600 text-white hover:from-primary-700 hover:to-blue-700 focus-visible:ring-primary-500;
+    box-shadow: 0 6px 20px hsl(220 90% 56% / 0.25), 0 2px 6px hsl(220 90% 56% / 0.2);
   }
   
+  .btn-icon {
+    @apply inline-flex h-10 w-10 items-center justify-center rounded-full bg-primary-600 text-white hover:bg-primary-700 focus-visible:ring-2 focus-visible:ring-primary-500 transition-colors duration-200 shadow-sm;
+  }
+
   .btn-secondary {
-    @apply bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 font-medium py-2 px-4 rounded-xl transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply btn bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100;
+  }
+
+  .btn-outline {
+    @apply btn border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700;
+  }
+
+  .btn-danger {
+    @apply btn bg-gradient-to-r from-red-600 to-rose-600 text-white hover:from-red-700 hover:to-rose-700 focus-visible:ring-red-500;
+    box-shadow: 0 6px 20px hsl(0 84% 60% / 0.25), 0 2px 6px hsl(0 84% 60% / 0.2);
   }
   
   .input-field {
     @apply w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-800 dark:text-gray-100 transition-colors duration-200;
   }
   
+  .input-lg {
+    @apply h-12 px-4 text-sm rounded-full;
+  }
+
+  .select-lg {
+    @apply h-12 px-4 text-sm rounded-full;
+  }
+
   .card {
     @apply bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6;
   }
@@ -47,6 +183,35 @@
   
   .badge-info {
     @apply bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200;
+  }
+
+  /* Modal utilities */
+  .modal-overlay {
+    @apply absolute inset-0 bg-gray-900/60; /* removed blur for performance */
+  }
+
+  .modal-panel {
+    @apply relative z-10 w-full rounded-3xl bg-white dark:bg-gray-900 shadow-2xl ring-1 ring-black/5 dark:ring-white/10 transform-gpu transition-transform duration-150 overflow-hidden;
+  }
+
+  .modal-header {
+    @apply flex items-center justify-between border-b border-gray-200 dark:border-gray-800 px-6 py-4 sticky top-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur;
+  }
+
+  .modal-title {
+    @apply text-[18px] font-semibold text-gray-900 dark:text-white;
+  }
+
+  .modal-body {
+    @apply px-6 py-5 space-y-5 max-h-[70vh] overflow-y-auto;
+  }
+
+  .modal-footer {
+    @apply flex items-center justify-end gap-3 border-t border-gray-200 dark:border-gray-800 px-6 py-4 sticky bottom-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur;
+  }
+
+  .field-label {
+    @apply text-[13px] font-medium text-gray-700 dark:text-gray-300;
   }
 }
 
@@ -78,4 +243,9 @@
 
 .animate-slide-up {
   animation: slide-up 0.6s ease-out forwards;
+}
+
+@keyframes confetti-fall {
+  0% { transform: translateY(-10px) rotate(-10deg); opacity: 0; }
+  100% { transform: translateY(0) rotate(0); opacity: 1; }
 }

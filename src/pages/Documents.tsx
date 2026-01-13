@@ -1,5 +1,11 @@
-import React, { useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Document } from '../types/index.ts'
+import { uploadDocuments, listInbox, listSent, reviewDocument } from '../services/documentsAPI'
+import { getProjectsWithPhases } from '../services/projectsAPI'
+import { apiGet, API_BASE } from '../services/api'
+import { useAuth } from '../contexts/AuthContext'
+import { listUsers } from '../services/usersAPI'
+
 
 interface TimelineStep {
   id: string
@@ -59,129 +65,139 @@ const Documents: React.FC = () => {
     description: '',
     files: null as FileList | null
   })
+  // Annotator removed
 
-  // Mock data
-  const projects = [
-    { id: '1', name: 'Mobile App Redesign' },
-    { id: '2', name: 'Backend API Development' },
-    { id: '3', name: 'Design System' }
-  ]
+  const [projects, setProjects] = useState<Array<{ id: string; name: string; phases: Array<{ id: string; name: string }> }>>([])
+  const availablePhases = useMemo(() => {
+    const p = projects.find(p => p.id === uploadData.project)
+    return p?.phases || []
+  }, [projects, uploadData.project])
+  const [reviewers, setReviewers] = useState<Array<{ id: string; name: string }>>([])
+  const [inboxDocs, setInboxDocs] = useState<Document[]>([])
+  const [sentDocs, setSentDocs] = useState<Document[]>([])
+  const [activeView, setActiveView] = useState<'inbox' | 'sent'>('inbox')
+  const [projectDetail, setProjectDetail] = useState<any | null>(null)
+  const availableTasks = useMemo(() => {
+    if (!projectDetail || !uploadData.phase) return [] as Array<{ id: string; title: string }>
+    const ph = (projectDetail.phases || []).find((p: any) => p.id === uploadData.phase)
+    const tasks = Array.isArray(ph?.tasks) ? ph.tasks : []
+    return tasks.map((t: any) => ({ id: String(t.id), title: String(t.title || 'Untitled Task') }))
+  }, [projectDetail, uploadData.phase])
 
-  const phases = [
-    { id: '1', name: 'Planning' },
-    { id: '2', name: 'Development' },
-    { id: '3', name: 'Testing' },
-    { id: '4', name: 'Deployment' },
-    { id: '5', name: 'Maintenance' }
-  ]
+  const { user } = useAuth()
 
-  const reviewers = [
-    { id: '1', name: 'John Doe' },
-    { id: '2', name: 'Jane Smith' },
-    { id: '3', name: 'Mike Johnson' },
-    { id: '4', name: 'Sarah Wilson' },
-    { id: '5', name: 'David Brown' }
-  ]
+  useEffect(() => {
+    ;(async () => {
+      const results = await Promise.allSettled([
+        getProjectsWithPhases(),
+        listUsers({ page: 1, limit: 100 }),
+        listInbox(),
+        listSent(),
+      ])
 
-  const documents: Document[] = [
-    {
-      id: '1',
-      name: 'Requirements Specification',
-      projectId: '1',
-      phaseId: 'phase-1',
-      taskId: 'task-1',
-      uploadedBy: 'John Doe',
-      sentTo: ['Mohan'],
-      dateSubmitted: '2025-01-15T16:00:00Z',
-      status: 'approved',
-      fileName: 'requirements_v2.3.pdf',
-      fileSize: 2048576,
-      fileType: 'pdf',
-      version: 1,
-      uploadedAt: '2025-01-15T16:00:00Z'
-    },
-    {
-      id: '2',
-      name: 'UI/UX Design Mockups',
-      projectId: '2',
-      phaseId: 'phase-2',
-      taskId: 'task-2',
-      uploadedBy: 'Emma Williams',
-      sentTo: ['Gayan'],
-      dateSubmitted: '2025-01-14T19:50:00Z',
-      status: 'rejected',
-      fileName: 'ui_mockups.sketch',
-      fileSize: 5242880,
-      fileType: 'sketch',
-      version: 1,
-      uploadedAt: '2025-01-14T19:50:00Z'
-    },
-    {
-      id: '3',
-      name: 'Test Plan Document',
-      projectId: '1',
-      phaseId: 'phase-3',
-      taskId: 'task-3',
-      uploadedBy: 'Gayan',
-      sentTo: ['Nadeesha'],
-      dateSubmitted: '2025-01-12T16:30:00Z',
-      status: 'needs-changes',
-      fileName: 'test_plan.docx',
-      fileSize: 1536000,
-      fileType: 'docx',
-      version: 1,
-      uploadedAt: '2025-01-12T16:30:00Z'
-    },
-    {
-      id: '2',
-      name: 'Wireframe Mockups',
-      projectId: '1',
-      phaseId: 'phase-2',
-      taskId: 'task-2',
-      uploadedBy: 'Alex Rodriguez',
-      sentTo: ['Sarah Johnson'],
-      dateSubmitted: '2024-01-18T14:20:00Z',
-      status: 'in-review',
-      fileName: 'wireframes-v2.fig',
-      fileSize: 5242880,
-      fileType: 'fig',
-      version: 2,
-      uploadedAt: '2024-01-18T14:20:00Z'
-    },
-    {
-      id: '3',
-      name: 'API Documentation',
-      projectId: '2',
-      phaseId: 'phase-1',
-      taskId: 'task-3',
-      uploadedBy: 'Mike Chen',
-      sentTo: ['David Kim'],
-      dateSubmitted: '2024-01-20T09:15:00Z',
-      status: 'needs-changes',
-      fileName: 'api-docs-v1.md',
-      fileSize: 1024000,
-      fileType: 'md',
-      version: 1,
-      uploadedAt: '2024-01-20T09:15:00Z'
-    },
-    {
-      id: '4',
-      name: 'Component Library',
-      projectId: '3',
-      phaseId: 'phase-2',
-      taskId: 'task-4',
-      uploadedBy: 'Alex Rodriguez',
-      sentTo: ['Sarah Johnson', 'Mike Chen'],
-      dateSubmitted: '2024-01-19T16:45:00Z',
-      status: 'draft',
-      fileName: 'component-library.zip',
-      fileSize: 8388608,
-      fileType: 'zip',
-      version: 3,
-      uploadedAt: '2024-01-19T16:45:00Z'
+      // Projects
+      if (results[0].status === 'fulfilled') {
+        setProjects(results[0].value || [])
+      } else {
+        console.warn('Projects load failed:', results[0].reason)
+        setProjects([])
+      }
+
+      // Users (reviewers) — this may be restricted for non-admins; ignore failure
+      if (results[1].status === 'fulfilled') {
+        const users = results[1].value
+        const people = (users?.items || []).map((u: any) => ({ id: String(u.id), name: String(u.name || u.email || 'User') }))
+        setReviewers(people)
+      } else {
+        console.warn('Users list failed (likely not admin); continuing:', results[1].reason)
+        setReviewers([])
+      }
+
+      // Inbox
+      if (results[2].status === 'fulfilled') {
+        const mappedInbox = (results[2].value || []).map(mapApiDocToUi)
+        setInboxDocs(mappedInbox)
+      } else {
+        console.error('Inbox load failed:', results[2].reason)
+        setInboxDocs([])
+      }
+
+      // Sent
+      if (results[3].status === 'fulfilled') {
+        const mappedSent = (results[3].value || []).map(mapApiDocToUi)
+        setSentDocs(mappedSent)
+      } else {
+        console.error('Sent load failed:', results[3].reason)
+        setSentDocs([])
+      }
+    })()
+  }, [])
+
+  // Load full project with tasks when project selection changes
+  useEffect(() => {
+    ;(async () => {
+      const pid = uploadData.project
+      if (!pid) { setProjectDetail(null); return }
+      try {
+        const detail = await apiGet(`/projects/${pid}`)
+        setProjectDetail(detail || null)
+        // Reset dependent selections when project changes
+        setUploadData(prev => ({ ...prev, phase: '', task: '' }))
+      } catch {
+        setProjectDetail(null)
+      }
+    })()
+  }, [uploadData.project])
+
+  // Clear task when phase changes
+  useEffect(() => {
+    setUploadData(prev => ({ ...prev, task: '' }))
+  }, [uploadData.phase])
+
+  function mapApiDocToUi(d: any): Document {
+    const filePath: string = String(d.fileUrl || d.filePath || '')
+    const fileName = filePath ? filePath.split('/').pop() || 'document' : d.name || 'document'
+    const ext = (fileName.split('.').pop() || '').toLowerCase()
+    const reviewerRole = String(d?.reviewerRole || d?.reviewer?.role?.name || '').toLowerCase()
+    const uploaderRole = String(d?.createdByRole || d?.createdBy?.role?.name || '').toLowerCase()
+    return {
+      id: String(d.id),
+      name: String(d.name || fileName),
+      projectId: String(d.projectId || ''),
+      phaseId: String(d.phaseId || ''),
+      taskId: String(d.taskId || ''),
+      reviewerId: String(d.reviewer?.id || ''),
+      reviewerRole: reviewerRole || undefined,
+      uploadedBy: String(d.createdBy?.name || 'Unknown'),
+      uploadedByRole: uploaderRole || undefined,
+      sentTo: d.reviewer ? [String(d.reviewer?.name || '')] : [],
+      dateSubmitted: String(d.createdAt || new Date().toISOString()),
+      status: String(d.status || 'draft') as any,
+      fileName,
+      fileSize: 0,
+      fileType: ext || 'file',
+      version: Number(d.version || 1),
+      uploadedAt: String(d.createdAt || new Date().toISOString()),
+      reviewedAt: d.reviewedAt ? String(d.reviewedAt) : undefined,
+      reviewNote: d.reviewComment ? String(d.reviewComment) : undefined,
     }
-  ]
+  }
 
+  function getDocumentUrl(doc: Document): string {
+    // Files are served at /uploads/documents/<generated-filename>
+    const fname = encodeURIComponent(doc.fileName)
+    const ts = Date.now()
+    return `${API_BASE}/uploads/documents/${fname}?_ts=${ts}`
+  }
+
+  // Clean display: strip generated prefix like "<timestamp>-<rand>-" from stored filenames
+  function displayFileName(raw: string): string {
+    const base = raw.split('/').pop() || raw
+    const m = base.match(/^\d{10,14}-[a-z0-9]{4,12}-(.+)$/i)
+    return m ? m[1] : base
+  }
+
+  const documents = useMemo(() => (activeView === 'inbox' ? inboxDocs : sentDocs), [activeView, inboxDocs, sentDocs])
   const filteredDocuments = documents.filter(doc => {
     const matchesSearch = doc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          doc.fileName.toLowerCase().includes(searchTerm.toLowerCase())
@@ -209,12 +225,20 @@ const Documents: React.FC = () => {
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!uploadData.name || !uploadData.project || !uploadData.files) return
+    if (!uploadData.project || !uploadData.phase || !uploadData.files || !uploadData.reviewer) return
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      console.log('Uploading document:', uploadData)
+      const files = Array.from(uploadData.files)
+      const created = await uploadDocuments({
+        projectId: uploadData.project,
+        phaseId: uploadData.phase,
+        reviewerId: uploadData.reviewer,
+        taskId: uploadData.task || undefined,
+        status: 'in-review',
+        name: uploadData.name || undefined,
+      }, files)
+      const mapped: Document[] = (created || []).map(mapApiDocToUi)
+      setSentDocs(prev => [...mapped, ...prev])
       
       // Reset form and close modal
       setUploadData({
@@ -251,6 +275,8 @@ const Documents: React.FC = () => {
     setValidationError('')
     setIsReviewModalOpen(true)
   }
+
+
 
   const handleEditDocument = (doc: Document) => {
     setSelectedDocument(doc)
@@ -305,31 +331,11 @@ const Documents: React.FC = () => {
     }
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      console.log('Submitting review:', { document: selectedDocument, review: reviewData })
-
-      // Update document status based on review action
-      if (reviewData.action === 'approve') {
-        // In a real app, this would update the document status in the database
-        console.log('Document approved - timeline will show additional steps')
-        // Update the document status to approved for demo purposes
-        if (selectedDocument) {
-          selectedDocument.status = 'approved'
-        }
-      } else if (reviewData.action === 'request-changes') {
-        console.log('Document changes requested with comments:', reviewData.notes)
-        // Update the document status to needs-changes for demo purposes
-        if (selectedDocument) {
-          selectedDocument.status = 'needs-changes'
-        }
-      } else if (reviewData.action === 'reject') {
-        console.log('Document rejected with comments:', reviewData.notes)
-        // Update the document status to rejected for demo purposes
-        if (selectedDocument) {
-          selectedDocument.status = 'rejected'
-        }
-      }
+      const status = reviewData.action === 'approve' ? 'approved' : reviewData.action === 'reject' ? 'rejected' : 'needs-changes'
+      const updated = await reviewDocument(selectedDocument.id, status as any, reviewData.notes || undefined)
+      const mapped = mapApiDocToUi(updated)
+      setInboxDocs(prev => prev.map(d => d.id === mapped.id ? mapped : d))
+      setSentDocs(prev => prev.map(d => d.id === mapped.id ? mapped : d))
 
       // Reset form and close modal
       setReviewData({
@@ -340,8 +346,12 @@ const Documents: React.FC = () => {
       setValidationError('')
       setSelectedDocument(null)
       setIsReviewModalOpen(false)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to submit review:', error)
+      const msg = String(error?.message || '')
+      if (/Only assigned reviewer|403/.test(msg)) {
+        setValidationError('Only the assigned reviewer can update status for this document.')
+      }
     }
   }
 
@@ -357,131 +367,81 @@ const Documents: React.FC = () => {
     })
   }
 
+
+
   const getDocumentTimeline = (doc: Document): TimelineStep[] => {
-    const baseTimeline: TimelineStep[] = [
-      {
-        id: 'upload',
-        title: 'Upload',
-        description: 'Uploaded document',
-        user: doc.uploadedBy,
-        role: 'Project Manager',
-        timestamp: new Date(doc.dateSubmitted).toLocaleString('en-GB', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        }),
-        icon: 'upload',
-        color: 'blue'
-      },
-      {
-        id: 'review',
-        title: 'Sent for Review',
-        description: `Assigned to ${doc.sentTo[0]}`,
-        user: doc.uploadedBy,
-        role: 'Project Manager',
-        timestamp: new Date(new Date(doc.dateSubmitted).getTime() + 2 * 60000).toLocaleString('en-GB', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        }),
-        icon: 'review',
-        color: 'orange'
-      }
-    ]
+    const timeline: TimelineStep[] = []
+    const fmt = (dt: string) => new Date(dt).toLocaleString('en-GB', {
+      day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    })
 
-        // Add Approved and Finalized steps if document is approved
-        if (doc.status === 'approved') {
-          const approvedTime = new Date(new Date(doc.dateSubmitted).getTime() + 24 * 60 * 60 * 1000) // 1 day later
-          const finalizedTime = new Date(approvedTime.getTime() + 5 * 60000) // 5 minutes after approval
+    // Uploaded
+    timeline.push({
+      id: 'upload',
+      title: 'Upload',
+      description: 'Uploaded document',
+      user: doc.uploadedBy,
+      role: doc.uploadedByRole ? (doc.uploadedByRole[0].toUpperCase() + doc.uploadedByRole.slice(1)) : 'Member',
+      timestamp: fmt(doc.dateSubmitted || doc.uploadedAt),
+      icon: 'upload',
+      color: 'blue'
+    })
 
-          baseTimeline.push(
-            {
-              id: 'approved',
-              title: 'Approved',
-              description: 'Approved document',
-              user: 'John Doe',
-              role: 'Reviewer',
-              timestamp: approvedTime.toLocaleString('en-GB', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-              }),
-              icon: 'approved',
-              color: 'green'
-            },
-            {
-              id: 'finalized',
-              title: 'Finalized',
-              description: 'Document finalized and archived',
-              user: 'System',
-              role: 'Automated',
-              timestamp: finalizedTime.toLocaleString('en-GB', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-              }),
-              icon: 'finalized',
-              color: 'green'
-            }
-          )
-        }
+    // Sent for review
+    timeline.push({
+      id: 'review',
+      title: 'Sent for Review',
+      description: `Assigned to ${doc.sentTo[0] || 'Reviewer'}`,
+      user: doc.uploadedBy,
+      role: doc.uploadedByRole ? (doc.uploadedByRole[0].toUpperCase() + doc.uploadedByRole.slice(1)) : 'Member',
+      timestamp: fmt(doc.dateSubmitted || doc.uploadedAt),
+      icon: 'review',
+      color: 'orange'
+    })
 
-        // Add Changes Requested step if document needs changes
-        if (doc.status === 'needs-changes') {
-          const changesRequestedTime = new Date(new Date(doc.dateSubmitted).getTime() + 4 * 60 * 60 * 1000) // 4 hours later
+    // Reviewer decision based on real data
+    const reviewerRoleTitle = doc.reviewerRole ? (doc.reviewerRole[0].toUpperCase() + doc.reviewerRole.slice(1)) : 'Member'
+    if (doc.status === 'approved' && doc.reviewedAt) {
+      timeline.push({
+        id: 'approved',
+        title: 'Approved',
+        description: 'Approved document',
+        user: doc.sentTo[0] || 'Reviewer',
+        role: reviewerRoleTitle,
+        timestamp: fmt(doc.reviewedAt),
+        icon: 'approved',
+        color: 'green'
+      })
+    } else if (doc.status === 'needs-changes' && doc.reviewedAt) {
+      timeline.push({
+        id: 'changes-requested',
+        title: 'Changes Requested',
+        description: 'Requested changes',
+        user: doc.sentTo[0] || 'Reviewer',
+        role: reviewerRoleTitle,
+        timestamp: fmt(doc.reviewedAt),
+        icon: 'changes-requested',
+        color: 'yellow',
+        comment: doc.reviewNote || undefined
+      })
+    } else if (doc.status === 'rejected' && doc.reviewedAt) {
+      timeline.push({
+        id: 'rejected',
+        title: 'Rejected',
+        description: 'Rejected document',
+        user: doc.sentTo[0] || 'Reviewer',
+        role: reviewerRoleTitle,
+        timestamp: fmt(doc.reviewedAt),
+        icon: 'rejected',
+        color: 'red',
+        comment: doc.reviewNote || undefined
+      })
+    }
 
-          baseTimeline.push({
-            id: 'changes-requested',
-            title: 'Changes Requested',
-            description: 'Requested changes',
-            user: 'Nadeesha',
-            role: 'Designer',
-            timestamp: changesRequestedTime.toLocaleString('en-GB', {
-              day: '2-digit',
-              month: '2-digit',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
-            }),
-            icon: 'changes-requested',
-            color: 'yellow',
-            comment: reviewData.notes || 'Please add more detail on UI testing scenarios and include accessibility testing requirements.' // Use review notes or fallback to mock comment
-          })
-        }
-
-        // Add Rejected step if document is rejected
-        if (doc.status === 'rejected') {
-          const rejectedTime = new Date(new Date(doc.dateSubmitted).getTime() + 2 * 24 * 60 * 60 * 1000) // 2 days later
-
-          baseTimeline.push({
-            id: 'rejected',
-            title: 'Rejected',
-            description: 'Rejected document',
-            user: 'John Doe',
-            role: 'Reviewer',
-            timestamp: rejectedTime.toLocaleString('en-GB', {
-              day: '2-digit',
-              month: '2-digit',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
-            }),
-            icon: 'rejected',
-            color: 'red',
-            comment: reviewData.notes || 'not good' // Use review notes or fallback to mock comment
-          })
-        }
-
-    return baseTimeline
+    return timeline
   }
+
+
 
   return (
     <div>
@@ -497,6 +457,26 @@ const Documents: React.FC = () => {
 
       {/* Main Content Area - The big "divide box" */}
       <div className="card p-6 space-y-6">
+        {/* View Toggle */}
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-gray-600 dark:text-gray-400">View</div>
+          <div className="inline-flex rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700">
+            <button
+              type="button"
+              onClick={() => setActiveView('inbox')}
+              className={`px-4 py-2 text-sm ${activeView === 'inbox' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+            >
+              Inbox
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveView('sent')}
+              className={`px-4 py-2 text-sm border-l border-gray-200 dark:border-gray-700 ${activeView === 'sent' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+            >
+              Sent
+            </button>
+          </div>
+        </div>
         {/* Filter Bar */}
         <div className="flex items-center justify-between gap-4">
           <div className="flex-1 max-w-md">
@@ -549,7 +529,7 @@ const Documents: React.FC = () => {
             </select>
             <button
               onClick={() => setIsUploadModalOpen(true)}
-              className="btn-primary text-sm px-4 py-2"
+              className="btn-primary"
             >
               <HiPlus className="h-4 w-4 mr-2" />
               Upload Document
@@ -597,11 +577,23 @@ const Documents: React.FC = () => {
                     <HiUser className="h-4 w-4" />
                     <span>Uploaded by</span>
                     <span className="text-blue-600 dark:text-blue-400 font-medium">{doc.uploadedBy}</span>
+                    {doc.uploadedByRole && (
+                      <>
+                        <span className="mx-1">•</span>
+                        <span className="capitalize">{doc.uploadedByRole}</span>
+                      </>
+                    )}
                   </div>
                   <div className="flex items-center space-x-1">
                     <HiPaperAirplane className="h-4 w-4" />
                     <span>Sent to</span>
                     <span className="text-blue-600 dark:text-blue-400 font-medium">{doc.sentTo[0]}</span>
+                    {doc.reviewerRole && (
+                      <>
+                        <span className="mx-1">•</span>
+                        <span className="capitalize">{doc.reviewerRole}</span>
+                      </>
+                    )}
                   </div>
                   <div className="flex items-center space-x-1">
                     <HiCalendar className="h-4 w-4" />
@@ -614,12 +606,17 @@ const Documents: React.FC = () => {
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center space-x-2">
                     <HiDocument className="h-4 w-4 text-gray-400" />
-                    <span className="text-sm text-gray-600 dark:text-gray-400">{doc.fileName}</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">{displayFileName(doc.fileName)}</span>
                   </div>
-                  <button className="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">
+                  <a
+                    href={getDocumentUrl(doc)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                  >
                     <HiEye className="h-4 w-4" />
                     <span>View Document</span>
-                  </button>
+                  </a>
                 </div>
 
                 {/* Actions */}
@@ -627,24 +624,27 @@ const Documents: React.FC = () => {
                   <div className="flex items-center space-x-6">
                     <button 
                       onClick={() => handleEditDocument(doc)}
-                      className="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                      className="btn-outline px-2 py-1 text-xs rounded-md gap-1 shadow-none"
                     >
-                      <HiPencil className="h-4 w-4" />
+                      <HiPencil className="h-3 w-3" />
                       <span>Edit</span>
                     </button>
-                    <button className="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">
-                      <HiTrash className="h-4 w-4" />
+                    {/* Annotate feature removed */}
+                    <button className="btn-danger px-2 py-1 text-xs rounded-md gap-1 shadow-none">
+                      <HiTrash className="h-3 w-3" />
                       <span>Delete</span>
                     </button>
                   </div>
                   <div className="flex items-center">
-                    <button 
-                      onClick={() => handleReviewDocument(doc)}
-                      className="btn-primary text-sm px-4 py-2"
-                    >
-                      <HiDocument className="h-4 w-4 mr-2" />
-                      Review Document
-                    </button>
+                    {(activeView === 'inbox' || doc.reviewerId === (user?.id || '')) && (
+                      <button 
+                        onClick={() => handleReviewDocument(doc)}
+                        className="btn-primary"
+                      >
+                        <HiDocument className="h-4 w-4 mr-2" />
+                        Review Document
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -795,25 +795,27 @@ const Documents: React.FC = () => {
                   required
                 >
                   <option value="">Select phase</option>
-                  {phases.map((phase) => (
+                  {availablePhases.map((phase: { id: string; name: string }) => (
                     <option key={phase.id} value={phase.id}>{phase.name}</option>
                   ))}
                 </select>
               </div>
 
-              {/* Task */}
+              {/* Task (optional, from DB for selected phase) */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Task <span className="text-red-500">*</span>
+                  Task
                 </label>
-                <input
-                  type="text"
+                <select
                   value={uploadData.task}
                   onChange={(e) => setUploadData(prev => ({ ...prev, task: e.target.value }))}
                   className="input-field"
-                  placeholder="e.g., UI Design Review"
-                  required
-                />
+                >
+                  <option value="">Select task (optional)</option>
+                  {availableTasks.map((t: { id: string; title: string }) => (
+                    <option key={t.id} value={t.id}>{t.title}</option>
+                  ))}
+                </select>
               </div>
 
               {/* Description */}
@@ -841,8 +843,8 @@ const Documents: React.FC = () => {
                   required
                 >
                   <option value="">Select reviewer</option>
-                  {reviewers.map((reviewer) => (
-                    <option key={reviewer.id} value={reviewer.id}>{reviewer.name}</option>
+                  {reviewers.map((r) => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
                   ))}
                 </select>
               </div>
@@ -887,7 +889,7 @@ const Documents: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsUploadModalOpen(false)}
-                  className="flex-1 btn-secondary"
+                  className="flex-1 btn-outline"
                 >
                   Cancel
                 </button>
@@ -953,23 +955,25 @@ const Documents: React.FC = () => {
 
                   {/* Request Changes Option */}
                   <div 
-                    className={`p-4 rounded-xl border-2 cursor-pointer transition-colors duration-200 ${
+                    className={`p-4 rounded-xl cursor-pointer transition-all duration-200 transform ${
                       reviewData.action === 'request-changes' 
-                        ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20' 
-                        : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
-                    }`}
+                        ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md ring-2 ring-amber-400/60' 
+                        : 'border border-gray-200 dark:border-gray-600 hover:border-amber-400/50 bg-white dark:bg-gray-800'
+                    } hover:scale-[1.01]`}
                     onClick={() => {
                       setReviewData(prev => ({ ...prev, action: 'request-changes' }))
                       setValidationError('')
                     }}
                   >
                     <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center">
-                        <HiPencil className="h-5 w-5 text-white" />
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                        reviewData.action === 'request-changes' ? 'bg-white/20' : 'bg-amber-500'
+                      }`}>
+                        <HiPencil className={`h-5 w-5 ${reviewData.action === 'request-changes' ? 'text-white' : 'text-white'}`} />
                       </div>
                       <div>
-                        <h4 className="font-semibold text-gray-900 dark:text-white">Request Changes</h4>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">Document needs modifications</p>
+                        <h4 className={`font-semibold ${reviewData.action === 'request-changes' ? 'text-white' : 'text-gray-900 dark:text-white'}`}>Request Changes</h4>
+                        <p className={`text-sm ${reviewData.action === 'request-changes' ? 'text-white/90' : 'text-gray-600 dark:text-gray-400'}`}>Document needs modifications</p>
                       </div>
                     </div>
                   </div>
@@ -1062,7 +1066,7 @@ const Documents: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsReviewModalOpen(false)}
-                  className="flex-1 btn-secondary"
+                  className="flex-1 btn-outline"
                 >
                   Cancel
                 </button>
@@ -1175,7 +1179,7 @@ const Documents: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsEditModalOpen(false)}
-                  className="flex-1 btn-secondary"
+                  className="flex-1 btn-outline"
                 >
                   Cancel
                 </button>
@@ -1190,6 +1194,8 @@ const Documents: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Annotator removed */}
     </div>
   )
 }

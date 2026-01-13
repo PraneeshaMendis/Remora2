@@ -1,0 +1,764 @@
+import { Router, Request, Response } from 'express'
+import { PrismaClient } from '@prisma/client'
+import axios from 'axios'
+import crypto from 'crypto'
+
+const prisma = new PrismaClient()
+const router = Router()
+
+function baseUrl(req: Request) {
+  const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol
+  const host = req.get('host')
+  return `${proto}://${host}`
+}
+
+function clientBaseUrl(req: Request) {
+  const envBase = process.env.FRONTEND_BASE_URL || process.env.APP_BASE_URL
+  if (envBase) return String(envBase).replace(/\/+$/, '')
+  const origin = req.get('origin')
+  if (origin) return origin.replace(/\/+$/, '')
+  // Fallback to typical dev port for Vite
+  const api = baseUrl(req)
+  try {
+    const u = new URL(api)
+    return `${u.protocol}//${u.hostname}:5173`
+  } catch {
+    return 'http://localhost:5173'
+  }
+}
+
+// --- Encryption helpers for storing sensitive secrets (ICS URLs) ---
+// Uses AES-256-GCM with key derived from CALENDAR_ENC_KEY
+function getEncKey(): Buffer {
+  const raw = process.env.CALENDAR_ENC_KEY || process.env.JWT_SECRET || 'dev-secret'
+  // derive 32-byte key
+  return crypto.createHash('sha256').update(String(raw)).digest()
+}
+function encrypt(text: string): string {
+  const key = getEncKey()
+  const iv = crypto.randomBytes(12)
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv)
+  const enc = Buffer.concat([cipher.update(Buffer.from(String(text), 'utf8')), cipher.final()])
+  const tag = cipher.getAuthTag()
+  return Buffer.concat([iv, tag, enc]).toString('base64')
+}
+function decrypt(payload: string): string {
+  try {
+    const buf = Buffer.from(String(payload), 'base64')
+    const iv = buf.subarray(0, 12)
+    const tag = buf.subarray(12, 28)
+    const data = buf.subarray(28)
+    const key = getEncKey()
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv)
+    decipher.setAuthTag(tag)
+    const dec = Buffer.concat([decipher.update(data), decipher.final()])
+    return dec.toString('utf8')
+  } catch {
+    return ''
+  }
+}
+
+function normalizeIcsUrl(u: string): string {
+  if (!u) return ''
+  let s = String(u).trim()
+  if (s.toLowerCase().startsWith('webcal://')) s = 'https://' + s.slice(9)
+  if (s.toLowerCase().startsWith('webcals://')) s = 'https://' + s.slice(10)
+  return s
+}
+
+// Short-lived OAuth state storage
+async function createOAuthStateRecord(userId: string, provider: 'GOOGLE' | 'MICROSOFT') {
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000)
+  return prisma.calendarOAuthState.create({ data: { userId, provider: provider as any, expiresAt, nextPath: '/calendar' } })
+}
+async function consumeOAuthStateRecord(id?: string | null) {
+  if (!id) return null
+  const rec = await prisma.calendarOAuthState.findUnique({ where: { id } })
+  if (!rec) return null
+  if (rec.expiresAt && rec.expiresAt.getTime() < Date.now()) {
+    await prisma.calendarOAuthState.delete({ where: { id: rec.id } })
+    return null
+  }
+  await prisma.calendarOAuthState.delete({ where: { id: rec.id } })
+  return rec
+}
+
+// Authenticated session initiators to obtain redirect URLs (headers available)
+router.post('/google/session', async (req: Request, res: Response) => {
+  const userId = await resolveUserId(req)
+  if (!userId) return res.status(401).json({ error: 'Login required' })
+  const clientId = process.env.GOOGLE_CLIENT_ID
+  const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${baseUrl(req)}/api/calendar/google/callback`
+  if (!clientId) return res.status(500).json({ error: 'Missing GOOGLE_CLIENT_ID' })
+  const st = await createOAuthStateRecord(userId, 'GOOGLE')
+  const scope = ['openid','email','profile','https://www.googleapis.com/auth/calendar.readonly'].join(' ')
+  const state = Buffer.from(JSON.stringify({ sid: st.id, next: '/calendar' }), 'utf8').toString('base64url')
+  const url = new URL('https://accounts.google.com/o/oauth2/v2/auth')
+  url.searchParams.set('client_id', clientId)
+  url.searchParams.set('redirect_uri', redirectUri)
+  url.searchParams.set('response_type', 'code')
+  url.searchParams.set('scope', scope)
+  url.searchParams.set('access_type', 'offline')
+  url.searchParams.set('include_granted_scopes', 'true')
+  url.searchParams.set('prompt', 'consent')
+  url.searchParams.set('state', state)
+  res.json({ redirectUrl: url.toString() })
+})
+
+// --- Google OAuth ---
+router.get('/google/connect', async (req: Request, res: Response) => {
+  const clientId = process.env.GOOGLE_CLIENT_ID
+  const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${baseUrl(req)}/api/calendar/google/callback`
+  const scope = [
+    'openid',
+    'email',
+    'profile',
+    'https://www.googleapis.com/auth/calendar.readonly',
+  ].join(' ')
+  if (!clientId) return res.status(500).send('Missing GOOGLE_CLIENT_ID')
+  // Accept uid via query (since Authorization headers aren't sent on redirects)
+  const uid = (req.query.uid as string) || ''
+  const userId = (req as any).userId || uid || ''
+  const state = Buffer.from(JSON.stringify({ userId, next: '/calendar' }), 'utf8').toString('base64url')
+  const url = new URL('https://accounts.google.com/o/oauth2/v2/auth')
+  url.searchParams.set('client_id', clientId)
+  url.searchParams.set('redirect_uri', redirectUri)
+  url.searchParams.set('response_type', 'code')
+  url.searchParams.set('scope', scope)
+  url.searchParams.set('access_type', 'offline')
+  url.searchParams.set('include_granted_scopes', 'true')
+  url.searchParams.set('prompt', 'consent')
+  url.searchParams.set('state', state)
+  res.redirect(url.toString())
+})
+
+router.get('/google/callback', async (req: Request, res: Response) => {
+  const code = req.query.code as string
+  const stateRaw = (req.query.state as string) || ''
+  let state: any = {}
+  try { state = JSON.parse(Buffer.from(stateRaw, 'base64url').toString('utf8')) } catch {}
+  let userId: string | null = null
+  if (state?.sid) {
+    const rec = await consumeOAuthStateRecord(state.sid)
+    userId = rec?.userId || null
+  } else {
+    const resolved = await resolveUserId(req)
+    userId = resolved || state?.userId || (req.query.uid as string) || null
+  }
+  if (!code) return res.status(400).send('Missing code')
+  const clientId = process.env.GOOGLE_CLIENT_ID
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET
+  const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${baseUrl(req)}/api/calendar/google/callback`
+  if (!clientId || !clientSecret) return res.status(500).send('Missing Google client credentials')
+  try {
+    if (!userId) return res.status(401).send('No user context; please log in and retry')
+    const tokenRes = await axios.post('https://oauth2.googleapis.com/token', new URLSearchParams({
+      code,
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: redirectUri,
+      grant_type: 'authorization_code',
+    }), { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })
+    const { access_token, refresh_token, expires_in, id_token, scope } = tokenRes.data || {}
+
+    // Extract email from id_token if present
+    let email = ''
+    if (id_token) {
+      try {
+        const payload = JSON.parse(Buffer.from(String(id_token).split('.')[1], 'base64').toString('utf8'))
+        email = String(payload?.email || '')
+      } catch {}
+    }
+    // Fallback: call userinfo
+    if (!email && access_token) {
+      try {
+        const uinfo = await axios.get('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: `Bearer ${access_token}` } })
+        email = String(uinfo.data?.email || '')
+      } catch {}
+    }
+    const now = Date.now()
+    const expiresAt = expires_in ? new Date(now + Number(expires_in) * 1000) : null
+    // Verify user exists
+    const exists = await prisma.user.findUnique({ where: { id: userId } })
+    if (!exists) return res.status(400).send('User not found; ensure you are logged in')
+    await prisma.calendarAccount.upsert({
+      where: { userId_provider_email: { userId, provider: 'GOOGLE', email: email || 'unknown' } as any },
+      update: { accessToken: access_token, refreshToken: refresh_token || '', expiresAt: expiresAt as any, scope },
+      create: { id: undefined as any, userId, provider: 'GOOGLE' as any, email: email || 'unknown', accessToken: access_token, refreshToken: refresh_token || '', expiresAt: expiresAt as any, scope },
+    })
+    const nextPath = state?.next || '/calendar'
+    const clientBase = clientBaseUrl(req)
+    res.redirect(`${clientBase}${nextPath}`)
+  } catch (e: any) {
+    res.status(400).send(e?.response?.data || e?.message || 'Google OAuth failed')
+  }
+})
+
+async function ensureGoogleToken(account: any, clientId: string, clientSecret: string) {
+  if (!account?.refreshToken) return account
+  const now = new Date()
+  if (account.expiresAt && new Date(account.expiresAt) > new Date(now.getTime() + 60_000)) return account
+  const params = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    grant_type: 'refresh_token',
+    refresh_token: account.refreshToken,
+  })
+  const tokenRes = await axios.post('https://oauth2.googleapis.com/token', params, { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })
+  const { access_token, expires_in } = tokenRes.data || {}
+  const expiresAt = expires_in ? new Date(Date.now() + Number(expires_in) * 1000) : null
+  const updated = await prisma.calendarAccount.update({ where: { id: account.id }, data: { accessToken: access_token, expiresAt } })
+  return updated
+}
+
+router.get('/google/events', async (req: Request, res: Response) => {
+  const userId = (req as any).userId
+  if (!userId) return res.status(401).json({ error: 'x-user-id or Bearer token required' })
+  const clientId = process.env.GOOGLE_CLIENT_ID
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET
+  if (!clientId || !clientSecret) return res.status(500).json({ error: 'Missing Google client credentials' })
+  const account = await prisma.calendarAccount.findFirst({ where: { userId, provider: 'GOOGLE' as any } })
+  if (!account) return res.status(200).json([])
+  try {
+    const acc = await ensureGoogleToken(account, clientId, clientSecret)
+    const now = new Date()
+    const timeMin = new Date(now.getTime() - 30 * 24 * 3600 * 1000).toISOString()
+    const timeMax = new Date(now.getTime() + 90 * 24 * 3600 * 1000).toISOString()
+    const eventsRes = await axios.get('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+      headers: { Authorization: `Bearer ${acc.accessToken}` },
+      params: { maxResults: 2500, singleEvents: true, orderBy: 'startTime', timeMin, timeMax },
+    })
+    res.json(Array.isArray(eventsRes.data?.items) ? eventsRes.data.items : [])
+  } catch (e: any) {
+    res.status(400).json({ error: e?.response?.data || e?.message || 'Failed to fetch Google events' })
+  }
+})
+
+// --- Microsoft OAuth (MS Graph) ---
+router.post('/microsoft/session', async (req: Request, res: Response) => {
+  const userId = await resolveUserId(req)
+  if (!userId) return res.status(401).json({ error: 'Login required' })
+  const clientId = process.env.MS_CLIENT_ID
+  const tenant = process.env.MS_TENANT || 'common'
+  const redirectUri = process.env.MS_REDIRECT_URI || `${baseUrl(req)}/api/calendar/microsoft/callback`
+  if (!clientId) return res.status(500).json({ error: 'Missing MS_CLIENT_ID' })
+  const st = await createOAuthStateRecord(userId, 'MICROSOFT')
+  const state = Buffer.from(JSON.stringify({ sid: st.id, next: '/calendar' }), 'utf8').toString('base64url')
+  const url = new URL(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize`)
+  url.searchParams.set('client_id', clientId)
+  url.searchParams.set('response_type', 'code')
+  url.searchParams.set('redirect_uri', redirectUri)
+  url.searchParams.set('response_mode', 'query')
+  url.searchParams.set('scope', ['offline_access', 'User.Read', 'Calendars.Read'].join(' '))
+  url.searchParams.set('state', state)
+  res.json({ redirectUrl: url.toString() })
+})
+router.get('/microsoft/connect', async (req: Request, res: Response) => {
+  const clientId = process.env.MS_CLIENT_ID
+  const tenant = process.env.MS_TENANT || 'common'
+  const redirectUri = process.env.MS_REDIRECT_URI || `${baseUrl(req)}/api/calendar/microsoft/callback`
+  if (!clientId) return res.status(500).send('Missing MS_CLIENT_ID')
+  const uid = (req.query.uid as string) || ''
+  const userId = (req as any).userId || uid || ''
+  const state = Buffer.from(JSON.stringify({ userId, next: '/calendar' }), 'utf8').toString('base64url')
+  const url = new URL(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize`)
+  url.searchParams.set('client_id', clientId)
+  url.searchParams.set('response_type', 'code')
+  url.searchParams.set('redirect_uri', redirectUri)
+  url.searchParams.set('response_mode', 'query')
+  url.searchParams.set('scope', ['offline_access', 'User.Read', 'Calendars.Read'].join(' '))
+  url.searchParams.set('state', state)
+  res.redirect(url.toString())
+})
+
+router.get('/microsoft/callback', async (req: Request, res: Response) => {
+  const code = req.query.code as string
+  const stateRaw = (req.query.state as string) || ''
+  let state: any = {}
+  try { state = JSON.parse(Buffer.from(stateRaw, 'base64url').toString('utf8')) } catch {}
+  let userId: string | null = null
+  if (state?.sid) {
+    const rec = await consumeOAuthStateRecord(state.sid)
+    userId = rec?.userId || null
+  } else {
+    const resolved = await resolveUserId(req)
+    userId = resolved || state?.userId || (req.query.uid as string) || null
+  }
+  if (!code) return res.status(400).send('Missing code')
+  const clientId = process.env.MS_CLIENT_ID
+  const clientSecret = process.env.MS_CLIENT_SECRET
+  const tenant = process.env.MS_TENANT || 'common'
+  const redirectUri = process.env.MS_REDIRECT_URI || `${baseUrl(req)}/api/calendar/microsoft/callback`
+  if (!clientId || !clientSecret) return res.status(500).send('Missing Microsoft client credentials')
+  try {
+    const tokenRes = await axios.post(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: redirectUri,
+      scope: ['offline_access', 'User.Read', 'Calendars.Read'].join(' '),
+    }), { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })
+    const { access_token, refresh_token, expires_in } = tokenRes.data || {}
+
+    // Get user email
+    let email = ''
+    try {
+      const meRes = await axios.get('https://graph.microsoft.com/v1.0/me', { headers: { Authorization: `Bearer ${access_token}` } })
+      email = String(meRes.data?.mail || meRes.data?.userPrincipalName || '')
+    } catch {}
+    const expiresAt = expires_in ? new Date(Date.now() + Number(expires_in) * 1000) : null
+    if (!userId) return res.status(401).send('No user context; please log in and retry')
+    const exists = await prisma.user.findUnique({ where: { id: userId } })
+    if (!exists) return res.status(400).send('User not found; ensure you are logged in')
+    await prisma.calendarAccount.upsert({
+      where: { userId_provider_email: { userId, provider: 'MICROSOFT', email: email || 'unknown' } as any },
+      update: { accessToken: access_token, refreshToken: refresh_token || '', expiresAt: expiresAt as any, scope: 'User.Read Calendars.Read offline_access' },
+      create: { id: undefined as any, userId, provider: 'MICROSOFT' as any, email: email || 'unknown', accessToken: access_token, refreshToken: refresh_token || '', expiresAt: expiresAt as any, scope: 'User.Read Calendars.Read offline_access' },
+    })
+    const nextPath = state?.next || '/calendar'
+    const clientBase = clientBaseUrl(req)
+    res.redirect(`${clientBase}${nextPath}`)
+  } catch (e: any) {
+    res.status(400).send(e?.response?.data || e?.message || 'Microsoft OAuth failed')
+  }
+})
+
+async function ensureMsToken(account: any, tenant: string, clientId: string, clientSecret: string) {
+  if (!account?.refreshToken) return account
+  const now = new Date()
+  if (account.expiresAt && new Date(account.expiresAt) > new Date(now.getTime() + 60_000)) return account
+  const params = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    grant_type: 'refresh_token',
+    refresh_token: account.refreshToken,
+    scope: 'offline_access User.Read Calendars.Read',
+  })
+  const tokenRes = await axios.post(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, params, { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })
+  const { access_token, expires_in } = tokenRes.data || {}
+  const expiresAt = expires_in ? new Date(Date.now() + Number(expires_in) * 1000) : null
+  const updated = await prisma.calendarAccount.update({ where: { id: account.id }, data: { accessToken: access_token, expiresAt } })
+  return updated
+}
+
+router.get('/microsoft/events', async (req: Request, res: Response) => {
+  const userId = (req as any).userId
+  if (!userId) return res.status(401).json({ error: 'x-user-id or Bearer token required' })
+  const clientId = process.env.MS_CLIENT_ID
+  const clientSecret = process.env.MS_CLIENT_SECRET
+  const tenant = process.env.MS_TENANT || 'common'
+  if (!clientId || !clientSecret) return res.status(500).json({ error: 'Missing Microsoft client credentials' })
+  const account = await prisma.calendarAccount.findFirst({ where: { userId, provider: 'MICROSOFT' as any } })
+  if (!account) return res.status(200).json([])
+  try {
+    const acc = await ensureMsToken(account, tenant, clientId, clientSecret)
+    // Pull events window: past 30 days to next 90 days
+    const start = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString()
+    const end = new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString()
+    const eventsRes = await axios.get('https://graph.microsoft.com/v1.0/me/calendarView', {
+      headers: { Authorization: `Bearer ${acc.accessToken}` },
+      params: { startDateTime: start, endDateTime: end, '$top': 1000, '$orderby': 'start/dateTime' },
+    })
+    res.json(Array.isArray(eventsRes.data?.value) ? eventsRes.data.value : [])
+  } catch (e: any) {
+    res.status(400).json({ error: e?.response?.data || e?.message || 'Failed to fetch Microsoft events' })
+  }
+})
+
+// Resolve an effective userId from token, header, or DEV_USER_ID, ensuring it exists
+async function resolveUserId(req: Request): Promise<string | null> {
+  const primary = (req as any).userId as string | null
+  if (primary) {
+    const u = await prisma.user.findUnique({ where: { id: primary } })
+    if (u) return primary
+  }
+  const headerId = req.header('x-user-id') || null
+  if (headerId) {
+    const u = await prisma.user.findUnique({ where: { id: headerId } })
+    if (u) return headerId
+  }
+  const dev = process.env.DEV_USER_ID || null
+  if (dev) {
+    const u = await prisma.user.findUnique({ where: { id: dev } })
+    if (u) return dev
+  }
+  return null
+}
+
+// List linked calendar accounts for the current user
+router.get('/accounts', async (req: Request, res: Response) => {
+  const userId = await resolveUserId(req)
+  if (!userId) return res.status(401).json({ error: 'User not found; ensure you are logged in or DEV_USER_ID is valid.' })
+  const accts = await prisma.calendarAccount.findMany({
+    where: { userId },
+    select: { id: true, provider: true, email: true, updatedAt: true, createdAt: true, expiresAt: true },
+    orderBy: { createdAt: 'desc' },
+  })
+  res.json(accts)
+})
+
+// --- Per-user ICS URL sources (persisted) ---
+router.get('/sources', async (req: Request, res: Response) => {
+  const userId = await resolveUserId(req)
+  if (!userId) return res.status(401).json({ error: 'User not found; ensure you are logged in or DEV_USER_ID is valid.' })
+  const sources = await prisma.calendarSource.findMany({ where: { userId }, orderBy: { createdAt: 'desc' } })
+  // Never expose URL to client
+  res.json(sources.map(s => ({ id: s.id, type: s.type, name: s.name, color: s.color, enabled: s.enabled, createdAt: s.createdAt, updatedAt: s.updatedAt })))
+})
+
+router.post('/sources', async (req: Request, res: Response) => {
+  const userId = await resolveUserId(req)
+  if (!userId) return res.status(401).json({ error: 'User not found; ensure you are logged in or DEV_USER_ID is valid.' })
+  const { name, url, color, enabled } = req.body || {}
+  if (!name || !url) return res.status(400).json({ error: 'name and url are required' })
+  try {
+    const normalized = normalizeIcsUrl(String(url))
+    if (!/^https?:\/\//i.test(normalized)) return res.status(400).json({ error: 'Invalid ICS URL (must start with http/https or webcal/webcals)' })
+    const created = await prisma.calendarSource.create({
+      data: { userId, type: 'ICS_URL' as any, name, url: encrypt(normalized), color: color || '#10b981', enabled: enabled ?? true },
+    })
+    res.status(201).json({ id: created.id, type: created.type, name: created.name, color: created.color, enabled: created.enabled, createdAt: created.createdAt, updatedAt: created.updatedAt })
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Failed to create source' })
+  }
+})
+
+router.patch('/sources/:id', async (req: Request, res: Response) => {
+  const userId = await resolveUserId(req)
+  if (!userId) return res.status(401).json({ error: 'User not found; ensure you are logged in or DEV_USER_ID is valid.' })
+  const id = req.params.id
+  const { name, url, color, enabled } = req.body || {}
+  try {
+    // Ensure ownership
+    const src = await prisma.calendarSource.findUnique({ where: { id } })
+    if (!src || src.userId !== userId) return res.status(404).json({ error: 'Not found' })
+    const data: any = {}
+    if (name !== undefined) data.name = name
+    if (color !== undefined) data.color = color
+    if (enabled !== undefined) data.enabled = enabled
+    if (url !== undefined) {
+      const normalized = normalizeIcsUrl(String(url))
+      if (!/^https?:\/\//i.test(normalized)) return res.status(400).json({ error: 'Invalid ICS URL (must start with http/https or webcal/webcals)' })
+      data.url = encrypt(normalized)
+    }
+    const updated = await prisma.calendarSource.update({ where: { id }, data })
+    res.json({ id: updated.id, type: updated.type, name: updated.name, color: updated.color, enabled: updated.enabled, createdAt: updated.createdAt, updatedAt: updated.updatedAt })
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Failed to update source' })
+  }
+})
+
+router.delete('/sources/:id', async (req: Request, res: Response) => {
+  const userId = await resolveUserId(req)
+  if (!userId) return res.status(401).json({ error: 'User not found; ensure you are logged in or DEV_USER_ID is valid.' })
+  const id = req.params.id
+  try {
+    const src = await prisma.calendarSource.findUnique({ where: { id } })
+    if (!src || src.userId !== userId) return res.status(404).json({ error: 'Not found' })
+    await prisma.calendarSource.delete({ where: { id } })
+    res.status(204).end()
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Failed to delete source' })
+  }
+})
+
+// Fetch and parse events for a given ICS source (server-side fetch; never expose URL)
+router.get('/sources/:id/events', async (req: Request, res: Response) => {
+  const userId = await resolveUserId(req)
+  if (!userId) return res.status(401).json({ error: 'User not found; ensure you are logged in or DEV_USER_ID is valid.' })
+  const id = req.params.id
+  const src = await prisma.calendarSource.findUnique({ where: { id } })
+  if (!src || src.userId !== userId) return res.status(404).json({ error: 'Not found' })
+  try {
+    const icsUrl = normalizeIcsUrl(decrypt(src.url))
+    if (!/^https?:\/\//i.test(icsUrl)) return res.status(400).json({ error: 'Invalid or undecryptable ICS URL' })
+    const r = await axios.get(icsUrl, { responseType: 'text', timeout: 15000, headers: { 'User-Agent': 'ProjectHubCalendar/1.0' } })
+    const text = String(r.data || '')
+    const events = parseICS(text, src.name)
+    res.json(events)
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Failed to load ICS events' })
+  }
+})
+
+export default router
+
+// Lightweight ICS proxy to avoid browser CORS when fetching external calendars
+router.get('/ics', async (req: Request, res: Response) => {
+  try {
+    const url = String(req.query.url || req.query.u || '')
+    if (!url) return res.status(400).send('Missing url')
+    const parsed = new URL(url)
+    if (!/^https?:$/i.test(parsed.protocol)) return res.status(400).send('Only http/https supported')
+
+    const r = await axios.get(url, { responseType: 'text', timeout: 15000, headers: { 'User-Agent': 'ProjectHubCalendar/1.0' } })
+    // Force text/calendar so the client can parse
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8')
+    res.status(200).send(typeof r.data === 'string' ? r.data : String(r.data || ''))
+  } catch (e: any) {
+    res.status(400).send(e?.response?.statusText || e?.message || 'Failed to fetch ICS')
+  }
+})
+
+// --- Public ICS sources (available to all users; no auth required) ---
+// Sri Lanka public holidays (Google ICS). Can be overridden via env.
+const LK_HOLIDAYS_ICS_URL_DEFAULT = 'https://calendar.google.com/calendar/ical/en.lk%23holiday%40group.v.calendar.google.com/public/basic.ics'
+const LK_HOLIDAYS_CACHE_TTL_MS = 6 * 60 * 60 * 1000 // 6 hours
+let lkHolidaysCache: { events: any[]; fetchedAt: number } | null = null
+
+router.get('/public/lk-holidays', async (req: Request, res: Response) => {
+  try {
+    const now = Date.now()
+    const url = normalizeIcsUrl(process.env.CALENDAR_LK_HOLIDAYS_ICS_URL || LK_HOLIDAYS_ICS_URL_DEFAULT)
+    if (!/^https?:\/\//i.test(url)) return res.status(500).json({ error: 'Invalid LK holidays ICS URL' })
+
+    // Serve from cache when fresh
+    if (lkHolidaysCache && (now - lkHolidaysCache.fetchedAt) < LK_HOLIDAYS_CACHE_TTL_MS) {
+      const filtered = filterByYear(lkHolidaysCache.events, req.query.year as string)
+      return res.json(filtered)
+    }
+
+    const r = await axios.get(url, { responseType: 'text', timeout: 20000, headers: { 'User-Agent': 'ProjectHubCalendar/1.0' } })
+    const text = String(r.data || '')
+    const events = parseICS(text, 'Sri Lanka Public Holidays')
+    lkHolidaysCache = { events, fetchedAt: now }
+    const filtered = filterByYear(events, req.query.year as string)
+    res.json(filtered)
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Failed to load LK holidays ICS' })
+  }
+})
+
+function filterByYear(events: any[], year?: string | null) {
+  const y = String(year || '').trim()
+  if (!y || !/^\d{4}$/.test(y)) return events
+  return (events || []).filter(ev => String(ev?.date || '').startsWith(`${y}-`))
+}
+
+// Public holidays provider: prefers RapidAPI when configured, otherwise falls back to HolidayAPI.com
+router.get('/holidays', async (req: Request, res: Response) => {
+  try {
+    const country = String(req.query.country || process.env.HOLIDAY_DEFAULT_COUNTRY || 'US').toUpperCase()
+    const year = Number(req.query.year || new Date().getFullYear())
+    const month = req.query.month ? Number(req.query.month) : undefined
+
+    // Prefer RapidAPI if both key and host are provided
+    const rapidKey = process.env.RAPIDAPI_KEY || ''
+    const rapidHost = process.env.RAPIDAPI_HOLIDAYS_HOST || ''
+    if (rapidKey && rapidHost) {
+      try {
+        // Nager.Date via RapidAPI: GET /PublicHolidays/{year}/{country}
+        const url = new URL(`https://${rapidHost}/PublicHolidays/${year}/${country}`)
+        const r = await axios.get(url.toString(), {
+          timeout: 15000,
+          headers: { 'X-RapidAPI-Key': rapidKey, 'X-RapidAPI-Host': rapidHost },
+        })
+        const items: any[] = Array.isArray(r.data) ? r.data : []
+        const filtered = (month && month >= 1 && month <= 12)
+          ? items.filter((h: any) => {
+              const d = String(h?.date || '').slice(0, 10)
+              const m = Number(d.slice(5, 7))
+              return m === month
+            })
+          : items
+        const events = filtered.map((h: any) => {
+          const date = String(h?.date || '').slice(0, 10)
+          const name = String(h?.localName || h?.name || 'Public Holiday')
+          const types = Array.isArray(h?.types) ? h.types.join(', ') : (h?.type || 'Public holiday')
+          return {
+            id: `holiday-${country}-${date}-${(name).replace(/\s+/g,'-').toLowerCase()}`,
+            title: name,
+            description: types,
+            type: 'reminder',
+            startTime: '00:00',
+            endTime: '23:59',
+            date,
+            priority: 'low',
+            status: 'scheduled',
+            createdBy: 'Public Holidays',
+            createdAt: new Date().toISOString(),
+          }
+        })
+        return res.json(events)
+      } catch (err) {
+        // Fallback to Nager.Date official API if RapidAPI call fails (subscription/limits)
+        try {
+          const url2 = new URL(`https://date.nager.at/api/v3/PublicHolidays/${year}/${country}`)
+          const r2 = await axios.get(url2.toString(), { timeout: 15000 })
+          const items: any[] = Array.isArray(r2.data) ? r2.data : []
+          const filtered = (month && month >= 1 && month <= 12)
+            ? items.filter((h: any) => {
+                const d = String(h?.date || '').slice(0, 10)
+                const m = Number(d.slice(5, 7))
+                return m === month
+              })
+            : items
+          const events = filtered.map((h: any) => ({
+            id: `holiday-${country}-${String(h.date).slice(0,10)}-${String(h.localName || h.name).replace(/\s+/g,'-').toLowerCase()}`,
+            title: String(h.localName || h.name || 'Public Holiday'),
+            description: Array.isArray(h.types) ? h.types.join(', ') : (h.type || 'Public holiday'),
+            type: 'reminder',
+            startTime: '00:00',
+            endTime: '23:59',
+            date: String(h.date).slice(0,10),
+            priority: 'low',
+            status: 'scheduled',
+            createdBy: 'Public Holidays',
+            createdAt: new Date().toISOString(),
+          }))
+          return res.json(events)
+        } catch {}
+      }
+    }
+
+    // Fallback: HolidayAPI.com (requires HOLIDAY_API_KEY)
+    const key = process.env.HOLIDAY_API_KEY || ''
+    if (!key) {
+      // As a final fallback when no keys are configured at all, try Nager.Date official API directly
+      try {
+        const url2 = new URL(`https://date.nager.at/api/v3/PublicHolidays/${year}/${country}`)
+        const r2 = await axios.get(url2.toString(), { timeout: 15000 })
+        const items: any[] = Array.isArray(r2.data) ? r2.data : []
+        const filtered = (month && month >= 1 && month <= 12)
+          ? items.filter((h: any) => {
+              const d = String(h?.date || '').slice(0, 10)
+              const m = Number(d.slice(5, 7))
+              return m === month
+            })
+          : items
+        const events = filtered.map((h: any) => ({
+          id: `holiday-${country}-${String(h.date).slice(0,10)}-${String(h.localName || h.name).replace(/\s+/g,'-').toLowerCase()}`,
+          title: String(h.localName || h.name || 'Public Holiday'),
+          description: Array.isArray(h.types) ? h.types.join(', ') : (h.type || 'Public holiday'),
+          type: 'reminder',
+          startTime: '00:00',
+          endTime: '23:59',
+          date: String(h.date).slice(0,10),
+          priority: 'low',
+          status: 'scheduled',
+          createdBy: 'Public Holidays',
+          createdAt: new Date().toISOString(),
+        }))
+        return res.json(events)
+      } catch {}
+      return res.status(200).json([])
+    }
+    const language = String(req.query.language || 'en')
+    const url = new URL('https://holidayapi.com/v1/holidays')
+    url.searchParams.set('key', key)
+    url.searchParams.set('country', country)
+    url.searchParams.set('year', String(year))
+    url.searchParams.set('public', 'true')
+    url.searchParams.set('language', language)
+    if (month && month >= 1 && month <= 12) url.searchParams.set('month', String(month))
+    const r = await axios.get(url.toString(), { timeout: 15000 })
+    const items: any[] = Array.isArray(r.data?.holidays) ? r.data.holidays : []
+    const events = items.map((h: any) => {
+      const date = String(h?.date || '').slice(0, 10)
+      const name = String(h?.name || 'Public Holiday')
+      return {
+        id: `holiday-${country}-${date}-${(h?.uuid || name).replace(/\s+/g,'-').toLowerCase()}`,
+        title: name,
+        description: String(h?.type?.join?.(', ') || 'Public holiday'),
+        type: 'reminder',
+        startTime: '00:00',
+        endTime: '23:59',
+        date,
+        priority: 'low',
+        status: 'scheduled',
+        createdBy: 'HolidayAPI',
+        createdAt: new Date().toISOString(),
+      }
+    })
+    return res.json(events)
+  } catch (e: any) {
+    res.status(400).json({ error: e?.response?.data || e?.message || 'Failed to load holidays' })
+  }
+})
+
+// --- Minimal ICS parser (shared logic with frontend, sanitized) ---
+function parseICS(text: string, sourceName: string) {
+  const rawLines = text.split(/\r?\n/)
+  const lines: string[] = []
+  for (let i = 0; i < rawLines.length; i++) {
+    const l = rawLines[i]
+    if (l.startsWith(' ') && lines.length > 0) lines[lines.length - 1] += l.slice(1)
+    else lines.push(l)
+  }
+  const out: any[] = []
+  let cursor: Record<string, string> | null = null
+  for (const l of lines) {
+    if (l.startsWith('BEGIN:VEVENT')) cursor = {}
+    else if (l.startsWith('END:VEVENT')) {
+      if (cursor) {
+        const uid = cursor['UID'] || Math.random().toString(36).slice(2)
+        const summary = cursor['SUMMARY'] || '(No title)'
+        const descRaw = (cursor['DESCRIPTION'] || '').replace(/\\n/g, '\n')
+        const dtstart = cursor['DTSTART'] || cursor['DTSTART;VALUE=DATE'] || ''
+        const dtend = cursor['DTEND'] || cursor['DTEND;VALUE=DATE'] || ''
+        const st = parseIcsDate(dtstart)
+        const et = parseIcsDate(dtend || dtstart)
+        const location = cursor['LOCATION'] || ''
+        const urlProp = cursor['URL'] || ''
+        const all = `${urlProp}\n${descRaw}\n${location}`
+        const urls = (all.match(/https?:\/\/\S+/g) || []) as string[]
+        const firstUrl = urls.find(u => u.toLowerCase().includes('teams.microsoft'))
+          || urls.find(u => u.toLowerCase().includes('zoom.us'))
+          || urls.find(u => u.toLowerCase().includes('meet.google.com'))
+          || urls[0]
+        const platform = detectPlatform(firstUrl)
+        const isAllDay = /VALUE=DATE/i.test(dtstart || '')
+        const type = firstUrl ? 'meeting' : (isAllDay ? 'reminder' : 'task')
+        out.push({
+          id: `ics-${uid}`,
+          title: summary,
+          description: stripUrls(descRaw),
+          type,
+          startTime: st.time,
+          endTime: et.time || st.time,
+          date: st.date,
+          priority: 'medium',
+          status: 'scheduled',
+          platform,
+          meetingLink: firstUrl,
+          attendees: [],
+          createdBy: sourceName,
+          createdAt: new Date().toISOString(),
+        })
+      }
+      cursor = null
+    } else if (cursor) {
+      const idx = l.indexOf(':')
+      if (idx > 0) {
+        const key = l.slice(0, idx).split(';')[0].toUpperCase()
+        const value = l.slice(idx + 1)
+        cursor[key] = value
+      }
+    }
+  }
+  return out
+}
+
+function parseIcsDate(val: string): { date: string; time: string } {
+  const m = String(val || '')
+  const datePart = m.slice(0, 8)
+  const year = datePart.slice(0, 4)
+  const month = datePart.slice(4, 6)
+  const day = datePart.slice(6, 8)
+  const date = `${year}-${month}-${day}`
+  let time = '00:00'
+  if (m.length >= 15 && m[8] === 'T') time = `${m.slice(9, 11)}:${m.slice(11, 13)}`
+  return { date, time }
+}
+function stripUrls(s: string): string {
+  return String(s || '').replace(/https?:\/\/\S+/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+function detectPlatform(u?: string) {
+  const s = String(u || '').toLowerCase()
+  if (s.includes('aka.ms/jointeams')) return 'teams'
+  if (s.includes('teams.microsoft')) return 'teams'
+  if (s.includes('zoom.us')) return 'zoom'
+  if (s.includes('meet.google.com')) return 'google-meet'
+  return undefined
+}

@@ -1,25 +1,58 @@
 import React, { useState } from 'react'
 import { PaymentReceipt, ReceiptFilters, Invoice } from '../types/slips-invoices'
 import { slipsInvoicesAPI } from '../services/slipsInvoicesMockAPI'
+import { API_BASE } from '../services/api'
 
 interface ReceiptsTableProps {
   receipts: PaymentReceipt[]
   filters: ReceiptFilters
   onFiltersChange: (filters: ReceiptFilters) => void
-  onRefresh: () => void
+  onRefresh?: () => void
 }
 
 const ReceiptsTable: React.FC<ReceiptsTableProps> = ({ 
   receipts, 
   filters, 
-  onFiltersChange, 
-  onRefresh 
+  onFiltersChange,
+  onRefresh,
 }) => {
   const [selectedReceipt, setSelectedReceipt] = useState<PaymentReceipt | null>(null)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [suggestedInvoices, setSuggestedInvoices] = useState<Invoice[]>([])
+  const [slipPreviewUrl, setSlipPreviewUrl] = useState<string | null>(null)
+  const [slipPreviewType, setSlipPreviewType] = useState<string | null>(null)
+  // Local guard: remember receipts verified in this browser so we don't allow double-verify even if sync re-lists them
+  const [verifiedOnce, setVerifiedOnce] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('verifiedReceipts') || '[]'
+      const arr = JSON.parse(raw)
+      return new Set(Array.isArray(arr) ? arr : [])
+    } catch {
+      return new Set()
+    }
+  })
+
+  const rememberVerified = (id: string) => {
+    try {
+      const next = new Set(verifiedOnce)
+      next.add(id)
+      setVerifiedOnce(next)
+      localStorage.setItem('verifiedReceipts', JSON.stringify(Array.from(next)))
+    } catch {}
+  }
+
+  const displayStatus = (r: PaymentReceipt) => (verifiedOnce.has(r.id) ? 'Verified' : r.status)
+
+  const buildFileUrl = (key?: string | null): string | null => {
+    if (!key) return null
+    // Absolute URL passes through
+    if (/^https?:\/\//i.test(key)) return key
+    // Ensure single slash when prefixing API base
+    const k = key.startsWith('/') ? key : `/${key}`
+    return `${API_BASE}${k}`
+  }
 
   const handleViewReceipt = async (receipt: PaymentReceipt) => {
     setSelectedReceipt(receipt)
@@ -41,18 +74,21 @@ const ReceiptsTable: React.FC<ReceiptsTableProps> = ({
   const handleMatchInvoice = async (receiptId: string, invoiceId: string) => {
     try {
       setLoading(true)
+      const receipt = receipts.find(r => r.id === receiptId)
+      const amount = receipt?.amount || 0
+      
       const response = await slipsInvoicesAPI.matchReceiptToInvoice({
         receiptId,
         invoiceId,
-        confirm: true
+        amount
       })
 
       if (response.success) {
-        onRefresh()
         setError(null)
         // Close drawer and refresh suggestions
         setIsDrawerOpen(false)
         setSelectedReceipt(null)
+        onRefresh?.()
       } else {
         setError(response.message || 'Failed to match receipt to invoice')
       }
@@ -69,7 +105,6 @@ const ReceiptsTable: React.FC<ReceiptsTableProps> = ({
       const response = await slipsInvoicesAPI.unmatchReceipt(receiptId)
 
       if (response.success) {
-        onRefresh()
         setError(null)
         // Refresh suggestions
         if (selectedReceipt) {
@@ -78,6 +113,7 @@ const ReceiptsTable: React.FC<ReceiptsTableProps> = ({
             setSuggestedInvoices(suggestionsResponse.data)
           }
         }
+        onRefresh?.()
       } else {
         setError(response.message || 'Failed to unmatch receipt')
       }
@@ -91,11 +127,12 @@ const ReceiptsTable: React.FC<ReceiptsTableProps> = ({
   const handleVerifyReceipt = async (receiptId: string) => {
     try {
       setLoading(true)
-      const response = await slipsInvoicesAPI.verifyReceipt(receiptId)
+      const response = await slipsInvoicesAPI.verifyReceipt({ receiptId })
 
       if (response.success) {
-        onRefresh()
         setError(null)
+        rememberVerified(receiptId)
+        onRefresh?.()
       } else {
         setError(response.message || 'Failed to verify receipt')
       }
@@ -117,7 +154,6 @@ const ReceiptsTable: React.FC<ReceiptsTableProps> = ({
       if (response.success) {
         // Show success message
         alert(`Payment slip successfully pulled from email for receipt ${receipt.id}`)
-        onRefresh()
       } else {
         setError(response.message || 'Failed to pull payment slip from email')
       }
@@ -127,6 +163,8 @@ const ReceiptsTable: React.FC<ReceiptsTableProps> = ({
       setLoading(false)
     }
   }
+
+  // re-extract handled inline in button click to avoid TS scoping warnings
 
   const handleRejectReceipt = async (receiptId: string) => {
     const reason = prompt('Please provide a reason for rejection:')
@@ -140,7 +178,6 @@ const ReceiptsTable: React.FC<ReceiptsTableProps> = ({
       })
 
       if (response.success) {
-        onRefresh()
         setError(null)
       } else {
         setError(response.message || 'Failed to reject receipt')
@@ -199,13 +236,43 @@ const ReceiptsTable: React.FC<ReceiptsTableProps> = ({
     })
   }
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes'
-    const k = 1024
-    const sizes = ['Bytes', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  const openSlipOnly = (receipt: PaymentReceipt) => {
+    if (!receipt.fileKey) return
+    const url = buildFileUrl(receipt.fileKey)
+    const typeGuess = (receipt.fileType || '').toLowerCase()
+    const nameGuess = (receipt.fileName || '').toLowerCase()
+    const isImage = typeGuess.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(nameGuess)
+    const isPdf = typeGuess.includes('pdf') || nameGuess.endsWith('.pdf')
+
+    if (isPdf) {
+      // Many servers set X-Frame-Options: SAMEORIGIN via helmet; open PDFs in a new tab
+      if (url) window.open(url, '_blank', 'noopener,noreferrer')
+      return
+    }
+
+    // Preview images inline
+    setSlipPreviewType(isImage ? 'image/*' : (typeGuess || null))
+    setSlipPreviewUrl(url)
   }
+
+  const closeSlipOnly = () => {
+    setSlipPreviewUrl(null)
+    setSlipPreviewType(null)
+  }
+
+  const getReceiptDisplayId = (r: PaymentReceipt) => {
+    // Prefer a human-friendly label if available
+    const rc: any = r as any
+    if (rc.receiptCode) return rc.receiptCode
+    if (r.fileName && r.fileName.length <= 28) return r.fileName
+    // Fall back to compacted id/message id
+    const base = r.messageId || r.id
+    if (!base) return '—'
+    if (base.length <= 14) return base
+    // Show start and end for readability
+    return `${base.slice(0, 6)}…${base.slice(-6)}`
+  }
+
 
   if (receipts.length === 0) {
     return (
@@ -348,6 +415,9 @@ const ReceiptsTable: React.FC<ReceiptsTableProps> = ({
                 Email
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Slip
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                 Amount
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -377,8 +447,9 @@ const ReceiptsTable: React.FC<ReceiptsTableProps> = ({
                   <button
                     onClick={() => handleViewReceipt(receipt)}
                     className="text-sm font-medium text-primary-600 hover:text-primary-500"
+                    title={receipt.id}
                   >
-                    {receipt.id}
+                    {getReceiptDisplayId(receipt)}
                   </button>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
@@ -387,17 +458,62 @@ const ReceiptsTable: React.FC<ReceiptsTableProps> = ({
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                  <div className="flex items-center justify-center">
-                    <button
-                      onClick={() => handlePullFromEmail(receipt)}
-                      className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                      title="Pull payment slip from email"
-                    >
-                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                      </svg>
-                    </button>
+                  <div className="flex items-center justify-center space-x-3">
+                    {receipt.fileKey ? (
+                      <button
+                        onClick={() => handleViewReceipt(receipt)}
+                        className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                        title="View slip"
+                      >
+                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handlePullFromEmail(receipt)}
+                        className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                        title="Pull payment slip from email"
+                      >
+                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                      {receipt.fileKey ? (
+                        <div className="w-40">
+                          {receipt.fileType?.startsWith('image/') ? (
+                            <img
+                          src={buildFileUrl(receipt.fileKey) || undefined}
+                          alt={receipt.fileName || 'slip'}
+                          className="max-h-24 rounded border border-gray-200 dark:border-gray-600 cursor-pointer object-contain"
+                          onClick={() => openSlipOnly(receipt)}
+                        />
+                          ) : (receipt.fileType === 'application/pdf' || (receipt.fileName || '').toLowerCase().endsWith('.pdf')) ? (
+                            <button
+                              onClick={() => openSlipOnly(receipt)}
+                              className="text-primary-600 hover:text-primary-500"
+                              title="Open slip (PDF)"
+                            >
+                              Open PDF
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => openSlipOnly(receipt)}
+                              className="text-primary-600 hover:text-primary-500"
+                              title="Open slip"
+                            >
+                              Open Slip
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 dark:text-gray-500">—</span>
+                      )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                   {receipt.amount ? formatCurrency(receipt.amount) : 'N/A'}
@@ -412,14 +528,14 @@ const ReceiptsTable: React.FC<ReceiptsTableProps> = ({
                   {formatDate(receipt.receivedAt)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={getStatusBadge(receipt.status)}>
-                    {receipt.status}
-                  </span>
+                    <span className={getStatusBadge(displayStatus(receipt))}>
+                    {displayStatus(receipt)}
+                    </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                  {receipt.matchedInvoiceId ? (
+                  {receipt.matchedInvoiceId || receipt.matchedInvoiceNo ? (
                     <span className="text-green-600 dark:text-green-400 font-medium">
-                      {receipt.matchedInvoiceId}
+                      {(receipt as any).matchedInvoiceNo || receipt.matchedInvoiceId}
                     </span>
                   ) : (
                     <span className="text-gray-400 dark:text-gray-500">Not matched</span>
@@ -458,7 +574,7 @@ const ReceiptsTable: React.FC<ReceiptsTableProps> = ({
                       </svg>
                     </button>
                     
-                    {receipt.status === 'Submitted' && (
+                    {displayStatus(receipt) === 'Submitted' && !verifiedOnce.has(receipt.id) && (
                       <>
                         <button
                           onClick={() => handleVerifyReceipt(receipt.id)}
@@ -490,6 +606,27 @@ const ReceiptsTable: React.FC<ReceiptsTableProps> = ({
           </tbody>
         </table>
       </div>
+      {/* Slip-only fullscreen preview */}
+      {slipPreviewUrl && (
+        <div className="fixed inset-0 z-50 bg-black bg-opacity-90 flex items-center justify-center p-4">
+          <button
+            onClick={closeSlipOnly}
+            className="absolute top-4 right-4 text-white hover:text-gray-300"
+            aria-label="Close"
+          >
+            <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          <div className="w-full h-full max-w-5xl max-h-[90vh] flex items-center justify-center">
+            {slipPreviewType && slipPreviewType.startsWith('image/') ? (
+              <img src={slipPreviewUrl} alt="slip" className="max-h-[90vh] max-w-full object-contain" />
+            ) : (
+              <iframe src={slipPreviewUrl} title="Slip" className="w-full h-full rounded" />
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Receipt Drawer */}
       {isDrawerOpen && selectedReceipt && (
@@ -503,7 +640,6 @@ const ReceiptsTable: React.FC<ReceiptsTableProps> = ({
           }}
           onMatchInvoice={handleMatchInvoice}
           onUnmatchReceipt={handleUnmatchReceipt}
-          onRefresh={onRefresh}
         />
       )}
     </div>
@@ -517,10 +653,25 @@ const ReceiptDrawer: React.FC<{
   onClose: () => void
   onMatchInvoice: (receiptId: string, invoiceId: string) => void
   onUnmatchReceipt: (receiptId: string) => void
-  onRefresh: () => void
-}> = ({ receipt, suggestedInvoices, onClose, onMatchInvoice, onUnmatchReceipt, onRefresh }) => {
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+}> = ({ receipt, suggestedInvoices, onClose, onMatchInvoice, onUnmatchReceipt }) => {
+  const [error] = useState<string | null>(null)
+  const displayStatusLocal = (r: PaymentReceipt) => {
+    try {
+      const raw = localStorage.getItem('verifiedReceipts') || '[]'
+      const arr = JSON.parse(raw)
+      const set = new Set(Array.isArray(arr) ? arr : [])
+      return set.has(r.id) ? 'Verified' : r.status
+    } catch {
+      return r.status
+    }
+  }
+
+  const mkUrl = (key?: string | null): string | null => {
+    if (!key) return null
+    if (/^https?:\/\//i.test(key)) return key
+    const k = key.startsWith('/') ? key : `/${key}`
+    return `${API_BASE}${k}`
+  }
 
   const formatCurrency = (amount: number, currency: string = 'USD') => {
     return new Intl.NumberFormat('en-US', {
@@ -539,13 +690,6 @@ const ReceiptDrawer: React.FC<{
     })
   }
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes'
-    const k = 1024
-    const sizes = ['Bytes', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-  }
 
   const getStatusBadge = (status: string) => {
     const baseClasses = "inline-flex items-center px-3 py-1 rounded-full text-sm font-medium"
@@ -588,8 +732,8 @@ const ReceiptDrawer: React.FC<{
                 Payment Receipt Details
               </h2>
               <div className="flex items-center space-x-4 mt-2">
-                <span className={getStatusBadge(receipt.status)}>
-                  {receipt.status}
+                <span className={getStatusBadge(displayStatusLocal(receipt))}>
+                  {displayStatusLocal(receipt)}
                 </span>
                 <span className={getSourceBadge(receipt.source)}>
                   {receipt.source.replace('_', ' ').toUpperCase()}
@@ -694,16 +838,52 @@ const ReceiptDrawer: React.FC<{
                       <div>
                         <div className="text-sm text-gray-600 dark:text-gray-400">File Size</div>
                         <div className="font-medium text-gray-900 dark:text-white">
-                          {receipt.fileSize ? formatFileSize(receipt.fileSize) : 'Unknown'}
+                          {receipt.fileSize ? `${(receipt.fileSize / 1024).toFixed(1)} KB` : 'Unknown'}
                         </div>
                       </div>
                     </div>
 
                     {receipt.fileKey && (
-                      <div>
-                        <div className="text-sm text-gray-600 dark:text-gray-400">File Key</div>
-                        <div className="font-mono text-xs text-gray-600 dark:text-gray-400 break-all">
-                          {receipt.fileKey}
+                      <div className="space-y-2">
+                        <div>
+                          <div className="text-sm text-gray-600 dark:text-gray-400">File URL</div>
+                          <div className="font-mono text-xs text-gray-600 dark:text-gray-400 break-all">
+                            {receipt.fileKey}
+                          </div>
+                        </div>
+                        <div className="mt-2">
+                          <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">Preview</div>
+                          {receipt.fileType?.startsWith('image/') ? (
+                            <img src={mkUrl(receipt.fileKey) || undefined} alt={receipt.fileName || 'receipt'} className="max-h-96 rounded border border-gray-200 dark:border-gray-600" />
+                          ) : (receipt.fileType === 'application/pdf' || (receipt.fileName || '').toLowerCase().endsWith('.pdf')) ? (
+                            <div>
+                              <iframe src={mkUrl(receipt.fileKey) || undefined} title="Receipt PDF" className="w-full h-96 rounded border border-gray-200 dark:border-gray-600" />
+                              <div className="mt-2">
+                                <a href={mkUrl(receipt.fileKey) || undefined} target="_blank" rel="noreferrer" className="text-primary-600 hover:text-primary-500 text-sm">Open in new tab</a>
+                              </div>
+                            </div>
+                          ) : (
+                            <a href={mkUrl(receipt.fileKey) || undefined} target="_blank" rel="noreferrer" className="text-primary-600 hover:text-primary-500 text-sm">Open attachment</a>
+                          )}
+                          <div className="mt-3">
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const resp = await slipsInvoicesAPI.reextractReceiptAmount?.(receipt.id)
+                                  if (resp?.success) {
+                                    alert('Amount re-extracted from slip.')
+                                  } else {
+                                    alert(resp?.message || 'Failed to re-extract amount')
+                                  }
+                                } catch (e) {
+                                  alert('Error re-extracting amount')
+                                }
+                              }}
+                              className="text-xs px-3 py-1 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50"
+                            >
+                              Re-extract Amount
+                            </button>
+                          </div>
                         </div>
                       </div>
                     )}

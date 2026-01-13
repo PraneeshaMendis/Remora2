@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { listUsers as fetchUsers } from '../services/usersAPI.ts'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { 
   HiArrowLeft, 
@@ -84,24 +85,43 @@ const AddProject: React.FC = () => {
   const [selectedDepartment, setSelectedDepartment] = useState('')
   const [selectedRole, setSelectedRole] = useState('')
   const [filteredTeamMembers, setFilteredTeamMembers] = useState<ProjectMember[]>([])
+  const [teamMembers, setTeamMembers] = useState<ProjectMember[]>([])
 
-  // Mock data
-  const teamMembers: ProjectMember[] = [
-    { id: '1', name: 'Alice Johnson', email: 'alice@company.com', role: 'director', department: 'Management', avatar: 'AJ' },
-    { id: '2', name: 'Bob Williams', email: 'bob@company.com', role: 'manager', department: 'Security', avatar: 'BW' },
-    { id: '3', name: 'Charlie Brown', email: 'charlie@company.com', role: 'member', department: 'Development', avatar: 'CB' },
-    { id: '4', name: 'Diana Prince', email: 'diana@company.com', role: 'consultant', department: 'Compliance', avatar: 'DP' },
-    { id: '5', name: 'Eve Smith', email: 'eve@company.com', role: 'lead', department: 'Testing', avatar: 'ES' },
-    { id: '6', name: 'Frank Miller', email: 'frank@company.com', role: 'manager', department: 'Development', avatar: 'FM' },
-    { id: '7', name: 'Grace Lee', email: 'grace@company.com', role: 'member', department: 'Security', avatar: 'GL' },
-    { id: '8', name: 'Henry Davis', email: 'henry@company.com', role: 'consultant', department: 'Management', avatar: 'HD' },
-    { id: '9', name: 'Ivy Chen', email: 'ivy@company.com', role: 'lead', department: 'Compliance', avatar: 'IC' },
-    { id: '10', name: 'Jack Wilson', email: 'jack@company.com', role: 'member', department: 'Testing', avatar: 'JW' }
-  ]
+  // Load real users for team assignment
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const res = await fetchUsers({ page: 1, limit: 100 })
+        const items = (res.items || []).map((u: any) => {
+          const name = String(u.name || '')
+          const initials = name
+            .split(' ')
+            .map((p: string) => p[0])
+            .join('')
+            .slice(0, 2)
+            .toUpperCase()
+          return {
+            id: String(u.id),
+            name,
+            email: String(u.email || ''),
+            role: String((u?.role?.name || u?.role || '')).toLowerCase(),
+            department: String(u?.department?.name || u?.department || ''),
+            avatar: initials,
+          } as ProjectMember
+        })
+        setTeamMembers(items)
+        setFilteredTeamMembers(items)
+      } catch (e) {
+        console.error('Failed to load team members', e)
+        setTeamMembers([])
+        setFilteredTeamMembers([])
+      }
+    })()
+  }, [])
 
   // Get unique departments and roles
-  const departments = [...new Set(teamMembers.map(member => member.department))]
-  const roles = [...new Set(teamMembers.map(member => member.role))]
+  const departments = [...new Set(teamMembers.map(member => member.department).filter(Boolean))]
+  const roles = [...new Set(teamMembers.map(member => member.role).filter(Boolean))]
 
   const clients: Client[] = [
     { id: '1', name: 'John Doe', email: 'john@client1.com', company: 'Tech Corp', phone: '+1-555-0123' },
@@ -261,7 +281,7 @@ const AddProject: React.FC = () => {
     }
 
     setFilteredTeamMembers(filtered)
-  }, [selectedDepartment, selectedRole])
+  }, [selectedDepartment, selectedRole, teamMembers])
 
   const handleTeamMemberToggle = (memberId: string) => {
     setSelectedTeamMembers(prev => 
@@ -358,31 +378,50 @@ const AddProject: React.FC = () => {
     }
 
     setIsSaving(true)
-    
-    // Create project object with time allocation
-    const projectData = {
-      ...formData,
-      id: `project-${Date.now()}`,
-      name: formData.title,
-      allocatedHours: formData.projectHours,
-      loggedHours: 0,
-      remainingHours: formData.projectHours,
-      team: selectedTeamMembers,
-      clients: selectedClients,
-      attachments: attachments.map(file => ({
-        name: file.name,
-        size: file.size,
-        type: file.type
-      })),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+
+    try {
+      const body = {
+        code: formData.projectCode || `PRJ-${Date.now().toString().slice(-6)}`,
+        title: formData.title,
+        description: formData.description,
+        allocatedHours: Number(formData.projectHours) || 0,
+        visibility: 'TEAM',
+        status: 'PLANNING',
+        startDate: formData.startDate ? new Date(formData.startDate).toISOString() : undefined,
+        endDate: formData.projectDeadline ? new Date(formData.projectDeadline).toISOString() : undefined,
+        memberUserIds: selectedTeamMembers,
+      }
+      const base = (import.meta as any).env.VITE_API_URL || 'http://localhost:4000'
+      const res = await fetch(`${base}/projects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const txt = await res.text()
+        throw new Error(txt || `Failed to create project: ${res.status}`)
+      }
+      const created = await res.json()
+      // Ensure selected team members are added as project members even if backend ignores memberUserIds
+      if (selectedTeamMembers && selectedTeamMembers.length > 0) {
+        try {
+          await fetch(`${base}/projects/${created.id}/members`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userIds: selectedTeamMembers }),
+          })
+        } catch (e) {
+          console.warn('Failed to attach members to project', e)
+        }
+      }
+      console.log('Project created and published:', created)
+      navigate('/projects')
+    } catch (e: any) {
+      console.error(e)
+      alert(e.message || 'Failed to create project')
+    } finally {
+      setIsSaving(false)
     }
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    console.log('Project created and published:', projectData)
-    setIsSaving(false)
-    navigate('/projects')
   }
 
   const getPriorityColor = (priority: string) => {

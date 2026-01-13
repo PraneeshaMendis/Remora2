@@ -1,14 +1,16 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
+import { apiGet, apiJson } from '../services/api'
 
 interface User {
   id: string
   email: string
   name: string
-  role: 'director' | 'manager' | 'member'
+  role: 'admin' | 'director' | 'manager' | 'member' | 'consultant' | 'lead' | 'client'
   department: string
   isActive: boolean
   avatar?: string
   lastActive: string
+  isSuperAdmin?: boolean
 }
 
 interface AuthContextType {
@@ -38,65 +40,93 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    // Check for existing session
-    const savedUser = localStorage.getItem('user')
-    if (savedUser) {
-      setUser(JSON.parse(savedUser))
+    // Hydrate from real session first (JWT), fallback to saved mock user
+    const init = async () => {
+      try {
+        const token = localStorage.getItem('authToken')
+        if (token) {
+          const me = await apiGet('/api/users/me')
+          if (me) {
+            const role = String(me.role || '').toLowerCase()
+            const mappedRole: User['role'] =
+              role === 'admin' ? 'admin' :
+              role === 'director' ? 'director' :
+              role === 'manager' ? 'manager' :
+              role === 'consultant' ? 'consultant' :
+              role === 'lead' ? 'lead' :
+              role === 'client' ? 'client' : 'member'
+            const hydrated: User = {
+              id: String(me.id),
+              email: String(me.email || ''),
+              name: String(me.name || ''),
+              role: mappedRole,
+              department: String(me.department || ''),
+              isActive: true,
+              avatar: String(me.name || 'U').split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase(),
+              lastActive: new Date().toISOString(),
+              isSuperAdmin: !!me.isSuperAdmin,
+            }
+            setUser(hydrated)
+            localStorage.setItem('user', JSON.stringify(hydrated))
+            // Ensure x-user-id is available for dev header flows
+            localStorage.setItem('userId', hydrated.id)
+            return
+          }
+        }
+        const savedUser = localStorage.getItem('user')
+        if (savedUser) {
+          setUser(JSON.parse(savedUser))
+        }
+      } catch (err) {
+        // If token was present but invalid/expired, clear it and force login
+        const hadToken = !!localStorage.getItem('authToken')
+        if (hadToken) {
+          localStorage.removeItem('authToken')
+          localStorage.removeItem('user')
+          setUser(null)
+        } else {
+          const savedUser = localStorage.getItem('user')
+          if (savedUser) setUser(JSON.parse(savedUser))
+        }
+      } finally {
+        setIsLoading(false)
+      }
     }
-    setIsLoading(false)
+    init()
   }, [])
 
   const login = async (email: string, password: string) => {
     setIsLoading(true)
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      // Mock user data based on email
-      let mockUser: User
-      
-      if (email.includes('director')) {
-        mockUser = {
-          id: 'director-1',
-          email,
-          name: 'Director',
-          role: 'director',
-          department: 'Executive',
-          isActive: true,
-          avatar: 'D',
-          lastActive: new Date().toISOString()
-        }
-      } else if (email.includes('manager')) {
-        mockUser = {
-          id: 'manager-1',
-          email,
-          name: 'Manager',
-          role: 'manager',
-          department: 'Engineering',
-          isActive: true,
-          avatar: 'M',
-          lastActive: new Date().toISOString()
-        }
-      } else {
-        mockUser = {
-          id: 'member-1',
-          email,
-          name: email.split('@')[0],
-          role: 'member',
-          department: 'Engineering',
-          isActive: true,
-          avatar: email.split('@')[0].charAt(0).toUpperCase(),
-          lastActive: new Date().toISOString()
-        }
+      const res = await apiJson('/api/auth/login', 'POST', { email, password })
+      if (res?.token) {
+        localStorage.setItem('authToken', res.token)
       }
-      
-      // Validate password (basic check)
-      if (password.length < 6) {
-        throw new Error('Password must be at least 6 characters')
+      // hydrate from /me
+      const me = await apiGet('/api/users/me')
+      const role = String(me.role || '').toLowerCase()
+      const mappedRole: User['role'] =
+        role === 'admin' ? 'admin' :
+        role === 'director' ? 'director' :
+        role === 'manager' ? 'manager' :
+        role === 'consultant' ? 'consultant' :
+        role === 'lead' ? 'lead' :
+        role === 'client' ? 'client' : 'member'
+      const hydrated: User = {
+        id: String(me.id),
+        email: String(me.email || ''),
+        name: String(me.name || ''),
+        role: mappedRole,
+        department: String(me.department || ''),
+        isActive: true,
+        avatar: String(me.name || 'U').split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase(),
+        lastActive: new Date().toISOString(),
+        isSuperAdmin: !!me.isSuperAdmin,
       }
-      
-      setUser(mockUser)
-      localStorage.setItem('user', JSON.stringify(mockUser))
+      setUser(hydrated)
+      localStorage.setItem('user', JSON.stringify(hydrated))
+      // Also set userId for APIs that use x-user-id in dev
+      localStorage.setItem('userId', hydrated.id)
     } catch (error) {
       throw new Error('Invalid credentials')
     } finally {
@@ -107,6 +137,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const logout = () => {
     setUser(null)
     localStorage.removeItem('user')
+    localStorage.removeItem('authToken')
+    localStorage.removeItem('userId')
   }
 
   const isAuthenticated = !!user

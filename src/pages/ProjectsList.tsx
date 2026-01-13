@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Project } from '../types/index.ts'
 import { HiX, HiEye, HiPencil, HiDocument, HiClock, HiUsers, HiCheckCircle, HiTrash } from 'react-icons/hi'
-
+import { getProjects } from '../services/projectsAPI'
+import { listUsers as fetchUsers } from '../services/usersAPI.ts'
+import { apiGet, apiJson } from '../services/api.ts'
 
 const ProjectsList: React.FC = () => {
   const navigate = useNavigate()
@@ -42,23 +44,48 @@ const ProjectsList: React.FC = () => {
   const [attachments, setAttachments] = useState<File[]>([])
   const [selectedDepartment, setSelectedDepartment] = useState('')
   const [selectedRole, setSelectedRole] = useState('')
+  const [teamMembers, setTeamMembers] = useState<Array<{ id: string; name: string; email: string; role: string; department: string; avatar?: string }>>([])
+  const [filteredTeamMembers, setFilteredTeamMembers] = useState<typeof teamMembers>([])
+  const [originalMemberIds, setOriginalMemberIds] = useState<string[]>([])
 
-  // Mock data for team members
-  const teamMembers = [
-    { id: '1', name: 'Alice Johnson', email: 'alice@company.com', role: 'director', department: 'Management', avatar: 'AJ' },
-    { id: '2', name: 'Bob Williams', email: 'bob@company.com', role: 'manager', department: 'Security', avatar: 'BW' },
-    { id: '3', name: 'Charlie Brown', email: 'charlie@company.com', role: 'member', department: 'Development', avatar: 'CB' },
-    { id: '4', name: 'Diana Prince', email: 'diana@company.com', role: 'consultant', department: 'Compliance', avatar: 'DP' },
-    { id: '5', name: 'Eve Smith', email: 'eve@company.com', role: 'lead', department: 'Testing', avatar: 'ES' },
-    { id: '6', name: 'Frank Miller', email: 'frank@company.com', role: 'manager', department: 'Development', avatar: 'FM' },
-    { id: '7', name: 'Grace Lee', email: 'grace@company.com', role: 'member', department: 'Security', avatar: 'GL' },
-    { id: '8', name: 'Henry Davis', email: 'henry@company.com', role: 'consultant', department: 'Management', avatar: 'HD' },
-    { id: '9', name: 'Ivy Chen', email: 'ivy@company.com', role: 'lead', department: 'Compliance', avatar: 'IC' },
-    { id: '10', name: 'Jack Wilson', email: 'jack@company.com', role: 'member', department: 'Testing', avatar: 'JW' }
-  ]
+  // Load real users for team assignment
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const res = await fetchUsers({ page: 1, limit: 100 })
+        const items = (res.items || []).map((u: any) => {
+          const name = String(u.name || '')
+          const initials = name.split(' ').map((p: string) => p[0]).join('').slice(0, 2).toUpperCase()
+          return {
+            id: String(u.id),
+            name,
+            email: String(u.email || ''),
+            role: String((u?.role?.name || u?.role || '')).toLowerCase(),
+            department: String(u?.department?.name || u?.department || ''),
+            avatar: initials,
+          }
+        })
+        setTeamMembers(items)
+        setFilteredTeamMembers(items)
+      } catch (e) {
+        console.error('Failed to load team members', e)
+        setTeamMembers([])
+        setFilteredTeamMembers([])
+      }
+    })()
+  }, [])
 
-  const departments = ['Management', 'Security', 'Development', 'Compliance', 'Testing']
-  const roles = ['director', 'manager', 'member', 'consultant', 'lead']
+  // Derive filters
+  const departments = [...new Set(teamMembers.map(m => m.department).filter(Boolean))]
+  const roles = [...new Set(teamMembers.map(m => m.role).filter(Boolean))]
+
+  // Apply filters
+  useEffect(() => {
+    let list = teamMembers
+    if (selectedDepartment) list = list.filter(m => m.department === selectedDepartment)
+    if (selectedRole) list = list.filter(m => m.role === selectedRole)
+    setFilteredTeamMembers(list)
+  }, [selectedDepartment, selectedRole, teamMembers])
 
   // Load drafts from localStorage
   useEffect(() => {
@@ -110,15 +137,21 @@ const ProjectsList: React.FC = () => {
     return count
   }
 
-  // Mock data
-  const [projects, setProjects] = useState<Project[]>([
+  // Toggle for mock data during development; default to false to use API
+  const USE_MOCK = (import.meta as any).env?.VITE_USE_MOCK === 'true'
+
+  // Real projects from API; start empty
+  const [projects, setProjects] = useState<Project[]>([])
+
+  // Optional mock fallback if desired
+  const mockProjects: Project[] = [
     {
       id: '1',
       name: 'Mobile App Redesign',
       description: 'Complete redesign of the mobile application with modern UI/UX',
       owner: 'Sarah Johnson',
       status: 'in-progress',
-      progress: 60, // 3 completed out of 5 total tasks
+      progress: 60,
       startDate: '2024-01-01',
       dueDate: '2024-02-15',
       team: ['Sarah Johnson', 'Mike Chen', 'Alex Rodriguez'],
@@ -129,85 +162,48 @@ const ProjectsList: React.FC = () => {
       members: [],
       allocatedHours: 200,
       loggedHours: 45.5,
-      remainingHours: 154.5
+      remainingHours: 154.5,
     },
-    {
-      id: '2',
-      name: 'Backend API Development',
-      description: 'RESTful API development for the new platform',
-      owner: 'Mike Chen',
-      status: 'in-progress',
-      progress: 40, // 1 completed out of 5 total tasks
-      startDate: '2024-01-05',
-      dueDate: '2024-02-20',
-      team: ['Mike Chen', 'David Kim'],
-      tags: ['Backend', 'API', 'Node.js'],
-      priority: 'medium',
-      phases: [],
-      tasks: [],
-      members: [],
-      allocatedHours: 150,
-      loggedHours: 30.0,
-      remainingHours: 120.0
-    },
-    {
-      id: '3',
-      name: 'Design System',
-      description: 'Comprehensive design system for consistent UI components',
-      owner: 'Alex Rodriguez',
-      status: 'in-review',
-      progress: 67, // 2 completed out of 3 total tasks
-      startDate: '2023-12-15',
-      dueDate: '2024-01-30',
-      team: ['Alex Rodriguez', 'Sarah Johnson'],
-      tags: ['Design', 'Components', 'Figma'],
-      priority: 'high',
-      phases: [],
-      tasks: [],
-      members: [],
-      allocatedHours: 120,
-      loggedHours: 85.0,
-      remainingHours: 35.0
-    },
-    {
-      id: '4',
-      name: 'Database Migration',
-      description: 'Migration from legacy database to new architecture',
-      owner: 'David Kim',
-      status: 'completed',
-      progress: 100, // 4 completed out of 4 total tasks
-      startDate: '2023-11-01',
-      dueDate: '2023-12-31',
-      team: ['David Kim', 'Mike Chen'],
-      tags: ['Database', 'Migration', 'PostgreSQL'],
-      priority: 'medium',
-      phases: [],
-      tasks: [],
-      members: [],
-      allocatedHours: 100,
-      loggedHours: 100.0,
-      remainingHours: 0.0
-    },
-    {
-      id: '5',
-      name: 'User Authentication',
-      description: 'Implement secure user authentication and authorization',
-      owner: 'Sarah Johnson',
-      status: 'blocked',
-      progress: 20, // 1 completed out of 5 total tasks
-      startDate: '2024-01-10',
-      dueDate: '2024-02-05',
-      team: ['Sarah Johnson', 'Mike Chen'],
-      tags: ['Security', 'Auth', 'JWT'],
-      priority: 'critical',
-      phases: [],
-      tasks: [],
-      members: [],
-      allocatedHours: 80,
-      loggedHours: 15.0,
-      remainingHours: 65.0
+  ]
+
+  // Load projects from API on mount; gate with USE_MOCK
+  useEffect(() => {
+    if (USE_MOCK) {
+      setProjects(mockProjects)
+      return
     }
-  ])
+    getProjects()
+      .then((data: any) => {
+        // Normalize API to Project shape if needed
+        // Expecting fields: id, title, description, allocatedHours, progress, usedHours, leftHours
+        const mapped = (data || []).map((p: any) => ({
+          id: p.id,
+          name: p.title,
+          description: p.description,
+          owner: p.owner?.name || '',
+          status: (p.status || 'PLANNING').toLowerCase(),
+          progress: p.progress ?? 0,
+          startDate: p.startDate || '',
+          dueDate: p.endDate || '',
+          team: Array.isArray(p.memberships) ? p.memberships.map((m: any) => m.user?.name).filter(Boolean) : [],
+          tags: [],
+          priority: 'medium',
+          phases: [],
+          tasks: [],
+          members: [],
+          allocatedHours: p.allocatedHours ?? 0,
+          loggedHours: p.usedHours ?? 0,
+          remainingHours: p.leftHours ?? Math.max((p.allocatedHours ?? 0) - (p.usedHours ?? 0), 0),
+        })) as Project[]
+        setProjects(mapped)
+      })
+      .catch((err: any) => {
+        console.error('Failed to load projects', err)
+      })
+  }, [])
+
+  // Helper for UI to render Duration label
+  const formatDate = (d?: string) => (d ? new Date(d).toLocaleDateString() : '')
 
   const filteredProjects = projects.filter(project => {
     const matchesSearch = project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -248,11 +244,23 @@ const ProjectsList: React.FC = () => {
       team: project.team,
       clients: []
     })
-    setSelectedTeamMembers(project.team)
+    // Preload current members from API (user IDs)
+    ;(async () => {
+      try {
+        const users = await apiGet(`/projects/${project.id}/members`)
+        const ids = Array.isArray(users) ? users.map((u: any) => String(u.id)) : []
+        setOriginalMemberIds(ids)
+        setSelectedTeamMembers(ids)
+      } catch (e) {
+        console.error('Failed to load project members', e)
+        setOriginalMemberIds([])
+        setSelectedTeamMembers([])
+      }
+    })()
     setIsEditModalOpen(true)
   }
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (selectedProject && editData) {
       // Update the project data
       const updatedProject = {
@@ -271,6 +279,32 @@ const ProjectsList: React.FC = () => {
         remainingHours: Math.max(0, (editData.projectHours || selectedProject.allocatedHours) - selectedProject.loggedHours)
       }
       
+      // Persist changes to backend
+      try {
+        await apiJson(`/projects/${selectedProject.id}`, 'PATCH', {
+          title: updatedProject.name,
+          description: updatedProject.description,
+          allocatedHours: updatedProject.allocatedHours,
+          startDate: updatedProject.startDate ? new Date(updatedProject.startDate).toISOString() : null,
+          endDate: updatedProject.dueDate ? new Date(updatedProject.dueDate).toISOString() : null,
+        })
+
+        // Sync members: add new ones, remove deselected
+        const current = new Set(originalMemberIds)
+        const chosen = new Set(selectedTeamMembers)
+        const toAdd = [...chosen].filter(id => !current.has(id))
+        const toRemove = [...current].filter(id => !chosen.has(id))
+
+        if (toAdd.length) {
+          await apiJson(`/projects/${selectedProject.id}/members`, 'POST', { userIds: toAdd })
+        }
+        if (toRemove.length) {
+          await apiJson(`/projects/${selectedProject.id}/members`, 'DELETE', { userIds: toRemove })
+        }
+      } catch (e) {
+        console.error('Failed to update project', e)
+      }
+
       // Update the projects state
       setProjects(prevProjects => 
         prevProjects.map((project: Project) => 
@@ -279,7 +313,7 @@ const ProjectsList: React.FC = () => {
       )
       
       // In a real app, this would update the project in the backend
-      console.log('Saving project:', selectedProject.id, updatedProject)
+      console.log('Saving project:', selectedProject.id, updatedProject, { add: selectedTeamMembers, remove: originalMemberIds })
       
       // Show success message
       alert('Project updated successfully!')
@@ -341,13 +375,7 @@ const ProjectsList: React.FC = () => {
     }))
   }
 
-  const handleTeamMemberToggle = (memberId: string) => {
-    setSelectedTeamMembers(prev => 
-      prev.includes(memberId) 
-        ? prev.filter(id => id !== memberId)
-        : [...prev, memberId]
-    )
-  }
+  // Removed old toggle helper; consolidated inline where used
 
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -660,19 +688,27 @@ const ProjectsList: React.FC = () => {
                           {project.priority.toUpperCase()}
                         </span>
                       </div>
+                      {/* Project ID hidden on list view as requested */}
                       <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
-                        ID: {project.id}
-                      </p>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
-                        Due: {project.dueDate ? new Date(project.dueDate).toLocaleDateString() : 'No due date'}
+                        {project.startDate && project.dueDate
+                          ? `Duration: ${formatDate(project.startDate)} - ${formatDate(project.dueDate)}`
+                          : project.dueDate
+                            ? `Due: ${formatDate(project.dueDate)}`
+                            : 'Due: No due date'}
                       </p>
                       <div className="flex items-center space-x-2">
                         <span className={`badge ${getStatusColor(project.status)}`}>
                           {project.status.replace('-', ' ').toUpperCase()}
                         </span>
-                        <span className="text-xs px-2 py-1 bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 rounded-full">
-                          Not assigned
-                        </span>
+                        {project.team.length > 0 ? (
+                          <span className="text-xs px-2 py-1 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded-full">
+                            {project.team.length} assigned
+                          </span>
+                        ) : (
+                          <span className="text-xs px-2 py-1 bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 rounded-full">
+                            Not assigned
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex space-x-2">
@@ -805,6 +841,10 @@ const ProjectsList: React.FC = () => {
                 <div>
                   <h4 className="font-semibold text-gray-900 dark:text-white mb-3">Project Information</h4>
                   <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Project ID:</span>
+                      <span className="text-gray-900 dark:text-white">{selectedProject.id}</span>
+                    </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600 dark:text-gray-400">Owner:</span>
                       <span className="text-gray-900 dark:text-white">{selectedProject.owner}</span>
@@ -1068,11 +1108,11 @@ const ProjectsList: React.FC = () => {
                           placeholder="Additional comments about the project type"
                         />
                       </div>
-                    </div>
-                  </div>
+                </div>
+              </div>
 
-                  {/* 2. Timeline & Scheduling */}
-                  <div className="card">
+              {/* 2. Timeline & Scheduling */}
+              <div className="card">
                     <div className="flex items-center mb-6">
                       <div className="p-2 bg-green-100 dark:bg-green-900/20 rounded-lg mr-3">
                         <HiClock className="h-5 w-5 text-green-600 dark:text-green-400" />
@@ -1175,88 +1215,7 @@ const ProjectsList: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* 3. Assign Team & Roles */}
-                  <div className="card">
-                    <div className="flex items-center mb-6">
-                      <div className="p-2 bg-purple-100 dark:bg-purple-900/20 rounded-lg mr-3">
-                        <HiUsers className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-                      </div>
-                      <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Assign Team & Roles</h3>
-                    </div>
-
-                    <div className="space-y-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                            Department
-                          </label>
-                          <select
-                            value={selectedDepartment}
-                            onChange={(e) => setSelectedDepartment(e.target.value)}
-                            className="input-field"
-                          >
-                            <option value="">All Departments</option>
-                            {departments.map(dept => (
-                              <option key={dept} value={dept}>{dept}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                            Role
-                          </label>
-                          <select
-                            value={selectedRole}
-                            onChange={(e) => setSelectedRole(e.target.value)}
-                            className="input-field"
-                          >
-                            <option value="">All Roles</option>
-                            {roles.map(role => (
-                              <option key={role} value={role}>{role.charAt(0).toUpperCase() + role.slice(1)}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          Team Members
-                        </label>
-                        <div className="space-y-2 max-h-48 overflow-y-auto">
-                          {teamMembers
-                            .filter(member => 
-                              (!selectedDepartment || member.department === selectedDepartment) &&
-                              (!selectedRole || member.role === selectedRole)
-                            )
-                            .map(member => (
-                            <div key={member.id} className="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
-                              <div className="flex items-center space-x-3">
-                                <div className="w-8 h-8 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center text-sm font-medium">
-                                  {member.avatar}
-                                </div>
-                                <div>
-                                  <div className="font-medium text-gray-900 dark:text-white">{member.name}</div>
-                                  <div className="text-sm text-gray-500 dark:text-gray-400">{member.email}</div>
-                                  <div className="text-xs text-gray-400 dark:text-gray-500">{member.role} • {member.department}</div>
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => handleTeamMemberToggle(member.id)}
-                                className={`px-3 py-1 rounded-md text-sm font-medium ${
-                                  selectedTeamMembers.includes(member.id)
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                                }`}
-                              >
-                                {selectedTeamMembers.includes(member.id) ? 'Selected' : 'Select'}
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  {/* 3. Assign Team & Roles — consolidated below */}
 
                   {/* 4. Project Status & Priority */}
                   <div className="card">
@@ -1352,6 +1311,104 @@ const ProjectsList: React.FC = () => {
                       )}
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* 3. Assign Team & Roles */}
+              <div className="card">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center">
+                    <div className="p-2 bg-purple-100 dark:bg-purple-900/20 rounded-lg mr-3">
+                      <HiUsers className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Assign Team & Roles</h3>
+                  </div>
+                </div>
+
+                {/* Selected Members */}
+                {selectedTeamMembers.length > 0 && (
+                  <div className="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-4 mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-sm font-medium text-primary-900 dark:text-primary-100">
+                        Selected Team Members ({selectedTeamMembers.length})
+                      </h4>
+                      <button
+                        onClick={() => setSelectedTeamMembers([])}
+                        className="text-xs text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-200"
+                      >
+                        Clear All
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedTeamMembers.map(id => {
+                        const m = teamMembers.find(t => t.id === id)
+                        return m ? (
+                          <span key={id} className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-primary-100 text-primary-800 dark:bg-primary-800 dark:text-primary-200">
+                            {m.name}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setSelectedTeamMembers(prev => prev.filter(x => x !== id)) }}
+                              className="ml-1 text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-200"
+                            >
+                              <HiX className="h-3 w-3" />
+                            </button>
+                          </span>
+                        ) : null
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Filters */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Department</label>
+                    <select value={selectedDepartment} onChange={e => setSelectedDepartment(e.target.value)} className="input-field">
+                      <option value="">All Departments</option>
+                      {departments.map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Role</label>
+                    <select value={selectedRole} onChange={e => setSelectedRole(e.target.value)} className="input-field">
+                      <option value="">All Roles</option>
+                      {roles.map(r => <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Available Members */}
+                <div className="space-y-3 max-h-64 overflow-y-auto">
+                  {filteredTeamMembers.length > 0 ? (
+                    filteredTeamMembers.map(member => (
+                      <div
+                        key={member.id}
+                        className={`flex items-center p-3 rounded-lg border cursor-pointer transition-colors duration-200 ${
+                          selectedTeamMembers.includes(member.id)
+                            ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                            : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
+                        }`}
+                        onClick={() => setSelectedTeamMembers(prev => prev.includes(member.id) ? prev.filter(x => x !== member.id) : [...prev, member.id])}
+                      >
+                        <div className="h-10 w-10 rounded-full bg-primary-600 flex items-center justify-center text-white font-medium mr-3">
+                          {member.avatar}
+                        </div>
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-900 dark:text-white">{member.name}</div>
+                          <div className="text-sm text-gray-600 dark:text-gray-400">
+                            {member.role.charAt(0).toUpperCase() + member.role.slice(1)} • {member.department}
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">{member.email}</div>
+                        </div>
+                        <div className={`h-5 w-5 rounded border-2 ${selectedTeamMembers.includes(member.id) ? 'bg-primary-600 border-primary-600' : 'border-gray-300 dark:border-gray-600'}`} />
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                      <HiUsers className="h-12 w-12 mx-auto mb-2 text-gray-300 dark:text-gray-600" />
+                      <p>No team members found for the selected filters</p>
+                      <button onClick={() => { setSelectedDepartment(''); setSelectedRole('') }} className="text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-200 text-sm mt-2">Clear filters</button>
+                    </div>
+                  )}
                 </div>
               </div>
 
