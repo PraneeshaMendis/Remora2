@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { 
   Calendar, 
@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import PerformanceDetailModal from '../components/PerformanceDetailModal'
 import { AvatarGroup, AvatarGroupTooltip } from '@/components/animate-ui/components/animate/avatar-group'
+import { apiGet } from '../services/api'
 
 interface ProjectMember {
   id: string
@@ -53,6 +54,7 @@ interface ProjectDocument {
   taskId?: string
   reviewStatus: 'pending' | 'approved' | 'rejected'
   size: string
+  fileUrl?: string
 }
 
 interface ProjectComment {
@@ -63,6 +65,63 @@ interface ProjectComment {
   phaseId?: string
   taskId?: string
   replies?: ProjectComment[]
+}
+
+interface ProjectTimeLog {
+  id: string
+  userId: string
+  userName: string
+  projectId: string
+  phaseId?: string
+  taskId?: string
+  hours: number
+  description: string
+  loggedAt: string
+  createdAt: string
+}
+
+interface ProjectTaskSummary {
+  id: string
+  name: string
+  phaseId?: string
+}
+
+interface ProjectTaskDetail {
+  id: string
+  title: string
+  status: 'completed' | 'in-progress' | 'not-started' | 'on-hold'
+  assignee: ProjectMember
+  dueDate?: string
+}
+
+interface ProjectPhaseDetail {
+  id: string
+  title: string
+  status: 'completed'
+  startDate: string
+  endDate: string
+  tasks: ProjectTaskDetail[]
+}
+
+interface CompletedProjectData {
+  id: string
+  title: string
+  description: string
+  startDate: string
+  endDate: string
+  completedAt: string
+  status: 'completed'
+  progress: number
+  team: ProjectMember[]
+  phases: ProjectPhaseDetail[]
+  manager: ProjectMember
+  department: string
+  totalTasks: number
+  completedTasks: number
+  totalPhases: number
+  uniqueAssignees: number
+  duration: number
+  allocatedHours: number
 }
 
 interface TeamPerformance {
@@ -90,442 +149,342 @@ const CompletedProjectDetail: React.FC = () => {
   const [showDocumentModal, setShowDocumentModal] = useState(false)
   const [selectedEventType, setSelectedEventType] = useState<string>('all')
 
-  // Mock project data
-  const project = {
-    id: id || '1',
-    title: 'E-commerce Platform Redesign',
-    description: 'Complete redesign of the e-commerce platform with modern UI/UX principles, improved performance, and enhanced user experience.',
-    startDate: '2024-01-15',
-    endDate: '2024-06-30',
-    completedAt: '2024-06-30',
-    status: 'completed',
-    progress: 100,
-    priority: 'high',
-    team: [
-      { id: '1', name: 'Sarah Johnson', email: 'sarah@company.com', role: 'Project Manager', department: 'Product', avatar: 'SJ' },
-      { id: '2', name: 'Mike Chen', email: 'mike@company.com', role: 'Lead Developer', department: 'Engineering', avatar: 'MC' },
-      { id: '3', name: 'Emily Davis', email: 'emily@company.com', role: 'UI/UX Designer', department: 'Design', avatar: 'ED' },
-      { id: '4', name: 'James Wilson', email: 'james@company.com', role: 'QA Engineer', department: 'Quality', avatar: 'JW' }
-    ],
-    phases: [
-      {
-        id: 'phase-1',
-        title: 'Research & Planning',
-        status: 'completed',
-        startDate: '2024-01-15',
-        endDate: '2024-02-15',
-        tasks: [
-          { id: 'task-1', title: 'User Research', status: 'completed', assignee: { id: '3', name: 'Emily Davis', email: 'emily@company.com', role: 'UI/UX Designer', department: 'Design', avatar: 'ED' } },
-          { id: 'task-2', title: 'Technical Planning', status: 'completed', assignee: { id: '2', name: 'Mike Chen', email: 'mike@company.com', role: 'Lead Developer', department: 'Engineering', avatar: 'MC' } }
-        ]
-      },
-      {
-        id: 'phase-2',
-        title: 'Design & Development',
-        status: 'completed',
-        startDate: '2024-02-16',
-        endDate: '2024-06-30',
-        tasks: [
-          { id: 'task-3', title: 'UI Design', status: 'completed', assignee: { id: '3', name: 'Emily Davis', email: 'emily@company.com', role: 'UI/UX Designer', department: 'Design', avatar: 'ED' } },
-          { id: 'task-4', title: 'Frontend Development', status: 'completed', assignee: { id: '2', name: 'Mike Chen', email: 'mike@company.com', role: 'Lead Developer', department: 'Engineering', avatar: 'MC' } }
-        ]
-      }
-    ],
-    manager: { id: '1', name: 'Sarah Johnson', email: 'sarah@company.com', role: 'Project Manager', department: 'Product', avatar: 'SJ' },
-    department: 'Product',
-    totalTasks: 4,
-    completedTasks: 4,
-    totalPhases: 2,
-    uniqueAssignees: 4,
-    duration: 167,
-    allocatedHours: 320, // Total allocated time for the project
-    actualHours: 0 // Will be calculated from time logs
+  const [project, setProject] = useState<CompletedProjectData | null>(null)
+  const [documents, setDocuments] = useState<ProjectDocument[]>([])
+  const [comments, setComments] = useState<ProjectComment[]>([])
+  const [timeLogs, setTimeLogs] = useState<ProjectTimeLog[]>([])
+  const [timelineEvents, setTimelineEvents] = useState<ProjectEvent[]>([])
+  const [tasks, setTasks] = useState<ProjectTaskSummary[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+
+  const buildAvatar = (name: string) => {
+    const initials = String(name || '')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(part => part[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase()
+    return initials || 'U'
   }
 
-  // Mock timeline events
-  const timelineEvents: ProjectEvent[] = [
-    {
-      id: '1',
-      type: 'DOC_UPLOADED',
-      occurredAt: '2025-01-03T14:30:00Z',
-      actorId: '1',
-      actorName: 'Gayan Silva',
-      entityRef: 'doc-1',
-      labels: ['Document', 'ProjectPlan.pdf'],
-      description: 'ProjectPlan.pdf'
-    },
-    {
-      id: '2',
-      type: 'TASK_COMPLETED',
-      occurredAt: '2025-01-05T16:00:00Z',
-      actorId: '1',
-      actorName: 'Gayan Silva',
-      entityRef: 'task-1',
-      phaseId: 'phase-1',
-      taskId: 'task-1',
-      labels: ['Task', 'Kickoff Meeting'],
-      description: 'Kickoff Meeting'
-    },
-    {
-      id: '3',
-      type: 'COMMENT_ADDED',
-      occurredAt: '2025-01-05T17:00:00Z',
-      actorId: '1',
-      actorName: 'Gayan Silva',
-      entityRef: 'comment-1',
-      phaseId: 'phase-1',
-      labels: ['Comment'],
-      description: 'Project kickoff went smoothly. All stakeholders aligned.'
-    },
-    {
-      id: '4',
-      type: 'TASK_COMPLETED',
-      occurredAt: '2025-01-15T16:00:00Z',
-      actorId: '1',
-      actorName: 'Gayan Silva',
-      entityRef: 'task-2',
-      phaseId: 'phase-1',
-      taskId: 'task-2',
-      labels: ['Task', 'Project Plan Development'],
-      description: 'Project Plan Development'
-    },
-    {
-      id: '5',
-      type: 'PHASE_COMPLETED',
-      occurredAt: '2025-01-20T17:00:00Z',
-      actorId: '1',
-      actorName: 'Gayan Silva',
-      entityRef: 'phase-1',
-      phaseId: 'phase-1',
-      labels: ['Phase', 'Planning'],
-      description: 'Planning Completed'
-    },
-    {
-      id: '6',
-      type: 'TASK_COMPLETED',
-      occurredAt: '2025-01-20T16:00:00Z',
-      actorId: '1',
-      actorName: 'Gayan Silva',
-      entityRef: 'task-3',
-      phaseId: 'phase-1',
-      taskId: 'task-3',
-      labels: ['Task', 'Resource Allocation'],
-      description: 'Resource Allocation'
-    },
-    {
-      id: '7',
-      type: 'TASK_COMPLETED',
-      occurredAt: '2025-02-10T16:00:00Z',
-      actorId: '2',
-      actorName: 'Sarah Chen',
-      entityRef: 'task-4',
-      phaseId: 'phase-2',
-      taskId: 'task-4',
-      labels: ['Task', 'Current State Analysis'],
-      description: 'Current State Analysis'
-    },
-    {
-      id: '8',
-      type: 'TIME_LOG_ADDED',
-      occurredAt: '2024-02-11T09:30:00Z',
-      actorId: '1',
-      actorName: 'Sarah Johnson',
-      entityRef: 'time-log-1',
-      phaseId: 'phase-1',
-      taskId: 'task-1',
-      labels: ['Time Log', 'User Research'],
-      description: 'Logged 2.5 hours on User Research',
-      duration: 2.5
-    },
-    {
-      id: '9',
-      type: 'TIME_LOG_ADDED',
-      occurredAt: '2024-02-12T14:15:00Z',
-      actorId: '2',
-      actorName: 'Mike Chen',
-      entityRef: 'time-log-2',
-      phaseId: 'phase-1',
-      taskId: 'task-2',
-      labels: ['Time Log', 'Technical Architecture'],
-      description: 'Logged 4 hours on Technical Architecture',
-      duration: 4
-    },
-    {
-      id: '10',
-      type: 'TIME_LOG_ADDED',
-      occurredAt: '2024-03-16T10:45:00Z',
-      actorId: '3',
-      actorName: 'Emily Davis',
-      entityRef: 'time-log-3',
-      phaseId: 'phase-2',
-      taskId: 'task-3',
-      labels: ['Time Log', 'UI Design Mockups'],
-      description: 'Logged 6 hours on UI Design Mockups',
-      duration: 6
-    },
-    {
-      id: '11',
-      type: 'TIME_LOG_ADDED',
-      occurredAt: '2024-03-21T16:20:00Z',
-      actorId: '4',
-      actorName: 'Alex Rodriguez',
-      entityRef: 'time-log-4',
-      phaseId: 'phase-2',
-      taskId: 'task-4',
-      labels: ['Time Log', 'Database Optimization'],
-      description: 'Logged 3.5 hours on Database Optimization',
-      duration: 3.5
-    },
-    {
-      id: '12',
-      type: 'TIME_LOG_ADDED',
-      occurredAt: '2024-04-06T11:30:00Z',
-      actorId: '5',
-      actorName: 'Lisa Wang',
-      entityRef: 'time-log-5',
-      phaseId: 'phase-3',
-      taskId: 'task-5',
-      labels: ['Time Log', 'User Acceptance Testing'],
-      description: 'Logged 5 hours on User Acceptance Testing',
-      duration: 5
-    }
-  ]
-
-  // Mock documents
-  const documents: ProjectDocument[] = [
-    {
-      id: '1',
-      name: 'User Research Report.pdf',
-      type: 'PDF',
-      uploadedBy: { id: '3', name: 'Emily Davis', email: 'emily@company.com', role: 'UI/UX Designer', department: 'Design', avatar: 'ED' },
-      uploadedAt: '2024-02-10T14:30:00Z',
-      phaseId: 'phase-1',
-      taskId: 'task-1',
-      reviewStatus: 'approved',
-      size: '2.4 MB'
-    },
-    {
-      id: '2',
-      name: 'Technical Architecture.docx',
-      type: 'DOCX',
-      uploadedBy: { id: '2', name: 'Mike Chen', email: 'mike@company.com', role: 'Lead Developer', department: 'Engineering', avatar: 'MC' },
-      uploadedAt: '2024-02-12T11:15:00Z',
-      phaseId: 'phase-1',
-      reviewStatus: 'approved',
-      size: '1.8 MB'
-    },
-    {
-      id: '3',
-      name: 'UI Design Mockups.fig',
-      type: 'FIG',
-      uploadedBy: { id: '3', name: 'Emily Davis', email: 'emily@company.com', role: 'UI/UX Designer', department: 'Design', avatar: 'ED' },
-      uploadedAt: '2024-03-15T16:45:00Z',
-      phaseId: 'phase-2',
-      reviewStatus: 'approved',
-      size: '5.2 MB'
-    }
-  ]
-
-  // Mock time logs data
-  const timeLogs = [
-    {
-      id: '1',
-      userId: '1',
-      userName: 'Sarah Johnson',
-      projectId: '1',
-      phaseId: 'phase-1',
-      taskId: 'task-1',
-      hours: 2.5,
-      description: 'Project planning and coordination',
-      loggedAt: '2024-01-16T09:00:00Z',
-      createdAt: '2024-01-16T09:00:00Z'
-    },
-    {
-      id: '2',
-      userId: '2',
-      userName: 'Mike Chen',
-      projectId: '1',
-      phaseId: 'phase-1',
-      taskId: 'task-2',
-      hours: 4.0,
-      description: 'Technical architecture design',
-      loggedAt: '2024-01-18T10:30:00Z',
-      createdAt: '2024-01-18T10:30:00Z'
-    },
-    {
-      id: '3',
-      userId: '3',
-      userName: 'Emily Davis',
-      projectId: '1',
-      phaseId: 'phase-1',
-      taskId: 'task-1',
-      hours: 6.0,
-      description: 'User research and analysis',
-      loggedAt: '2024-01-20T14:15:00Z',
-      createdAt: '2024-01-20T14:15:00Z'
-    },
-    {
-      id: '4',
-      userId: '2',
-      userName: 'Mike Chen',
-      projectId: '1',
-      phaseId: 'phase-2',
-      taskId: 'task-4',
-      hours: 8.5,
-      description: 'Frontend development implementation',
-      loggedAt: '2024-02-20T08:00:00Z',
-      createdAt: '2024-02-20T08:00:00Z'
-    },
-    {
-      id: '5',
-      userId: '3',
-      userName: 'Emily Davis',
-      projectId: '1',
-      phaseId: 'phase-2',
-      taskId: 'task-3',
-      hours: 12.0,
-      description: 'UI design and prototyping',
-      loggedAt: '2024-03-01T11:00:00Z',
-      createdAt: '2024-03-01T11:00:00Z'
-    },
-    {
-      id: '6',
-      userId: '4',
-      userName: 'James Wilson',
-      projectId: '1',
-      phaseId: 'phase-2',
-      taskId: 'task-4',
-      hours: 5.5,
-      description: 'Quality assurance testing',
-      loggedAt: '2024-03-15T13:30:00Z',
-      createdAt: '2024-03-15T13:30:00Z'
-    },
-    {
-      id: '7',
-      userId: '1',
-      userName: 'Sarah Johnson',
-      projectId: '1',
-      phaseId: 'phase-2',
-      taskId: 'task-3',
-      hours: 3.0,
-      description: 'Project coordination and review',
-      loggedAt: '2024-03-20T16:00:00Z',
-      createdAt: '2024-03-20T16:00:00Z'
-    },
-    {
-      id: '8',
-      userId: '2',
-      userName: 'Mike Chen',
-      projectId: '1',
-      phaseId: 'phase-2',
-      taskId: 'task-4',
-      hours: 6.5,
-      description: 'Final integration and deployment',
-      loggedAt: '2024-04-01T09:45:00Z',
-      createdAt: '2024-04-01T09:45:00Z'
-    }
-  ]
-
-  // Calculate actual hours from time logs
-  const actualHours = timeLogs.reduce((total, log) => total + log.hours, 0)
-
-  // Mock tasks data
-  const tasks = [
-    { id: 'task-1', name: 'User Research', phaseId: 'phase-1' },
-    { id: 'task-2', name: 'Technical Architecture', phaseId: 'phase-1' },
-    { id: 'task-3', name: 'UI Design Mockups', phaseId: 'phase-2' },
-    { id: 'task-4', name: 'Database Optimization', phaseId: 'phase-2' },
-    { id: 'task-5', name: 'User Acceptance Testing', phaseId: 'phase-3' }
-  ]
-
-  // Mock comments
-  const comments: ProjectComment[] = [
-    {
-      id: '1',
-      author: { id: '1', name: 'Sarah Johnson', email: 'sarah@company.com', role: 'Project Manager', department: 'Product', avatar: 'SJ' },
-      content: 'Great work on the user research! The insights will be very valuable for the design phase.',
-      createdAt: '2024-02-10T17:00:00Z',
-      phaseId: 'phase-1',
-      taskId: 'task-1'
-    },
-    {
-      id: '2',
-      author: { id: '2', name: 'Mike Chen', email: 'mike@company.com', role: 'Lead Developer', department: 'Engineering', avatar: 'MC' },
-      content: 'The technical architecture is ready for review. Please let me know if you have any questions.',
-      createdAt: '2024-02-12T12:00:00Z',
-      phaseId: 'phase-1',
-      taskId: 'task-2'
-    },
-    {
-      id: '3',
-      author: { id: '3', name: 'Emily Davis', email: 'emily@company.com', role: 'UI/UX Designer', department: 'Design', avatar: 'ED' },
-      content: 'UI mockups are complete and ready for development. All screens have been designed with responsive layouts.',
-      createdAt: '2024-03-15T17:30:00Z',
-      phaseId: 'phase-2',
-      taskId: 'task-3'
-    },
-    {
-      id: '4',
-      author: { id: '4', name: 'Alex Rodriguez', email: 'alex@company.com', role: 'Backend Developer', department: 'Engineering', avatar: 'AR' },
-      content: 'Database optimization completed successfully. Performance improved by 40%.',
-      createdAt: '2024-03-20T14:15:00Z',
-      phaseId: 'phase-2',
-      taskId: 'task-4'
-    },
-    {
-      id: '5',
-      author: { id: '5', name: 'Lisa Wang', email: 'lisa@company.com', role: 'QA Engineer', department: 'Quality', avatar: 'LW' },
-      content: 'User acceptance testing passed with flying colors! All test cases completed successfully.',
-      createdAt: '2024-04-05T16:45:00Z',
-      phaseId: 'phase-3',
-      taskId: 'task-5'
-    }
-  ]
-
-  // Calculate team performance data from time logs and project data
-  const teamPerformance: TeamPerformance[] = project.team.map(member => {
-    // Calculate hours logged by this member for this project
-    const memberTimeLogs = timeLogs.filter(log => log.userId === member.id)
-    const hoursLogged = memberTimeLogs.reduce((total, log) => total + log.hours, 0)
-    
-    // Calculate tasks completed by this member
-    const memberTasks = project.phases.flatMap(phase => 
-      phase.tasks.filter(task => task.assignee.id === member.id)
-    )
-    const tasksCompleted = memberTasks.filter(task => task.status === 'completed').length
-    
-    // Calculate documents sent by this member
-    const documentsSent = documents.filter(doc => doc.uploadedBy.id === member.id).length
-    
-    // Calculate comments by this member
-    const commentsCount = comments.filter(comment => comment.author.id === member.id).length
-    
-    // Calculate effort share (hours logged / total hours)
-    const totalProjectHours = timeLogs.reduce((total, log) => total + log.hours, 0)
-    const effortShare = totalProjectHours > 0 ? hoursLogged / totalProjectHours : 0
-    
-    // Mock other metrics (these would be calculated from real data in a real app)
-    const onTimeCompletion = 100 // Would calculate from task due dates vs completion dates
-    const averageLateness = 0 // Would calculate from task lateness
-    const reviewParticipation = Math.floor(Math.random() * 10) + 1 // Would calculate from review activities
-    const approvalRatio = 100 // Would calculate from document approval rates
-    const kpiScore = Math.floor(Math.random() * 20) + 80 // Would calculate from KPI system
-    
+  const mapMember = (user: any, roleOverride?: string, departmentOverride?: string): ProjectMember => {
+    const name = String(user?.name || 'Unknown')
     return {
-      member,
-      tasksCompleted,
-      onTimeCompletion,
-      averageLateness,
-      reviewParticipation,
-      approvalRatio,
-      documentsSent,
-      commentsCount,
-      hoursLogged,
-      kpiScore,
-      effortShare
+      id: String(user?.id || ''),
+      name,
+      email: String(user?.email || ''),
+      role: String(roleOverride || user?.role?.name || user?.role || 'Member'),
+      department: String(departmentOverride || user?.department?.name || user?.department || ''),
+      avatar: buildAvatar(name),
     }
-  })
+  }
 
+  const normalizeTaskStatus = (status: string): ProjectTaskDetail['status'] => {
+    const raw = String(status || '').toUpperCase()
+    if (raw === 'IN_PROGRESS') return 'in-progress'
+    if (raw === 'COMPLETED') return 'completed'
+    if (raw === 'ON_HOLD') return 'on-hold'
+    return 'not-started'
+  }
+
+  const deriveDateRange = (phases: ProjectPhaseDetail[]) => {
+    let minStart = Number.POSITIVE_INFINITY
+    let maxEnd = Number.NEGATIVE_INFINITY
+    phases.forEach(phase => {
+      const startTs = phase.startDate ? Date.parse(phase.startDate) : NaN
+      const endTs = phase.endDate ? Date.parse(phase.endDate) : NaN
+      if (!Number.isNaN(startTs)) minStart = Math.min(minStart, startTs)
+      if (!Number.isNaN(endTs)) maxEnd = Math.max(maxEnd, endTs)
+    })
+    return {
+      start: Number.isFinite(minStart) ? new Date(minStart).toISOString() : '',
+      end: Number.isFinite(maxEnd) ? new Date(maxEnd).toISOString() : '',
+    }
+  }
+
+  const pickDate = (...values: Array<string | null | undefined>) => {
+    for (const value of values) {
+      if (!value) continue
+      const ts = Date.parse(value)
+      if (!Number.isNaN(ts)) return new Date(ts).toISOString()
+    }
+    return new Date().toISOString()
+  }
+
+  const resolveAssignee = (task: any, team: ProjectMember[]) => {
+    const assignees = Array.isArray(task?.assignees) ? task.assignees : []
+    const first = assignees[0]?.user || assignees[0]
+    if (first) return mapMember(first, assignees[0]?.role, assignees[0]?.user?.department?.name)
+    if (team[0]) return team[0]
+    return { id: 'unknown', name: 'Unassigned', email: '', role: '', department: '', avatar: 'U' }
+  }
+
+  const mapReviewStatus = (status: string): ProjectDocument['reviewStatus'] => {
+    const normalized = String(status || '').toLowerCase()
+    if (normalized === 'approved') return 'approved'
+    if (normalized === 'rejected') return 'rejected'
+    return 'pending'
+  }
+
+  const mapDocumentType = (name: string) => {
+    const parts = String(name || '').split('.')
+    const ext = parts.length > 1 ? parts[parts.length - 1] : ''
+    return ext ? ext.toUpperCase() : 'FILE'
+  }
+
+  useEffect(() => {
+    if (!id) return
+    let active = true
+
+    const loadProject = async () => {
+      setIsLoading(true)
+      setLoadError(null)
+      try {
+        const detail = await apiGet(`/projects/${id}`)
+        if (!detail) throw new Error('Project not found')
+        const memberships = Array.isArray(detail?.memberships) ? detail.memberships : []
+        const team = memberships
+          .map((m: any) => mapMember(m?.user, m?.role, m?.user?.department?.name))
+          .filter((member: ProjectMember) => member.id)
+        const teamById = new Map(team.map(member => [member.id, member]))
+        const phases = Array.isArray(detail?.phases) ? detail.phases : []
+        const phaseDetails: ProjectPhaseDetail[] = phases.map((phase: any) => {
+          const tasksInPhase = Array.isArray(phase?.tasks) ? phase.tasks : []
+          return {
+            id: String(phase?.id || ''),
+            title: String(phase?.name || ''),
+            status: 'completed',
+            startDate: phase?.startDate ? new Date(phase.startDate).toISOString() : '',
+            endDate: phase?.endDate ? new Date(phase.endDate).toISOString() : '',
+            tasks: tasksInPhase.map((task: any) => ({
+              id: String(task?.id || ''),
+              title: String(task?.title || ''),
+              status: normalizeTaskStatus(task?.status),
+              assignee: resolveAssignee(task, team),
+              dueDate: task?.dueDate ? new Date(task.dueDate).toISOString() : undefined,
+            })),
+          }
+        })
+
+        const taskSummaries: ProjectTaskSummary[] = phaseDetails.flatMap(phase =>
+          phase.tasks.map(task => ({ id: task.id, name: task.title, phaseId: phase.id }))
+        )
+        const allTasks = phaseDetails.flatMap(phase => phase.tasks)
+        const completedTasks = allTasks.filter(task => task.status === 'completed').length
+        const assigneeIds = new Set(allTasks.map(task => task.assignee?.id).filter(Boolean) as string[])
+        const range = deriveDateRange(phaseDetails)
+        const startDate = pickDate(detail?.startDate, range.start, detail?.createdAt)
+        const endDate = pickDate(detail?.endDate, range.end, detail?.updatedAt)
+        const progress = allTasks.length > 0 ? Math.round((completedTasks / allTasks.length) * 100) : 0
+
+        let manager: ProjectMember | null = null
+        if (detail?.owner) {
+          manager = mapMember(detail.owner, detail.owner?.role?.name, detail.owner?.department?.name)
+        } else {
+          const preferred = memberships.find((m: any) => String(m?.role || '').toUpperCase() === 'DIRECTOR')
+            || memberships.find((m: any) => String(m?.role || '').toUpperCase() === 'MANAGER')
+          if (preferred?.user) manager = mapMember(preferred.user, preferred.role, preferred.user?.department?.name)
+        }
+        if (!manager) manager = team[0] || { id: 'unknown', name: 'Unknown', email: '', role: 'Manager', department: '', avatar: 'U' }
+
+        const projectData: CompletedProjectData = {
+          id: String(detail?.id || ''),
+          title: String(detail?.title || ''),
+          description: String(detail?.description || ''),
+          startDate,
+          endDate,
+          completedAt: endDate,
+          status: 'completed',
+          progress,
+          team,
+          phases: phaseDetails,
+          manager,
+          department: manager.department || team[0]?.department || '',
+          totalTasks: allTasks.length,
+          completedTasks,
+          totalPhases: phaseDetails.length,
+          uniqueAssignees: assigneeIds.size || team.length,
+          duration: 0,
+          allocatedHours: Number(detail?.allocatedHours || 0),
+        }
+
+        if (active) {
+          setProject(projectData)
+          setTasks(taskSummaries)
+        }
+
+        const taskIds = taskSummaries.map(task => task.id).filter(Boolean)
+        if (taskIds.length === 0) {
+          if (active) {
+            setDocuments([])
+            setComments([])
+            setTimeLogs([])
+            setTimelineEvents([])
+          }
+          return
+        }
+
+        const [commentsByTask, documentsByTask, timeLogsByTask] = await Promise.all([
+          Promise.all(taskIds.map(taskId => apiGet(`/tasks/${taskId}/comments`).catch(() => []))),
+          Promise.all(taskIds.map(taskId => apiGet(`/api/documents/by-task/${taskId}`).catch(() => []))),
+          Promise.all(taskIds.map(taskId => apiGet(`/timelogs/tasks/${taskId}/timelogs`).catch(() => []))),
+        ])
+
+        const taskPhaseMap = new Map(taskSummaries.map(task => [task.id, task.phaseId]))
+        const taskNameMap = new Map(taskSummaries.map(task => [task.id, task.name]))
+
+        const mappedComments: ProjectComment[] = commentsByTask
+          .flat()
+          .map((comment: any) => ({
+            id: String(comment?.id || ''),
+            author: mapMember(comment?.author),
+            content: String(comment?.content || ''),
+            createdAt: String(comment?.createdAt || new Date().toISOString()),
+            phaseId: taskPhaseMap.get(comment?.taskId),
+            taskId: comment?.taskId ? String(comment.taskId) : undefined,
+          }))
+
+        const mappedDocuments: ProjectDocument[] = documentsByTask
+          .flat()
+          .map((doc: any) => ({
+            id: String(doc?.id || ''),
+            name: String(doc?.name || ''),
+            type: mapDocumentType(doc?.name),
+            uploadedBy: mapMember(doc?.createdBy || {}),
+            uploadedAt: String(doc?.createdAt || new Date().toISOString()),
+            phaseId: doc?.phaseId ? String(doc.phaseId) : undefined,
+            taskId: doc?.taskId ? String(doc.taskId) : undefined,
+            reviewStatus: mapReviewStatus(doc?.status),
+            size: String(doc?.size || '-'),
+            fileUrl: doc?.fileUrl ? String(doc.fileUrl) : undefined,
+          }))
+
+        const mappedTimeLogs: ProjectTimeLog[] = timeLogsByTask
+          .flat()
+          .map((log: any) => {
+            const userId = String(log?.userId || '')
+            const teamMember = teamById.get(userId)
+            return {
+              id: String(log?.id || ''),
+              userId,
+              userName: String(log?.userName || log?.user?.name || teamMember?.name || 'Unknown'),
+              projectId: String(detail?.id || ''),
+              phaseId: taskPhaseMap.get(log?.taskId),
+              taskId: log?.taskId ? String(log.taskId) : undefined,
+              hours: Math.round(((Number(log?.durationMins || 0) / 60) + Number.EPSILON) * 10) / 10,
+              description: String(log?.description || ''),
+              loggedAt: String(log?.startedAt || log?.createdAt || new Date().toISOString()),
+              createdAt: String(log?.createdAt || log?.startedAt || new Date().toISOString()),
+            }
+          })
+
+        const timeline: ProjectEvent[] = []
+        mappedDocuments.forEach(doc => {
+          timeline.push({
+            id: `doc-${doc.id}`,
+            type: 'DOC_UPLOADED',
+            occurredAt: doc.uploadedAt,
+            actorId: doc.uploadedBy.id,
+            actorName: doc.uploadedBy.name,
+            entityRef: doc.id,
+            labels: ['Document', doc.name],
+            phaseId: doc.phaseId,
+            taskId: doc.taskId,
+            description: doc.name,
+          })
+        })
+        mappedComments.forEach(comment => {
+          const snippet = comment.content.length > 120 ? `${comment.content.slice(0, 120)}...` : comment.content
+          timeline.push({
+            id: `comment-${comment.id}`,
+            type: 'COMMENT_ADDED',
+            occurredAt: comment.createdAt,
+            actorId: comment.author.id,
+            actorName: comment.author.name,
+            entityRef: comment.id,
+            labels: ['Comment'],
+            phaseId: comment.phaseId,
+            taskId: comment.taskId,
+            description: snippet || 'Comment added',
+          })
+        })
+        mappedTimeLogs.forEach(log => {
+          const taskName = log.taskId ? taskNameMap.get(log.taskId) : ''
+          timeline.push({
+            id: `time-${log.id}`,
+            type: 'TIME_LOG_ADDED',
+            occurredAt: log.createdAt,
+            actorId: log.userId,
+            actorName: log.userName,
+            entityRef: log.id,
+            labels: ['Time Log', taskName || 'Task'],
+            phaseId: log.phaseId,
+            taskId: log.taskId,
+            description: log.description || `Logged ${log.hours}h`,
+            duration: log.hours,
+          })
+        })
+
+        if (active) {
+          setDocuments(mappedDocuments)
+          setComments(mappedComments)
+          setTimeLogs(mappedTimeLogs)
+          setTimelineEvents(timeline.sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()))
+        }
+      } catch (e: any) {
+        if (active) setLoadError(e?.message || 'Failed to load project')
+      } finally {
+        if (active) setIsLoading(false)
+      }
+    }
+
+    loadProject()
+    return () => {
+      active = false
+    }
+  }, [id])
+
+  const actualHours = useMemo(() => {
+    return timeLogs.reduce((total, log) => total + log.hours, 0)
+  }, [timeLogs])
+
+  const teamPerformance: TeamPerformance[] = useMemo(() => {
+    if (!project) return []
+    const totalProjectHours = timeLogs.reduce((total, log) => total + log.hours, 0)
+    const allTasks = project.phases.flatMap(phase => phase.tasks)
+
+    return project.team.map(member => {
+      const memberTimeLogs = timeLogs.filter(log => log.userId === member.id)
+      const hoursLogged = memberTimeLogs.reduce((total, log) => total + log.hours, 0)
+      const memberTasks = allTasks.filter(task => task.assignee.id === member.id)
+      const tasksCompleted = memberTasks.filter(task => task.status === 'completed').length
+      const documentsSent = documents.filter(doc => doc.uploadedBy.id === member.id).length
+      const commentsCount = comments.filter(comment => comment.author.id === member.id).length
+      const effortShare = totalProjectHours > 0 ? hoursLogged / totalProjectHours : 0
+      const onTimeCompletion = memberTasks.length > 0 ? Math.round((tasksCompleted / memberTasks.length) * 100) : 0
+      const approvalRatio = documentsSent > 0
+        ? Math.round((documents.filter(doc => doc.uploadedBy.id === member.id && doc.reviewStatus === 'approved').length / documentsSent) * 100)
+        : 0
+      const kpiScore = Math.min(100, Math.round(onTimeCompletion * 0.7 + effortShare * 30))
+
+      return {
+        member,
+        tasksCompleted,
+        onTimeCompletion,
+        averageLateness: 0,
+        reviewParticipation: documentsSent,
+        approvalRatio,
+        documentsSent,
+        commentsCount,
+        hoursLogged,
+        kpiScore,
+        effortShare,
+      }
+    })
+  }, [project, timeLogs, documents, comments])
   const formatDuration = (startDate: string, endDate: string) => {
     const start = new Date(startDate)
     const end = new Date(endDate)
@@ -539,14 +498,15 @@ const CompletedProjectDetail: React.FC = () => {
       setSelectedDocument(doc)
       setShowDocumentModal(true)
     } else if (action === 'download') {
-      // Simulate download
+      const fileUrl = doc.fileUrl || ''
+      if (!fileUrl) {
+        alert('No file URL available for this document.')
+        return
+      }
       const link = document.createElement('a')
-      link.href = `#` // In real app, this would be the actual file URL
+      link.href = fileUrl
       link.download = doc.name
       link.click()
-      
-      // Show success message
-      alert(`Downloading ${doc.name}...`)
     }
   }
 
@@ -587,6 +547,22 @@ const CompletedProjectDetail: React.FC = () => {
       return matchesSearch && matchesPhase && matchesEventType
     })
   }, [timelineEvents, searchTerm, selectedPhase, selectedEventType])
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
+        <div className="text-gray-600 dark:text-gray-300">Loading completed project...</div>
+      </div>
+    )
+  }
+
+  if (loadError || !project) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
+        <div className="text-gray-600 dark:text-gray-300">{loadError || 'Project not found.'}</div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">

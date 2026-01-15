@@ -11,10 +11,10 @@ export const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
       ref={ref}
       role="alert"
       className={cn(
-        "rounded-md border p-4 text-sm",
+        "rounded-xl border border-border/60 bg-card/80 p-4 text-sm shadow-sm backdrop-blur",
         variant === "destructive"
           ? "border-red-300 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300"
-          : "border-border bg-muted/40 text-foreground",
+          : "border-border/60 bg-muted/40 text-foreground",
         className,
       )}
       {...props}
@@ -30,4 +30,3 @@ export const AlertDescription = React.forwardRef<
   <p ref={ref} className={cn("text-sm", className)} {...props} />
 ));
 AlertDescription.displayName = "AlertDescription";
-

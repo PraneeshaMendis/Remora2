@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { 
   HiArrowLeft, 
   HiPlus,
@@ -25,6 +25,7 @@ import {
 import GanttChart from '../components/GanttChart'
 import EditPhaseModal from '../components/modals/EditPhaseModal'
 import EditTaskModal from '../components/modals/EditTaskModal'
+import { useAuth } from '../contexts/AuthContext.tsx'
 
 // Interface for progress calculation
 interface PhaseWithTasks {
@@ -120,10 +121,13 @@ interface Project {
 
 const ProjectDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const { user } = useAuth()
   const [taskFilter, setTaskFilter] = useState('all')
   const [taskSort, setTaskSort] = useState('deadline')
   const [selectedPhase, setSelectedPhase] = useState<string | null>(null)
   const [project, setProject] = useState<Project | null>(null)
+  const [isCompleting, setIsCompleting] = useState(false)
   
   // Modal states
   const [isAddPhaseModalOpen, setIsAddPhaseModalOpen] = useState(false)
@@ -155,6 +159,7 @@ const ProjectDetail: React.FC = () => {
   const [editingTask, setEditingTask] = useState<Task | null>(null)
 
   const formatDate = (d?: string) => (d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '')
+  const isExecutive = String(user?.department || '').trim().toLowerCase() === 'executive department'
   
   // Helper: reload project from API
   const reloadProject = async () => {
@@ -244,6 +249,41 @@ const ProjectDetail: React.FC = () => {
     } catch (e: any) {
       console.error(e)
       alert(e.message || 'Failed to add phase')
+    }
+  }
+
+  const markProjectCompleted = async () => {
+    if (!id || !project) return
+    if (!isExecutive) {
+      alert('Only the Executive Department can mark projects as completed.')
+      return
+    }
+    if (!confirm('Are you sure you want to mark this project as completed? This will move it to the completed projects list.')) {
+      return
+    }
+    setIsCompleting(true)
+    try {
+      const base = (import.meta as any).env.VITE_API_URL || 'http://localhost:4000'
+      const payload: any = { status: 'COMPLETED' }
+      if (!project.endDate) {
+        payload.endDate = new Date().toISOString()
+      }
+      const res = await fetch(`${base}/projects/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        const txt = await res.text()
+        throw new Error(txt || `Failed to mark project completed (${res.status})`)
+      }
+      await reloadProject()
+      navigate('/completed-projects')
+    } catch (e: any) {
+      console.error('Failed to mark project completed', e)
+      alert(e?.message || 'Failed to mark project completed')
+    } finally {
+      setIsCompleting(false)
     }
   }
 
@@ -1028,18 +1068,14 @@ const ProjectDetail: React.FC = () => {
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Project Phases</h2>
           <div className="flex items-center space-x-4">
-            {project.status !== 'completed' && (
+            {project.status !== 'completed' && isExecutive && (
               <button 
-                onClick={() => {
-                  if (confirm('Are you sure you want to mark this project as completed? This will move it to the completed projects list.')) {
-                    // TODO: Implement mark as completed functionality
-                    console.log('Mark project as completed')
-                  }
-                }}
+                onClick={markProjectCompleted}
+                disabled={isCompleting}
                 className="btn-secondary inline-flex items-center"
               >
                 <CheckCircle2 className="h-4 w-4 mr-2" />
-                Mark as Completed
+                {isCompleting ? 'Marking...' : 'Mark as Completed'}
               </button>
             )}
             <button 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { 
   HiSortAscending, 
@@ -14,6 +14,8 @@ import {
   Filter,
   Search
 } from 'lucide-react'
+import { getProjects } from '../services/projectsAPI'
+import { apiGet, apiJson } from '../services/api'
 
 interface ProjectMember {
   id: string
@@ -63,86 +65,164 @@ const CompletedProjects: React.FC = () => {
   const [departmentFilter, setDepartmentFilter] = useState<string>('all')
   const [managerFilter, setManagerFilter] = useState<string>('all')
   const [showFilters, setShowFilters] = useState(false)
+  const [completedProjects, setCompletedProjects] = useState<CompletedProject[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [movingProjectId, setMovingProjectId] = useState<string | null>(null)
 
-  // Mock completed projects data
-  const completedProjects: CompletedProject[] = [
-    {
-      id: '1',
-      title: 'E-commerce Platform Redesign',
-      description: 'Complete redesign of the e-commerce platform with modern UI/UX',
-      startDate: '2024-01-15',
-      endDate: '2024-06-30',
-      completedAt: '2024-06-30',
-      status: 'completed',
-      progress: 100,
-      priority: 'high',
-      team: [
-        { id: '1', name: 'Sarah Johnson', email: 'sarah@company.com', role: 'Project Manager', department: 'Product', avatar: 'SJ' },
-        { id: '2', name: 'Mike Chen', email: 'mike@company.com', role: 'Lead Developer', department: 'Engineering', avatar: 'MC' },
-        { id: '3', name: 'Emily Davis', email: 'emily@company.com', role: 'UI/UX Designer', department: 'Design', avatar: 'ED' }
-      ],
-      phases: [
-        {
-          id: 'phase-1',
-          title: 'Research & Planning',
-          status: 'completed',
-          tasks: [
-            { id: 'task-1', title: 'User Research', status: 'completed', assignee: { id: '3', name: 'Emily Davis', email: 'emily@company.com', role: 'UI/UX Designer', department: 'Design', avatar: 'ED' } },
-            { id: 'task-2', title: 'Technical Planning', status: 'completed', assignee: { id: '2', name: 'Mike Chen', email: 'mike@company.com', role: 'Lead Developer', department: 'Engineering', avatar: 'MC' } }
-          ]
-        },
-        {
-          id: 'phase-2',
-          title: 'Design & Development',
-          status: 'completed',
-          tasks: [
-            { id: 'task-3', title: 'UI Design', status: 'completed', assignee: { id: '3', name: 'Emily Davis', email: 'emily@company.com', role: 'UI/UX Designer', department: 'Design', avatar: 'ED' } },
-            { id: 'task-4', title: 'Frontend Development', status: 'completed', assignee: { id: '2', name: 'Mike Chen', email: 'mike@company.com', role: 'Lead Developer', department: 'Engineering', avatar: 'MC' } }
-          ]
-        }
-      ],
-      manager: { id: '1', name: 'Sarah Johnson', email: 'sarah@company.com', role: 'Project Manager', department: 'Product', avatar: 'SJ' },
-      department: 'Product',
-      totalTasks: 4,
-      completedTasks: 4,
-      totalPhases: 2,
-      uniqueAssignees: 3,
-      duration: 167
-    },
-    {
-      id: '2',
-      title: 'Mobile App Development',
-      description: 'Native mobile app development for iOS and Android',
-      startDate: '2024-03-01',
-      endDate: '2024-08-15',
-      completedAt: '2024-08-15',
-      status: 'completed',
-      progress: 100,
-      priority: 'medium',
-      team: [
-        { id: '4', name: 'James Wilson', email: 'james@company.com', role: 'Mobile Developer', department: 'Engineering', avatar: 'JW' },
-        { id: '5', name: 'Lisa Anderson', email: 'lisa@company.com', role: 'Backend Developer', department: 'Engineering', avatar: 'LA' }
-      ],
-      phases: [
-        {
-          id: 'phase-3',
-          title: 'Development',
-          status: 'completed',
-          tasks: [
-            { id: 'task-5', title: 'iOS Development', status: 'completed', assignee: { id: '4', name: 'James Wilson', email: 'james@company.com', role: 'Mobile Developer', department: 'Engineering', avatar: 'JW' } },
-            { id: 'task-6', title: 'Backend API', status: 'completed', assignee: { id: '5', name: 'Lisa Anderson', email: 'lisa@company.com', role: 'Backend Developer', department: 'Engineering', avatar: 'LA' } }
-          ]
-        }
-      ],
-      manager: { id: '4', name: 'James Wilson', email: 'james@company.com', role: 'Mobile Developer', department: 'Engineering', avatar: 'JW' },
-      department: 'Engineering',
-      totalTasks: 2,
-      completedTasks: 2,
-      totalPhases: 1,
-      uniqueAssignees: 2,
-      duration: 167
+  const buildAvatar = (name: string) => {
+    const initials = String(name || '')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(part => part[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase()
+    return initials || 'U'
+  }
+
+  const mapMember = (user: any, roleOverride?: string): ProjectMember => {
+    const name = String(user?.name || 'Unknown')
+    return {
+      id: String(user?.id || ''),
+      name,
+      email: String(user?.email || ''),
+      role: String(roleOverride || user?.role?.name || user?.role || 'Member'),
+      department: String(user?.department?.name || user?.department || ''),
+      avatar: buildAvatar(name),
     }
-  ]
+  }
+
+  const deriveDateRange = (phases: any[]) => {
+    let minStart = Number.POSITIVE_INFINITY
+    let maxEnd = Number.NEGATIVE_INFINITY
+    phases.forEach(phase => {
+      const startTs = phase?.startDate ? Date.parse(phase.startDate) : NaN
+      const endTs = phase?.endDate ? Date.parse(phase.endDate) : NaN
+      if (!Number.isNaN(startTs)) minStart = Math.min(minStart, startTs)
+      if (!Number.isNaN(endTs)) maxEnd = Math.max(maxEnd, endTs)
+    })
+    return {
+      start: Number.isFinite(minStart) ? new Date(minStart).toISOString() : '',
+      end: Number.isFinite(maxEnd) ? new Date(maxEnd).toISOString() : '',
+    }
+  }
+
+  const pickDate = (...values: Array<string | null | undefined>) => {
+    for (const val of values) {
+      if (!val) continue
+      const ts = Date.parse(val)
+      if (!Number.isNaN(ts)) return new Date(ts).toISOString()
+    }
+    return new Date().toISOString()
+  }
+
+  const resolveAssignee = (task: any, team: ProjectMember[]) => {
+    const assignees = Array.isArray(task?.assignees) ? task.assignees : []
+    const first = assignees[0]?.user || assignees[0]
+    if (first) return mapMember(first)
+    if (team[0]) return team[0]
+    return { id: 'unknown', name: 'Unassigned', email: '', role: '', department: '', avatar: 'U' }
+  }
+
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      setIsLoading(true)
+      setLoadError(null)
+      try {
+        const list = await getProjects()
+        const completedList = (list || []).filter((p: any) => String(p?.status || '').toUpperCase() === 'COMPLETED')
+        const details = await Promise.all(
+          completedList.map((p: any) => apiGet(`/projects/${p.id}`).catch(() => null))
+        )
+        const mapped = details.filter(Boolean).map((detail: any) => {
+          const memberships = Array.isArray(detail?.memberships) ? detail.memberships : []
+          const team = memberships
+            .map((m: any) => mapMember(m?.user, m?.role))
+            .filter((m: ProjectMember) => m.id)
+          const phases = Array.isArray(detail?.phases) ? detail.phases : []
+          const tasks = phases.flatMap((p: any) => Array.isArray(p?.tasks) ? p.tasks : [])
+          const completedTasks = tasks.filter((t: any) => String(t?.status || '').toUpperCase() === 'COMPLETED').length
+          const totalTasks = tasks.length
+          const assigneeIds = new Set<string>()
+          tasks.forEach((task: any) => {
+            const assignees = Array.isArray(task?.assignees) ? task.assignees : []
+            assignees.forEach((a: any) => {
+              const user = a?.user || a
+              if (user?.id) assigneeIds.add(String(user.id))
+            })
+          })
+          const range = deriveDateRange(phases)
+          let manager = detail?.owner ? mapMember(detail.owner) : team[0]
+          if (manager && !manager.department) {
+            const match = team.find(m => m.id === manager.id)
+            if (match?.department) manager = { ...manager, department: match.department }
+          }
+          if (!manager) {
+            manager = { id: 'unknown', name: 'Unknown', email: '', role: 'Manager', department: '', avatar: 'U' }
+          }
+          const startDate = pickDate(detail?.startDate, range.start, detail?.createdAt)
+          const endDate = pickDate(detail?.endDate, range.end, detail?.updatedAt)
+
+          return {
+            id: String(detail?.id || ''),
+            title: String(detail?.title || ''),
+            description: String(detail?.description || ''),
+            startDate,
+            endDate,
+            completedAt: endDate,
+            status: 'completed',
+            progress: 100,
+            priority: 'medium',
+            team,
+            phases: phases.map((phase: any) => ({
+              id: String(phase?.id || ''),
+              title: String(phase?.name || ''),
+              status: 'completed',
+              tasks: (Array.isArray(phase?.tasks) ? phase.tasks : []).map((task: any) => ({
+                id: String(task?.id || ''),
+                title: String(task?.title || ''),
+                status: 'completed',
+                assignee: resolveAssignee(task, team),
+              })),
+            })),
+            manager,
+            department: manager.department || '',
+            totalTasks,
+            completedTasks,
+            totalPhases: phases.length,
+            uniqueAssignees: assigneeIds.size || team.length,
+            duration: 0,
+          } as CompletedProject
+        })
+        if (active) setCompletedProjects(mapped)
+      } catch (e) {
+        if (active) setLoadError('Failed to load completed projects.')
+      } finally {
+        if (active) setIsLoading(false)
+      }
+    })()
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const moveToActiveProjects = async (projectId: string) => {
+    if (!projectId) return
+    if (!confirm('Move this project back to active projects?')) return
+    setMovingProjectId(projectId)
+    try {
+      await apiJson(`/projects/${projectId}`, 'PATCH', { status: 'IN_PROGRESS' })
+      setCompletedProjects(prev => prev.filter(p => p.id !== projectId))
+    } catch (e: any) {
+      console.error('Failed to move project to active', e)
+      alert(e?.message || 'Failed to move project to active')
+    } finally {
+      setMovingProjectId(null)
+    }
+  }
 
   // Filter and sort projects
   const filteredAndSortedProjects = useMemo(() => {
@@ -192,8 +272,12 @@ const CompletedProjects: React.FC = () => {
   }
 
   const getUniqueManagers = () => {
-    const managers = [...new Set(completedProjects.map(p => p.manager))]
-    return managers
+    const managerMap = new Map<string, ProjectMember>()
+    completedProjects.forEach(project => {
+      const mgr = project.manager
+      if (mgr?.id && !managerMap.has(mgr.id)) managerMap.set(mgr.id, mgr)
+    })
+    return Array.from(managerMap.values())
   }
 
   const formatDuration = (startDate: string, endDate: string) => {
@@ -473,13 +557,23 @@ const CompletedProjects: React.FC = () => {
                   </span>
                 </div>
 
-                <Link
-                  to={`/completed-projects/${project.id}`}
-                  className="btn-primary flex items-center space-x-2"
-                >
-                  <HiEye className="h-4 w-4" />
-                  <span>View Project</span>
-                </Link>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => moveToActiveProjects(project.id)}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 shadow-sm hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-gray-100"
+                    disabled={movingProjectId === project.id}
+                  >
+                    <ArrowUpDown className="h-3.5 w-3.5" />
+                    <span>{movingProjectId === project.id ? 'Moving...' : 'Move to Active'}</span>
+                  </button>
+                  <Link
+                    to={`/completed-projects/${project.id}`}
+                    className="btn-primary flex items-center space-x-2"
+                  >
+                    <HiEye className="h-4 w-4" />
+                    <span>View Project</span>
+                  </Link>
+                </div>
               </div>
             </div>
           ))}
@@ -493,9 +587,13 @@ const CompletedProjects: React.FC = () => {
             No completed projects found
           </h3>
           <p className="text-gray-600 dark:text-gray-400 mb-6">
-            {searchTerm || yearFilter !== 'all' || departmentFilter !== 'all' || managerFilter !== 'all'
-              ? 'Try adjusting your search or filter criteria.'
-              : 'Mark projects as completed from the Active Projects view to see them here.'
+            {isLoading
+              ? 'Loading completed projects...'
+              : loadError
+                ? loadError
+                : (searchTerm || yearFilter !== 'all' || departmentFilter !== 'all' || managerFilter !== 'all'
+                  ? 'Try adjusting your search or filter criteria.'
+                  : 'Mark projects as completed from the Active Projects view to see them here.')
             }
           </p>
           <Link

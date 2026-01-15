@@ -1,5 +1,5 @@
 -- DropForeignKey
-ALTER TABLE "AuthToken" DROP CONSTRAINT "AuthToken_userId_fkey";
+ALTER TABLE IF EXISTS "AuthToken" DROP CONSTRAINT IF EXISTS "AuthToken_userId_fkey";
 
 -- AddForeignKey
-ALTER TABLE "AuthToken" ADD CONSTRAINT "AuthToken_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE IF EXISTS "AuthToken" ADD CONSTRAINT "AuthToken_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

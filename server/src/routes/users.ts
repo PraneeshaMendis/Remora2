@@ -111,11 +111,16 @@ router.get('/me', async (req, res) => {
     if (!u && allowDevHeaders && !hasBearer) {
       u = await prisma.user.findFirst({ include: { role: true, department: true }, orderBy: { createdAt: 'asc' } })
     }
-    // Auto-provision a default admin if database is empty
+    // Auto-provision a default admin only if the database is empty
     if (!u) {
-      const role = await prisma.appRole.findFirst({}) || await prisma.appRole.create({ data: { name: 'Director' } })
-      const dept = await prisma.department.findFirst({}) || await prisma.department.create({ data: { name: 'Executive Department' } })
-      u = await prisma.user.create({ data: ({ name: 'Admin', email: 'admin@company.com', roleId: role.id, departmentId: dept.id, isActive: true, emailVerifiedAt: new Date() } as any), include: { role: true, department: true } })
+      const userCount = await prisma.user.count()
+      if (userCount === 0) {
+        const role = await prisma.appRole.findFirst({}) || await prisma.appRole.create({ data: { name: 'Director' } })
+        const dept = await prisma.department.findFirst({}) || await prisma.department.create({ data: { name: 'Executive Department' } })
+        u = await prisma.user.create({ data: ({ name: 'Admin', email: 'admin@company.com', roleId: role.id, departmentId: dept.id, isActive: true, emailVerifiedAt: new Date() } as any), include: { role: true, department: true } })
+      } else {
+        return res.status(401).json({ error: 'Unauthorized' })
+      }
     }
 
     // Resolve super-admin flag by id or email

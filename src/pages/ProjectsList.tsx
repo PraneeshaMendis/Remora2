@@ -206,6 +206,7 @@ const ProjectsList: React.FC = () => {
   const formatDate = (d?: string) => (d ? new Date(d).toLocaleDateString() : '')
 
   const filteredProjects = projects.filter(project => {
+    if (project.status === 'completed') return false
     const matchesSearch = project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          project.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          project.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -552,7 +553,6 @@ const ProjectsList: React.FC = () => {
               <option value="planning">Planning</option>
               <option value="in-progress">In Progress</option>
               <option value="in-review">In Review</option>
-              <option value="completed">Completed</option>
               <option value="blocked">Blocked</option>
             </select>
           </div>

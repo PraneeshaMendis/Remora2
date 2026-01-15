@@ -4,71 +4,71 @@
 
 @layer base {
   :root {
-    --background: 220 20% 97%;
-    --foreground: 222 47% 11%;
+    --background: 210 22% 98%;
+    --foreground: 220 18% 12%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 220 18% 12%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover-foreground: 220 18% 12%;
 
-    --primary: 238 75% 58%;
+    --primary: 210 100% 52%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 214 32% 91%;
-    --secondary-foreground: 222 47% 11%;
+    --secondary: 210 20% 94%;
+    --secondary-foreground: 220 18% 18%;
 
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
+    --muted: 210 18% 96%;
+    --muted-foreground: 215 14% 44%;
 
-    --accent: 210 40% 96%;
-    --accent-foreground: 222 47% 11%;
+    --accent: 210 18% 94%;
+    --accent-foreground: 220 18% 16%;
 
-    --destructive: 0 84% 60%;
+    --destructive: 0 84% 55%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 214 32% 88%;
-    --input: 214 32% 91%;
-    --ring: 238 75% 58%;
+    --border: 210 16% 88%;
+    --input: 210 18% 92%;
+    --ring: 210 100% 52%;
 
     --sidebar: 0 0% 100%;
-    --sidebar-border: 214 32% 88%;
+    --sidebar-border: 210 16% 86%;
 
-    --radius: 0.75rem;
+    --radius: 1.2rem;
   }
 
   .dark {
-    --background: 220 26% 8%;
-    --foreground: 210 40% 98%;
+    --background: 220 12% 8%;
+    --foreground: 210 20% 96%;
 
-    --card: 220 18% 11%;
-    --card-foreground: 210 40% 98%;
+    --card: 220 14% 12%;
+    --card-foreground: 210 20% 96%;
 
-    --popover: 220 18% 11%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 220 14% 12%;
+    --popover-foreground: 210 20% 96%;
 
-    --primary: 238 75% 58%;
+    --primary: 210 100% 60%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 20% 16%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 220 14% 18%;
+    --secondary-foreground: 210 20% 96%;
 
-    --muted: 220 20% 16%;
+    --muted: 220 14% 16%;
     --muted-foreground: 215 20% 68%;
 
-    --accent: 220 20% 16%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 220 14% 18%;
+    --accent-foreground: 210 20% 96%;
 
     --destructive: 0 63% 31%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 220 15% 20%;
-    --input: 220 15% 13%;
-    --ring: 238 75% 58%;
+    --border: 220 10% 18%;
+    --input: 220 12% 16%;
+    --ring: 210 100% 60%;
 
-    --sidebar: 220 20% 9%;
-    --sidebar-border: 220 15% 16%;
+    --sidebar: 220 12% 10%;
+    --sidebar-border: 220 10% 18%;
   }
 
   /* Tighter borders for Permissions page in dark mode to avoid light seams */
@@ -83,36 +83,62 @@
   .dark .permissions-page .border-r {
     border-color: hsl(var(--border)) !important;
   }
+  :root {
+    --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  }
+
   html {
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: var(--font-sans);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-sans);
+    letter-spacing: -0.02em;
   }
   
   body {
     @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  .app-bg {
+    background-image:
+      radial-gradient(1100px 500px at 12% -20%, hsl(210 15% 96% / 0.9), transparent),
+      radial-gradient(900px 500px at 88% -10%, hsl(210 12% 95% / 0.8), transparent),
+      linear-gradient(180deg, hsl(var(--background)), hsl(210 16% 96%));
+    background-attachment: fixed;
   }
 
   .dark .app-bg {
     background-image:
-      radial-gradient(1200px 600px at 12% -10%, hsl(220 28% 16% / 0.6), transparent),
-      radial-gradient(1000px 600px at 88% 0%, hsl(250 28% 15% / 0.5), transparent),
-      linear-gradient(180deg, hsl(var(--background)), hsl(220 25% 6%));
+      radial-gradient(1200px 600px at 12% -10%, hsl(220 16% 16% / 0.65), transparent),
+      radial-gradient(1000px 600px at 88% 0%, hsl(220 14% 14% / 0.55), transparent),
+      linear-gradient(180deg, hsl(var(--background)), hsl(220 12% 6%));
     background-attachment: fixed;
   }
 
   /* Registration page helpers */
   .bg-gradient-subtle {
-    background: radial-gradient(1200px 400px at 50% -100px, hsl(0 0% 100% / 0.9), transparent),
-                linear-gradient(to bottom, hsl(220 20% 98%), hsl(220 20% 96%));
+    background: radial-gradient(1200px 400px at 50% -120px, hsl(0 0% 100% / 0.9), transparent),
+                radial-gradient(900px 400px at 90% -140px, hsl(210 12% 96% / 0.8), transparent),
+                linear-gradient(to bottom, hsl(210 22% 98%), hsl(210 18% 96%));
   }
   .dark .bg-gradient-subtle {
-    background: radial-gradient(1200px 400px at 50% -100px, hsl(220 28% 14% / 0.75), transparent),
-                linear-gradient(to bottom, hsl(220 26% 8%), hsl(220 25% 6%));
+    background: radial-gradient(1200px 400px at 50% -100px, hsl(220 16% 14% / 0.75), transparent),
+                radial-gradient(900px 400px at 85% -120px, hsl(220 14% 12% / 0.65), transparent),
+                linear-gradient(to bottom, hsl(220 12% 8%), hsl(220 12% 6%));
   }
   .shadow-soft {
-    box-shadow: 0 10px 30px hsl(220 10% 20% / 0.08), 0 2px 8px hsl(220 10% 20% / 0.05);
+    box-shadow: 0 16px 36px hsl(220 18% 20% / 0.12), 0 4px 12px hsl(220 18% 20% / 0.08);
   }
   .bg-gradient-primary {
-    background: linear-gradient(135deg, #7C3AED, #2563EB);
+    background: linear-gradient(135deg, #0a84ff, #2563eb);
   }
   .animate-confetti {
     animation: confetti-fall 1s ease-out forwards;
@@ -122,7 +148,7 @@
 @layer components {
   /* Modern button system */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 disabled:opacity-50 disabled:cursor-not-allowed select-none;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold shadow-sm transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed select-none hover:-translate-y-0.5 active:translate-y-0;
   }
 
   .btn-sm {
@@ -130,7 +156,7 @@
   }
 
   .btn-compact {
-    @apply px-2 py-1 text-xs rounded-md gap-1 shadow-none;
+    @apply px-2 py-1 text-xs rounded-lg gap-1 shadow-none;
   }
 
   .icon-sm {
@@ -142,29 +168,29 @@
   }
 
   .btn-primary {
-    @apply btn bg-gradient-to-r from-primary-600 to-blue-600 text-white hover:from-primary-700 hover:to-blue-700 focus-visible:ring-primary-500;
-    box-shadow: 0 6px 20px hsl(220 90% 56% / 0.25), 0 2px 6px hsl(220 90% 56% / 0.2);
+    @apply btn bg-primary text-white hover:bg-primary/90 focus-visible:ring-primary-400;
+    box-shadow: 0 10px 24px hsl(210 90% 50% / 0.22), 0 2px 6px hsl(210 90% 50% / 0.18);
   }
   
   .btn-icon {
-    @apply inline-flex h-10 w-10 items-center justify-center rounded-full bg-primary-600 text-white hover:bg-primary-700 focus-visible:ring-2 focus-visible:ring-primary-500 transition-colors duration-200 shadow-sm;
+    @apply inline-flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-primary-400 transition-all duration-200 shadow-sm hover:-translate-y-0.5 active:translate-y-0;
   }
 
   .btn-secondary {
-    @apply btn bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100;
+    @apply btn bg-white/80 hover:bg-white dark:bg-slate-900/60 dark:hover:bg-slate-900/80 text-slate-900 dark:text-slate-100 border border-slate-200/70 dark:border-white/10;
   }
 
   .btn-outline {
-    @apply btn border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700;
+    @apply btn border border-slate-200/70 bg-white/60 text-slate-700 hover:bg-white/90 dark:bg-slate-900/40 dark:text-slate-200 dark:border-white/10 dark:hover:bg-slate-800/60;
   }
 
   .btn-danger {
-    @apply btn bg-gradient-to-r from-red-600 to-rose-600 text-white hover:from-red-700 hover:to-rose-700 focus-visible:ring-red-500;
-    box-shadow: 0 6px 20px hsl(0 84% 60% / 0.25), 0 2px 6px hsl(0 84% 60% / 0.2);
+    @apply btn bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-400;
+    box-shadow: 0 10px 24px hsl(0 80% 52% / 0.22), 0 2px 6px hsl(0 80% 52% / 0.18);
   }
   
   .input-field {
-    @apply w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-800 dark:text-gray-100 transition-colors duration-200;
+    @apply w-full px-3 py-2 border border-slate-200/70 dark:border-white/10 rounded-2xl focus:ring-2 focus:ring-primary-400 focus:border-transparent bg-background dark:text-gray-100 transition-colors duration-200;
   }
   
   .input-lg {
@@ -176,7 +202,7 @@
   }
 
   .card {
-    @apply bg-card text-card-foreground rounded-xl shadow-sm border border-border p-6;
+    @apply bg-card text-card-foreground rounded-2xl shadow-soft border border-border/60 p-6;
   }
 
   .sidebar-surface {
