@@ -171,7 +171,7 @@ const AcceptInvite = () => {
         <Card className="p-8 shadow-soft">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold mb-2">Create Your Account</h1>
-            <p className="text-muted-foreground">Welcome to Remora</p>
+            <p className="text-muted-foreground">Welcome to Cyber Labs</p>
           </div>
           <div className="mb-6 p-4 bg-secondary/50 rounded-xl">
             <div className="flex items-center justify-between text-sm">

@@ -1,0 +1,61 @@
+<svg width="520" height="160" viewBox="0 0 520 160" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Cyber Labs logo">
+  <defs>
+    <linearGradient id="lock-stroke" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7C3AED" />
+      <stop offset="100%" stop-color="#EC4899" />
+    </linearGradient>
+    <linearGradient id="lock-body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0F172A" />
+      <stop offset="100%" stop-color="#1F2937" />
+    </linearGradient>
+    <linearGradient id="lock-glint" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0" />
+      <stop offset="50%" stop-color="#FFFFFF" stop-opacity="0.4" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+    <linearGradient id="cyber-gradient" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#8B5CF6" />
+      <stop offset="100%" stop-color="#EC4899" />
+    </linearGradient>
+    <linearGradient id="labs-gradient" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#4B5563" />
+      <stop offset="100%" stop-color="#1F2937" />
+    </linearGradient>
+    <filter id="lock-shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#0B0F1A" flood-opacity="0.3" />
+    </filter>
+    <clipPath id="lock-clip">
+      <rect x="0" y="36" width="96" height="72" rx="18" />
+    </clipPath>
+  </defs>
+
+  <g transform="translate(24 20)">
+    <g filter="url(#lock-shadow)">
+      <rect x="0" y="36" width="96" height="72" rx="18" fill="url(#lock-body)" stroke="url(#lock-stroke)" stroke-width="3" />
+      <path
+        d="M24 36V24C24 10 34 0 48 0C62 0 72 10 72 24V36"
+        stroke="url(#lock-stroke)"
+        stroke-width="8"
+        stroke-linecap="round"
+      />
+    </g>
+    <rect x="6" y="42" width="84" height="60" rx="14" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="2" />
+
+    <g clip-path="url(#lock-clip)">
+      <rect x="-30" y="36" width="26" height="72" fill="url(#lock-glint)" opacity="0.7">
+        <animate attributeName="x" values="-30;120" dur="3.6s" repeatCount="indefinite" />
+      </rect>
+    </g>
+
+    <circle cx="48" cy="70" r="7" fill="#0B1120" />
+    <rect x="45" y="70" width="6" height="16" rx="3" fill="#0B1120" />
+    <circle cx="78" cy="18" r="3" fill="url(#cyber-gradient)">
+      <animate attributeName="opacity" values="0.35;0.9;0.35" dur="2.8s" repeatCount="indefinite" />
+    </circle>
+  </g>
+
+  <g font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif">
+    <text x="150" y="76" font-size="54" font-weight="700" letter-spacing="4" fill="url(#cyber-gradient)">CYBER</text>
+    <text x="150" y="122" font-size="46" font-weight="600" letter-spacing="6" fill="url(#labs-gradient)">LABS</text>
+  </g>
+</svg>

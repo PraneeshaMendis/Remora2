@@ -16,7 +16,7 @@ import {
   Receipt,
   Shield
 } from 'lucide-react'
-import RemoraLogo from './RemoraLogo.tsx'
+import CyberLabsLogo from './CyberLabsLogo.tsx'
 
 const Sidebar: React.FC = () => {
   const { user } = useAuth()
@@ -122,12 +122,8 @@ const Sidebar: React.FC = () => {
 
           {/* Brand */}
           <div className="px-4 pt-5 pb-4 border-b border-[hsl(var(--sidebar-border))]">
-            <div className="flex items-center gap-3">
-              <RemoraLogo size={40} className="shrink-0" />
-              <div className="flex flex-col leading-tight">
-                <span className="text-lg font-semibold text-gray-900 dark:text-white tracking-wide">Remora</span>
-                <span className="text-[10px] uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">Studio</span>
-              </div>
+            <div className="flex items-center">
+              <CyberLabsLogo size={36} className="shrink-0" />
             </div>
           </div>
 

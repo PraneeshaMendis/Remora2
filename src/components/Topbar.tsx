@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext.tsx'
 import { useTheme } from '../contexts/ThemeContext.tsx'
 import { getImpersonationStatus, stopImpersonation } from '../services/adminAPI.ts'
-import RemoraLogo from './RemoraLogo.tsx'
+import CyberLabsLogo from './CyberLabsLogo.tsx'
 
 const Topbar: React.FC = () => {
   const { user, logout } = useAuth()
@@ -25,9 +25,8 @@ const Topbar: React.FC = () => {
       <div className="px-6 py-4">
         <div className="flex items-center justify-between">
           {/* Left side - brand on mobile, spacer on desktop */}
-          <div className="flex items-center gap-3 lg:hidden">
-            <RemoraLogo size={32} />
-            <span className="text-base font-semibold text-gray-900 dark:text-white tracking-wide">Remora</span>
+          <div className="flex items-center lg:hidden">
+            <CyberLabsLogo size={28} />
           </div>
           <div className="hidden lg:block lg:w-56" aria-hidden="true"></div>
 
