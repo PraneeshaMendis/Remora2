@@ -33,7 +33,8 @@ import {
   HiPaperAirplane,
   HiX,
   HiCheckCircle,
-  HiArchive
+  HiArchive,
+  HiLink
 } from 'react-icons/hi'
 
 const Documents: React.FC = () => {
@@ -50,6 +51,7 @@ const Documents: React.FC = () => {
     phase: '',
     task: '',
     description: '',
+    externalLink: '',
     reviewer: '',
     files: null as FileList | null
   })
@@ -180,6 +182,7 @@ const Documents: React.FC = () => {
       uploadedAt: String(d.createdAt || new Date().toISOString()),
       reviewedAt: d.reviewedAt ? String(d.reviewedAt) : undefined,
       reviewNote: d.reviewComment ? String(d.reviewComment) : undefined,
+      externalLink: d.externalLink ? String(d.externalLink) : undefined,
     }
   }
 
@@ -236,6 +239,7 @@ const Documents: React.FC = () => {
         taskId: uploadData.task || undefined,
         status: 'in-review',
         name: uploadData.name || undefined,
+        externalLink: uploadData.externalLink.trim() || undefined,
       }, files)
       const mapped: Document[] = (created || []).map(mapApiDocToUi)
       setSentDocs(prev => [...mapped, ...prev])
@@ -247,6 +251,7 @@ const Documents: React.FC = () => {
         phase: '',
         task: '',
         description: '',
+        externalLink: '',
         reviewer: '',
         files: null
       })
@@ -608,15 +613,28 @@ const Documents: React.FC = () => {
                     <HiDocument className="h-4 w-4 text-gray-400" />
                     <span className="text-sm text-gray-600 dark:text-gray-400">{displayFileName(doc.fileName)}</span>
                   </div>
-                  <a
-                    href={getDocumentUrl(doc)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-                  >
-                    <HiEye className="h-4 w-4" />
-                    <span>View Document</span>
-                  </a>
+                  <div className="flex items-center space-x-4">
+                    {doc.externalLink && (
+                      <a
+                        href={doc.externalLink}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                      >
+                        <HiLink className="h-4 w-4" />
+                        <span>Open Link</span>
+                      </a>
+                    )}
+                    <a
+                      href={getDocumentUrl(doc)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                    >
+                      <HiEye className="h-4 w-4" />
+                      <span>View Document</span>
+                    </a>
+                  </div>
                 </div>
 
                 {/* Actions */}
@@ -831,6 +849,23 @@ const Documents: React.FC = () => {
                 />
               </div>
 
+              {/* Document Link */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Document Link
+                </label>
+                <input
+                  type="url"
+                  value={uploadData.externalLink}
+                  onChange={(e) => setUploadData(prev => ({ ...prev, externalLink: e.target.value }))}
+                  className="input-field"
+                  placeholder="https://example.com/shared-doc"
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Optional: add a shared link for the reviewer.
+                </p>
+              </div>
+
               {/* Assign Reviewer */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -914,6 +949,17 @@ const Documents: React.FC = () => {
               <div>
                 <h3 className="text-xl font-bold text-gray-900 dark:text-white">Review Document</h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{selectedDocument.name}</p>
+                {selectedDocument.externalLink && (
+                  <a
+                    href={selectedDocument.externalLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 inline-flex items-center gap-1 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+                  >
+                    <HiLink className="h-4 w-4" />
+                    <span>Open shared link</span>
+                  </a>
+                )}
               </div>
               <button
                 onClick={() => setIsReviewModalOpen(false)}

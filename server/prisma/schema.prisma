@@ -333,6 +333,7 @@ model Document {
   task        Task?    @relation(fields: [taskId], references: [id])
   taskId      String?
   name        String
+  externalLink String?
   reviewer    User?    @relation("DocumentReviewer", fields: [reviewerId], references: [id])
   reviewerId  String?
   filePath    String

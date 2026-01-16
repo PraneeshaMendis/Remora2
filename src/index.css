@@ -67,8 +67,8 @@
     --input: 220 12% 16%;
     --ring: 210 100% 60%;
 
-    --sidebar: 220 12% 10%;
-    --sidebar-border: 220 10% 18%;
+    --sidebar: 0 0% 6%;
+    --sidebar-border: 0 0% 12%;
   }
 
   /* Tighter borders for Permissions page in dark mode to avoid light seams */
@@ -82,6 +82,11 @@
   .dark .permissions-page .border-l,
   .dark .permissions-page .border-r {
     border-color: hsl(var(--border)) !important;
+  }
+
+  .dark body.completed-projects-page .app-bg {
+    background-image: none;
+    background-color: #000000;
   }
   :root {
     --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;

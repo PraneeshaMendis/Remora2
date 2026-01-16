@@ -11,7 +11,18 @@ function authHeaders() {
   }
 }
 
-export async function uploadDocuments(params: { projectId: string; phaseId: string; reviewerId: string; taskId?: string | null; status?: 'draft' | 'in-review'; name?: string }, files: File[]) {
+export async function uploadDocuments(
+  params: {
+    projectId: string
+    phaseId: string
+    reviewerId: string
+    taskId?: string | null
+    status?: 'draft' | 'in-review'
+    name?: string
+    externalLink?: string
+  },
+  files: File[],
+) {
   const fd = new FormData()
   fd.set('projectId', params.projectId)
   fd.set('phaseId', params.phaseId)
@@ -19,6 +30,7 @@ export async function uploadDocuments(params: { projectId: string; phaseId: stri
   if (params.taskId) fd.set('taskId', params.taskId)
   if (params.status) fd.set('status', params.status)
   if (params.name) fd.set('name', params.name)
+  if (params.externalLink) fd.set('externalLink', params.externalLink)
   for (const f of files) fd.append('files', f)
 
   const res = await fetch(`${API_BASE}/api/documents/upload?_ts=${Date.now()}`, {

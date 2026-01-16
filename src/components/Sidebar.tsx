@@ -121,9 +121,9 @@ const Sidebar: React.FC = () => {
         <div className="flex flex-col flex-grow sidebar-surface border-r shadow-lg">
 
           {/* Brand */}
-          <div className="px-4 pt-5 pb-4 border-b border-[hsl(var(--sidebar-border))]">
-            <div className="flex items-center">
-              <CyberLabsLogo size={36} className="shrink-0" />
+          <div className="px-4 pt-6 pb-5 border-b border-[hsl(var(--sidebar-border))]">
+            <div className="flex items-center justify-center">
+              <CyberLabsLogo size={44} className="shrink-0" />
             </div>
           </div>
 

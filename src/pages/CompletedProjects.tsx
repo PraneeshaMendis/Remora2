@@ -70,6 +70,13 @@ const CompletedProjects: React.FC = () => {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [movingProjectId, setMovingProjectId] = useState<string | null>(null)
 
+  useEffect(() => {
+    document.body.classList.add('completed-projects-page')
+    return () => {
+      document.body.classList.remove('completed-projects-page')
+    }
+  }, [])
+
   const buildAvatar = (name: string) => {
     const initials = String(name || '')
       .trim()
@@ -157,7 +164,7 @@ const CompletedProjects: React.FC = () => {
           const range = deriveDateRange(phases)
           let manager = detail?.owner ? mapMember(detail.owner) : team[0]
           if (manager && !manager.department) {
-            const match = team.find(m => m.id === manager.id)
+            const match = team.find((member: ProjectMember) => member.id === manager.id)
             if (match?.department) manager = { ...manager, department: match.department }
           }
           if (!manager) {
@@ -298,7 +305,7 @@ const CompletedProjects: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-black dark:to-black dark:bg-black">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8 animate-fade-in">
@@ -318,7 +325,7 @@ const CompletedProjects: React.FC = () => {
         </div>
 
         {/* Search and Filters */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+        <div className="bg-white dark:bg-black/60 rounded-xl border border-gray-200 dark:border-white/10 p-6">
           <div className="flex flex-col lg:flex-row gap-4">
             {/* Search */}
             <div className="flex-1">
@@ -422,60 +429,59 @@ const CompletedProjects: React.FC = () => {
             </div>
           )}
         </div>
-      </div>
 
-      {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 animate-fade-in" style={{ animationDelay: '0.2s' }}>
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-green-100 dark:bg-green-900/20 rounded-lg">
-              <CheckCircle2 className="w-6 h-6 text-green-600 dark:text-green-400" />
+        {/* Stats Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 animate-fade-in" style={{ animationDelay: '0.2s' }}>
+          <div className="bg-white dark:bg-black/60 rounded-xl border border-gray-200 dark:border-white/10 p-6 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-green-100 dark:bg-green-900/20 rounded-lg">
+                <CheckCircle2 className="w-6 h-6 text-green-600 dark:text-green-400" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">{completedProjects.length}</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Total Completed</p>
+              </div>
             </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{completedProjects.length}</p>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Total Completed</p>
+          </div>
+          
+          <div className="bg-white dark:bg-black/60 rounded-xl border border-gray-200 dark:border-white/10 p-6 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
+                <Users className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {new Set(completedProjects.flatMap(p => p.team.map(m => m.id))).size}
+                </p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Team Members</p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="bg-white dark:bg-black/60 rounded-xl border border-gray-200 dark:border-white/10 p-6 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-purple-100 dark:bg-purple-900/20 rounded-lg">
+                <Target className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {completedProjects.reduce((sum, p) => sum + p.totalPhases, 0)}
+                </p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Total Phases</p>
+              </div>
             </div>
           </div>
         </div>
-        
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
-              <Users className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                {new Set(completedProjects.flatMap(p => p.team.map(m => m.id))).size}
-              </p>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Team Members</p>
-            </div>
-          </div>
-        </div>
-        
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-purple-100 dark:bg-purple-900/20 rounded-lg">
-              <Target className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                {completedProjects.reduce((sum, p) => sum + p.totalPhases, 0)}
-              </p>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Total Phases</p>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      {/* Projects List */}
-      {filteredAndSortedProjects.length > 0 ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-          {filteredAndSortedProjects.map((project, index) => (
-            <div
-              key={project.id}
-              className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 hover:shadow-lg transition-all duration-200 animate-slide-up group"
-              style={{ animationDelay: `${0.3 + index * 0.1}s` }}
-            >
+        {/* Projects List */}
+        {filteredAndSortedProjects.length > 0 ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+            {filteredAndSortedProjects.map((project, index) => (
+              <div
+                key={project.id}
+                className="bg-white dark:bg-black/60 rounded-xl border border-gray-200 dark:border-white/10 p-6 hover:shadow-lg transition-all duration-200 animate-slide-up group"
+                style={{ animationDelay: `${0.3 + index * 0.1}s` }}
+              >
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
                   <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
@@ -576,41 +582,42 @@ const CompletedProjects: React.FC = () => {
                 </div>
               </div>
             </div>
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-12">
-          <div className="mx-auto w-24 h-24 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mb-4">
-            <CheckCircle2 className="h-12 w-12 text-gray-400" />
+            ))}
           </div>
-          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-            No completed projects found
-          </h3>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">
-            {isLoading
-              ? 'Loading completed projects...'
-              : loadError
-                ? loadError
-                : (searchTerm || yearFilter !== 'all' || departmentFilter !== 'all' || managerFilter !== 'all'
-                  ? 'Try adjusting your search or filter criteria.'
-                  : 'Mark projects as completed from the Active Projects view to see them here.')
-            }
-          </p>
-          <Link
-            to="/projects"
-            className="btn-primary"
-          >
-            View Active Projects
-          </Link>
-        </div>
-      )}
+        ) : (
+          <div className="text-center py-12">
+            <div className="mx-auto w-24 h-24 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mb-4">
+              <CheckCircle2 className="h-12 w-12 text-gray-400" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+              No completed projects found
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
+              {isLoading
+                ? 'Loading completed projects...'
+                : loadError
+                  ? loadError
+                  : (searchTerm || yearFilter !== 'all' || departmentFilter !== 'all' || managerFilter !== 'all'
+                    ? 'Try adjusting your search or filter criteria.'
+                    : 'Mark projects as completed from the Active Projects view to see them here.')
+              }
+            </p>
+            <Link
+              to="/projects"
+              className="btn-primary"
+            >
+              View Active Projects
+            </Link>
+          </div>
+        )}
 
-      {/* Results Summary */}
-      {filteredAndSortedProjects.length > 0 && (
-        <div className="mt-8 text-center text-sm text-gray-600 dark:text-gray-400">
-          Showing {filteredAndSortedProjects.length} of {completedProjects.length} completed projects
-        </div>
-      )}
+        {/* Results Summary */}
+        {filteredAndSortedProjects.length > 0 && (
+          <div className="mt-8 text-center text-sm text-gray-600 dark:text-gray-400">
+            Showing {filteredAndSortedProjects.length} of {completedProjects.length} completed projects
+          </div>
+        )}
+      </div>
     </div>
   )
 }

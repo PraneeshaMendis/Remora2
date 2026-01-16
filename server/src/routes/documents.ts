@@ -52,6 +52,7 @@ function mapDocument(d: any) {
     projectId: d.projectId || null,
     phaseId: d.phaseId || null,
     taskId: d.taskId || null,
+    externalLink: d.externalLink || null,
     projectName: d.project?.title || '',
     phaseName: d.phase?.name || '',
     taskTitle: d.task?.title || '',
@@ -74,11 +75,12 @@ router.post('/upload', upload.array('files'), async (req: Request, res: Response
     reviewerId: z.string(),
     status: z.enum(['draft','in-review']).optional().default('in-review'),
     name: z.string().optional(),
+    externalLink: z.string().optional(),
   })
 
   const parsed = schema.safeParse(req.body)
   if (!parsed.success) return res.status(400).json(parsed.error.flatten())
-  const { projectId, phaseId, taskId, reviewerId, status, name } = parsed.data
+  const { projectId, phaseId, taskId, reviewerId, status, name, externalLink } = parsed.data
 
   const files = (req.files as Express.Multer.File[]) || []
   if (!files.length) return res.status(400).json({ error: 'No files uploaded (use field name "files")' })
@@ -101,6 +103,7 @@ router.post('/upload', upload.array('files'), async (req: Request, res: Response
       const doc = await db.document.create({
         data: {
           name: name || f.originalname || 'document',
+          externalLink: externalLink || null,
           filePath: relPath, // served at /uploads/<relPath>
           projectId,
           phaseId,

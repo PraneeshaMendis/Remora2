@@ -22,11 +22,13 @@ const AuthenticatedLayout: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background app-bg">
-      <Topbar />
       <div className="flex">
         <Sidebar />
         <main className="flex-1">
-          <div className="py-2 px-4 max-w-6xl mx-auto">
+          <div className="px-4 pt-4 max-w-6xl mx-auto">
+            <div className="flex justify-end mb-3">
+              <Topbar />
+            </div>
             <Outlet />
           </div>
         </main>
