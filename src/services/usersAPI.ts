@@ -12,6 +12,10 @@ export function listUsers(params: { page?: number; limit?: number; search?: stri
   return apiGet(`/api/users${qs ? `?${qs}` : ''}`)
 }
 
+export function listReviewers() {
+  return apiGet('/api/users/reviewers')
+}
+
 export function getUser(id: string) {
   return apiGet(`/api/users/${id}`)
 }

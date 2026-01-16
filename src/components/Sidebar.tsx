@@ -116,9 +116,9 @@ const Sidebar: React.FC = () => {
   })
 
   return (
-    <div className="hidden lg:flex lg:flex-shrink-0">
-      <div className="flex flex-col w-56">
-        <div className="flex flex-col flex-grow sidebar-surface border-r shadow-lg">
+    <div className="hidden lg:flex lg:flex-shrink-0 lg:min-h-screen">
+      <div className="flex flex-col w-56 min-h-screen">
+        <div className="flex flex-col flex-1 sidebar-surface border-r shadow-lg">
 
           {/* Brand */}
           <div className="px-4 pt-6 pb-5 border-b border-[hsl(var(--sidebar-border))]">

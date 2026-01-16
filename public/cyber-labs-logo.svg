@@ -10,14 +10,14 @@
       <stop offset="100%" stop-color="#38BDF8" />
     </linearGradient>
     <filter id="neon-glow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feGaussianBlur stdDeviation="4" result="blur" />
       <feMerge>
         <feMergeNode in="blur" />
         <feMergeNode in="SourceGraphic" />
       </feMerge>
     </filter>
     <filter id="text-glow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feGaussianBlur stdDeviation="2" result="blur" />
       <feMerge>
         <feMergeNode in="blur" />
         <feMergeNode in="SourceGraphic" />
@@ -41,6 +41,8 @@
       <path d="M28 36V26C28 12 39 1 54 1C69 1 80 12 80 26V36" stroke="url(#neon-gradient)" stroke-width="8" stroke-linecap="round" />
       <rect x="12" y="36" width="84" height="72" rx="18" fill="#0B1020" stroke="url(#neon-gradient)" stroke-width="3" />
     </g>
+    <path d="M28 36V26C28 12 39 1 54 1C69 1 80 12 80 26V36" stroke="#0B0F1A" stroke-opacity="0.75" stroke-width="2" stroke-linecap="round" />
+    <rect x="12" y="36" width="84" height="72" rx="18" fill="none" stroke="#0B0F1A" stroke-opacity="0.75" stroke-width="1.5" />
 
     <rect x="20" y="44" width="68" height="56" rx="14" fill="#0F172A" stroke="url(#neon-gradient-soft)" stroke-opacity="0.6" stroke-width="1.5" />
 
@@ -52,7 +54,7 @@
   </g>
 
   <g font-family="'SF Pro Display','SF Pro Text','Helvetica Neue',Arial,sans-serif" filter="url(#text-glow)">
-    <text x="150" y="72" font-size="54" font-weight="700" letter-spacing="6" fill="url(#neon-gradient)">CYBER</text>
-    <text x="150" y="122" font-size="42" font-weight="600" letter-spacing="8" fill="url(#neon-gradient-soft)">LABS</text>
+    <text x="150" y="72" font-size="54" font-weight="700" letter-spacing="6" fill="url(#neon-gradient)" stroke="#0B0F1A" stroke-opacity="0.8" stroke-width="2" paint-order="stroke fill">CYBER</text>
+    <text x="150" y="122" font-size="42" font-weight="600" letter-spacing="8" fill="url(#neon-gradient-soft)" stroke="#0B0F1A" stroke-opacity="0.8" stroke-width="2" paint-order="stroke fill">LABS</text>
   </g>
 </svg>

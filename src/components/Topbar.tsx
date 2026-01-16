@@ -48,6 +48,16 @@ const Topbar: React.FC = () => {
           </svg>
         )}
       </button>
+      <button
+        type="button"
+        className="p-2 rounded-xl bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors duration-200"
+        title="Notifications"
+        aria-label="Notifications"
+      >
+        <svg className="h-5 w-5 text-gray-600 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0a3 3 0 11-6 0m6 0H9" />
+        </svg>
+      </button>
 
       <div className="flex items-center gap-3">
         {user?.role === 'admin' && (

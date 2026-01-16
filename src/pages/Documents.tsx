@@ -4,7 +4,7 @@ import { uploadDocuments, listInbox, listSent, reviewDocument } from '../service
 import { getProjectsWithPhases } from '../services/projectsAPI'
 import { apiGet, API_BASE } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
-import { listUsers } from '../services/usersAPI'
+import { listReviewers } from '../services/usersAPI'
 
 
 interface TimelineStep {
@@ -108,7 +108,7 @@ const Documents: React.FC = () => {
     ;(async () => {
       const results = await Promise.allSettled([
         getProjectsWithPhases(),
-        listUsers({ page: 1, limit: 100 }),
+        listReviewers(),
         listInbox(),
         listSent(),
       ])
@@ -124,7 +124,8 @@ const Documents: React.FC = () => {
       // Users (reviewers) — this may be restricted for non-admins; ignore failure
       if (results[1].status === 'fulfilled') {
         const users = results[1].value
-        const people = (users?.items || []).map((u: any) => ({ id: String(u.id), name: String(u.name || u.email || 'User') }))
+        const list = Array.isArray(users) ? users : (users?.items || [])
+        const people = list.map((u: any) => ({ id: String(u.id), name: String(u.name || u.email || 'User') }))
         setReviewers(people)
       } else {
         console.warn('Users list failed (likely not admin); continuing:', results[1].reason)
@@ -178,8 +179,9 @@ const Documents: React.FC = () => {
 
   function mapApiDocToUi(d: any): Document {
     const filePath: string = String(d.fileUrl || d.filePath || '')
-    const fileName = filePath ? filePath.split('/').pop() || 'document' : d.name || 'document'
-    const ext = (fileName.split('.').pop() || '').toLowerCase()
+    const hasFile = Boolean(filePath)
+    const fileName = hasFile ? (filePath.split('/').pop() || 'document') : String(d.name || 'document')
+    const ext = hasFile ? (fileName.split('.').pop() || '').toLowerCase() : 'link'
     const reviewerRole = String(d?.reviewerRole || d?.reviewer?.role?.name || '').toLowerCase()
     const uploaderRole = String(d?.createdByRole || d?.createdBy?.role?.name || '').toLowerCase()
     return {
@@ -207,6 +209,7 @@ const Documents: React.FC = () => {
   }
 
   function getDocumentUrl(doc: Document): string {
+    if (doc.fileType === 'link') return ''
     // Files are served at /uploads/documents/<generated-filename>
     const fname = encodeURIComponent(doc.fileName)
     const ts = Date.now()
@@ -272,10 +275,16 @@ const Documents: React.FC = () => {
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!uploadData.project || !uploadData.phase || !uploadData.files || !uploadData.reviewer) return
+    if (!uploadData.project || !uploadData.phase || !uploadData.reviewer) return
+    const hasFiles = !!(uploadData.files && uploadData.files.length > 0)
+    const hasLink = !!uploadData.externalLink.trim()
+    if (!hasFiles && !hasLink) {
+      alert('Upload at least one file or provide a document link.')
+      return
+    }
 
     try {
-      const files = Array.from(uploadData.files)
+      const files = uploadData.files ? Array.from(uploadData.files) : []
       const created = await uploadDocuments({
         projectId: uploadData.project,
         phaseId: uploadData.phase,
@@ -675,7 +684,9 @@ const Documents: React.FC = () => {
                     </div>
                     <div>
                       <div className="text-sm font-semibold text-gray-900 dark:text-white">{displayFileName(doc.fileName)}</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">{(doc.fileType || 'file').toUpperCase()} file</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {doc.fileType === 'link' ? 'Shared link' : `${(doc.fileType || 'file').toUpperCase()} file`}
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -690,15 +701,17 @@ const Documents: React.FC = () => {
                         Open Link
                       </a>
                     )}
-                    <a
-                      href={getDocumentUrl(doc)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="h-10 w-10 rounded-full border border-gray-200 dark:border-white/10 bg-white dark:bg-black/50 flex items-center justify-center hover:bg-gray-50 dark:hover:bg-black/40"
-                      title="View document"
-                    >
-                      <HiEye className="h-4 w-4 text-gray-600 dark:text-gray-300" />
-                    </a>
+                    {doc.fileType !== 'link' && (
+                      <a
+                        href={getDocumentUrl(doc)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="h-10 w-10 rounded-full border border-gray-200 dark:border-white/10 bg-white dark:bg-black/50 flex items-center justify-center hover:bg-gray-50 dark:hover:bg-black/40"
+                        title="View document"
+                      >
+                        <HiEye className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+                      </a>
+                    )}
                   </div>
                 </div>
 
@@ -718,15 +731,17 @@ const Documents: React.FC = () => {
                     </button>
                   </div>
                   <div className="flex items-center gap-3">
-                    <a
-                      href={getDocumentUrl(doc)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="btn-outline"
-                    >
-                      <HiEye className="h-4 w-4 mr-2" />
-                      View Document
-                    </a>
+                    {doc.fileType !== 'link' && (
+                      <a
+                        href={getDocumentUrl(doc)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn-outline"
+                      >
+                        <HiEye className="h-4 w-4 mr-2" />
+                        View Document
+                      </a>
+                    )}
                     {(activeView === 'inbox' || doc.reviewerId === (user?.id || '')) && (
                       <button
                         onClick={() => handleReviewDocument(doc)}
@@ -925,7 +940,7 @@ const Documents: React.FC = () => {
               {/* Document Link */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Document Link
+                  Document Link (required if no files)
                 </label>
                 <input
                   type="url"
@@ -960,7 +975,7 @@ const Documents: React.FC = () => {
               {/* Upload Files */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Upload Files <span className="text-red-500">*</span> <span className="text-gray-500 text-sm">(Multiple files supported)</span>
+                  Upload Files <span className="text-gray-500 text-sm">(optional if link is provided)</span>
                 </label>
                 <div className="flex items-center space-x-3">
                   <input
@@ -969,7 +984,6 @@ const Documents: React.FC = () => {
                     className="hidden"
                     id="upload-file-input"
                     multiple
-                    required
                   />
                   <label
                     htmlFor="upload-file-input"

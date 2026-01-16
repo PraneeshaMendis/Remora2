@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { requireSuperAdmin } from '../middleware/super-admin.ts'
+import { authRequired } from '../middleware/auth-required.ts'
 import { getSuperAdminEmail } from '../utils/settings.ts'
 import { isSuperAdminByUserId } from '../middleware/super-admin.ts'
 import { prisma } from '../prisma.ts'
@@ -55,6 +56,22 @@ router.get('/', requireSuperAdmin, async (req, res) => {
     department: (u as any).department?.name || '',
   }))
   res.json({ total, page, limit, items })
+})
+
+// Lightweight reviewer list for document assignment (any authenticated user)
+router.get('/reviewers', authRequired, async (_req, res) => {
+  const users = await prisma.user.findMany({
+    where: { isActive: true },
+    include: { role: { select: { name: true } }, department: { select: { name: true } } },
+    orderBy: [{ name: 'asc' }],
+  })
+  res.json(users.map(u => ({
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    role: (u as any).role?.name || '',
+    department: (u as any).department?.name || '',
+  })))
 })
 
 const createUserSchema = z.object({

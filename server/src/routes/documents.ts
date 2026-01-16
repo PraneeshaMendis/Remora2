@@ -37,11 +37,12 @@ function mapStatus(s: string): string {
 }
 
 function mapDocument(d: any) {
+  const filePath = String(d.filePath || '')
   return {
     id: d.id,
     name: d.name,
-    fileUrl: d.filePath?.startsWith('/uploads') ? d.filePath : `/uploads/${d.filePath}`,
-    filePath: d.filePath,
+    fileUrl: filePath ? (filePath.startsWith('/uploads') ? filePath : `/uploads/${filePath}`) : null,
+    filePath,
     status: mapStatus(d.status || 'DRAFT'),
     reviewerId: d.reviewerId || null,
     reviewer: d.reviewer ? { id: d.reviewer.id, name: d.reviewer.name, email: d.reviewer.email } : null,
@@ -83,7 +84,9 @@ router.post('/upload', upload.array('files'), async (req: Request, res: Response
   const { projectId, phaseId, taskId, reviewerId, status, name, externalLink } = parsed.data
 
   const files = (req.files as Express.Multer.File[]) || []
-  if (!files.length) return res.status(400).json({ error: 'No files uploaded (use field name "files")' })
+  const hasFiles = files.length > 0
+  const link = String(externalLink || '').trim()
+  if (!hasFiles && !link) return res.status(400).json({ error: 'Upload a file or provide a document link' })
 
   try {
     // Ensure project/phase exist; validate reviewer
@@ -98,13 +101,44 @@ router.post('/upload', upload.array('files'), async (req: Request, res: Response
 
     const statusDb = status === 'in-review' ? 'IN_REVIEW' : 'DRAFT'
     const created = [] as any[]
-    for (const f of files) {
-      const relPath = path.posix.join('documents', path.basename(f.path))
+    if (hasFiles) {
+      for (const f of files) {
+        const relPath = path.posix.join('documents', path.basename(f.path))
+        const doc = await db.document.create({
+          data: {
+            name: name || f.originalname || 'document',
+            externalLink: link || null,
+            filePath: relPath, // served at /uploads/<relPath>
+            projectId,
+            phaseId,
+            taskId: taskId || null,
+            reviewerId,
+            createdById: userId,
+            status: statusDb,
+          },
+          include: { reviewer: { include: { role: true } }, createdBy: { include: { role: true } }, project: true, phase: true, task: true },
+        })
+        created.push(mapDocument(doc))
+        // Add to task history timeline if associated with a task
+        try {
+          if (taskId) {
+            await prisma.historyEvent.create({
+              data: {
+                taskId: String(taskId),
+                type: 'DOCUMENT' as any,
+                message: `Document: ${doc.name}`,
+                createdById: userId,
+              },
+            })
+          }
+        } catch {}
+      }
+    } else {
       const doc = await db.document.create({
         data: {
-          name: name || f.originalname || 'document',
-          externalLink: externalLink || null,
-          filePath: relPath, // served at /uploads/<relPath>
+          name: name || 'Shared Link',
+          externalLink: link || null,
+          filePath: '',
           projectId,
           phaseId,
           taskId: taskId || null,
@@ -115,7 +149,6 @@ router.post('/upload', upload.array('files'), async (req: Request, res: Response
         include: { reviewer: { include: { role: true } }, createdBy: { include: { role: true } }, project: true, phase: true, task: true },
       })
       created.push(mapDocument(doc))
-      // Add to task history timeline if associated with a task
       try {
         if (taskId) {
           await prisma.historyEvent.create({

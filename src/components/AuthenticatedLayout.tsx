@@ -25,11 +25,13 @@ const AuthenticatedLayout: React.FC = () => {
       <div className="flex">
         <Sidebar />
         <main className="flex-1">
-          <div className="px-4 pt-4 max-w-6xl mx-auto">
+          <div className="px-4 pt-4">
             <div className="flex justify-end mb-3">
               <Topbar />
             </div>
-            <Outlet />
+            <div className="max-w-6xl mx-auto">
+              <Outlet />
+            </div>
           </div>
         </main>
       </div>
