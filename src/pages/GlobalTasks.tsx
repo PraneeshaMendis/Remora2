@@ -236,8 +236,8 @@ const GlobalTasks: React.FC = () => {
       {/* Tasks Table */}
       <div className="card">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-800">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-white/10">
+            <thead className="bg-gray-50 dark:bg-black/60">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Done
@@ -265,7 +265,7 @@ const GlobalTasks: React.FC = () => {
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+            <tbody className="bg-white dark:bg-black/60 divide-y divide-gray-200 dark:divide-white/10">
               {tasks.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-6 py-12 text-center">

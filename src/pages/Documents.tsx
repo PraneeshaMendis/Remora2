@@ -40,6 +40,7 @@ import {
 const Documents: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [projectFilter, setProjectFilter] = useState('all')
+  const [phaseFilter, setPhaseFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
@@ -85,6 +86,21 @@ const Documents: React.FC = () => {
     const tasks = Array.isArray(ph?.tasks) ? ph.tasks : []
     return tasks.map((t: any) => ({ id: String(t.id), title: String(t.title || 'Untitled Task') }))
   }, [projectDetail, uploadData.phase])
+  const filterPhases = useMemo(() => {
+    if (projectFilter !== 'all') {
+      const project = projects.find(p => p.id === projectFilter)
+      return project?.phases || []
+    }
+    const seen = new Map<string, { id: string; name: string }>()
+    projects.forEach(project => {
+      project.phases.forEach(phase => {
+        if (!seen.has(phase.id)) {
+          seen.set(phase.id, { id: phase.id, name: phase.name })
+        }
+      })
+    })
+    return Array.from(seen.values())
+  }, [projects, projectFilter])
 
   const { user } = useAuth()
 
@@ -156,6 +172,10 @@ const Documents: React.FC = () => {
     setUploadData(prev => ({ ...prev, task: '' }))
   }, [uploadData.phase])
 
+  useEffect(() => {
+    setPhaseFilter('all')
+  }, [projectFilter])
+
   function mapApiDocToUi(d: any): Document {
     const filePath: string = String(d.fileUrl || d.filePath || '')
     const fileName = filePath ? filePath.split('/').pop() || 'document' : d.name || 'document'
@@ -200,19 +220,43 @@ const Documents: React.FC = () => {
     return m ? m[1] : base
   }
 
+  function getInitials(name: string): string {
+    return name
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map(part => part[0]?.toUpperCase() || '')
+      .join('')
+  }
+
   const documents = useMemo(() => (activeView === 'inbox' ? inboxDocs : sentDocs), [activeView, inboxDocs, sentDocs])
   const filteredDocuments = documents.filter(doc => {
     const matchesSearch = doc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          doc.fileName.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesProject = projectFilter === 'all' || doc.projectId === projectFilter
+    const matchesPhase = phaseFilter === 'all' || doc.phaseId === phaseFilter
     const matchesStatus = statusFilter === 'all' || doc.status === statusFilter
     
-    return matchesSearch && matchesProject && matchesStatus
+    return matchesSearch && matchesProject && matchesPhase && matchesStatus
   })
 
   const getProjectName = (projectId: string) => {
     const project = projects.find(p => p.id === projectId)
     return project?.name || 'Unknown Project'
+  }
+
+  const getPhaseName = (phaseId: string) => {
+    if (!phaseId) return 'Phase'
+    for (const project of projects) {
+      const phase = project.phases.find(p => p.id === phaseId)
+      if (phase) return phase.name
+    }
+    return 'Phase'
+  }
+
+  const formatRole = (role?: string) => {
+    if (!role) return ''
+    return role[0].toUpperCase() + role.slice(1)
   }
 
   const getStatusColor = (status: string) => {
@@ -449,105 +493,125 @@ const Documents: React.FC = () => {
 
 
   return (
-    <div>
+    <div className="space-y-6">
       {/* Header */}
-      <div className="py-12 px-6 mb-6">
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-4xl font-bold mb-2 text-gray-900 dark:text-white">My Documents & Reviews</h1>
           <p className="text-gray-600 dark:text-gray-400 text-lg">
             Manage your documents and track their journey through the review process
           </p>
         </div>
-      </div>
-
-      {/* Main Content Area - The big "divide box" */}
-      <div className="card p-6 space-y-6">
-        {/* View Toggle */}
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-gray-600 dark:text-gray-400">View</div>
-          <div className="inline-flex rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700">
+        <div className="flex items-center gap-4">
+          <div className="inline-flex items-center rounded-full border border-gray-200 dark:border-white/10 bg-gray-100 dark:bg-black/50 p-1">
             <button
               type="button"
               onClick={() => setActiveView('inbox')}
-              className={`px-4 py-2 text-sm ${activeView === 'inbox' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+              className={`px-5 py-2 text-sm rounded-full transition-colors ${
+                activeView === 'inbox' ? 'bg-blue-600 text-white' : 'text-gray-700 dark:text-gray-300 hover:text-gray-900'
+              }`}
             >
               Inbox
             </button>
             <button
               type="button"
               onClick={() => setActiveView('sent')}
-              className={`px-4 py-2 text-sm border-l border-gray-200 dark:border-gray-700 ${activeView === 'sent' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+              className={`px-5 py-2 text-sm rounded-full transition-colors ${
+                activeView === 'sent' ? 'bg-blue-600 text-white' : 'text-gray-700 dark:text-gray-300 hover:text-gray-900'
+              }`}
             >
               Sent
             </button>
           </div>
+          <div className="hidden h-6 w-px bg-gray-200 dark:bg-white/10 lg:block"></div>
+          <button
+            type="button"
+            className="relative h-11 w-11 rounded-full border border-gray-200 dark:border-white/10 bg-white dark:bg-black/50 flex items-center justify-center hover:bg-gray-50 dark:hover:bg-black/40 transition-colors"
+            aria-label="Notifications"
+          >
+            <svg className="h-5 w-5 text-gray-600 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            </svg>
+            <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-red-500"></span>
+          </button>
         </div>
+      </div>
+
+      {/* Main Content Area */}
+      <div className="card dark:bg-black/60 dark:border-white/10 p-6 space-y-6">
         {/* Filter Bar */}
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex-1 max-w-md">
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <HiSearch className="h-5 w-5 text-gray-400" />
-              </div>
-              <input
-                type="text"
-                placeholder="Search by document name, project,"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="input-field pl-10"
-              />
-            </div>
+        <div className="grid grid-cols-1 lg:grid-cols-[140px,minmax(240px,1fr),200px,200px] gap-4 items-center">
+          <div className="relative">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="input-field text-sm py-2.5 pr-10"
+            >
+              <option value="all">View</option>
+              <option value="draft">Draft</option>
+              <option value="in-review">In Review</option>
+              <option value="approved">Approved</option>
+              <option value="needs-changes">Needs Changes</option>
+            </select>
+            <HiChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 dark:text-gray-400" />
           </div>
-          <div className="flex items-center gap-3">
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <HiSearch className="h-5 w-5 text-gray-400" />
+            </div>
+            <input
+              type="text"
+              placeholder="Search by document name, project"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="input-field pl-10"
+            />
+          </div>
+          <div className="relative">
             <select
               value={projectFilter}
               onChange={(e) => setProjectFilter(e.target.value)}
-              className="input-field text-sm py-2 px-3"
+              className="input-field text-sm py-2.5 pr-10"
             >
               <option value="all">All Projects</option>
               {projects.map((project) => (
                 <option key={project.id} value={project.id}>{project.name}</option>
               ))}
             </select>
-            <select className="input-field text-sm py-2 px-3">
-              <option value="all">All Phases</option>
-              <option value="planning">Planning</option>
-              <option value="development">Development</option>
-              <option value="testing">Testing</option>
-            </select>
-            <select className="input-field text-sm py-2 px-3">
-              <option value="all">All Tasks</option>
-              <option value="requirements">Requirements</option>
-              <option value="design">Design</option>
-              <option value="implementation">Implementation</option>
-            </select>
+            <HiChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 dark:text-gray-400" />
+          </div>
+          <div className="relative">
             <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="input-field text-sm py-2 px-3"
+              value={phaseFilter}
+              onChange={(e) => setPhaseFilter(e.target.value)}
+              className="input-field text-sm py-2.5 pr-10"
             >
-              <option value="all">All Statuses</option>
-              <option value="draft">Draft</option>
-              <option value="in-review">In Review</option>
-              <option value="approved">Approved</option>
-              <option value="needs-changes">Needs Changes</option>
+              <option value="all">All Phases</option>
+              {filterPhases.map((phase) => (
+                <option key={phase.id} value={phase.id}>{phase.name}</option>
+              ))}
             </select>
-            <button
-              onClick={() => setIsUploadModalOpen(true)}
-              className="btn-primary"
-            >
-              <HiPlus className="h-4 w-4 mr-2" />
-              Upload Document
-            </button>
+            <HiChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 dark:text-gray-400" />
           </div>
         </div>
 
-        {/* Divide Line */}
-        <div className="border-t border-gray-200 dark:border-gray-700"></div>
+        <div className="h-2 rounded-full bg-gray-200/60 dark:bg-white/10 overflow-hidden">
+          <div className="h-full w-2/3 rounded-full bg-gray-400/70 dark:bg-white/30"></div>
+        </div>
+
+        <button
+          onClick={() => setIsUploadModalOpen(true)}
+          className="btn-primary w-full justify-center text-base"
+        >
+          <HiPlus className="h-5 w-5 mr-2" />
+          Upload Document
+        </button>
+
+        <div className="border-t border-gray-200 dark:border-white/10"></div>
 
         {/* Documents List */}
         {filteredDocuments.length === 0 ? (
-          <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-12 text-center">
+          <div className="bg-gray-50 dark:bg-black/50 rounded-xl p-12 text-center">
             <HiDocument className="mx-auto h-12 w-12 text-gray-400" />
             <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">No documents found</h3>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -557,105 +621,114 @@ const Documents: React.FC = () => {
         ) : (
           <div className="space-y-4">
             {filteredDocuments.map((doc) => (
-              <div key={doc.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+              <div key={doc.id} className="rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-black/60 p-6 shadow-sm">
                 {/* Document Header */}
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center space-x-4">
-                    <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900 rounded-xl flex items-center justify-center">
-                      <HiDocument className="h-6 w-6 text-primary-600 dark:text-primary-400" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{doc.name}</h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        {getProjectName(doc.projectId)} → Planning → Requirements Gathering
-                      </p>
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <h3 className="text-2xl font-semibold text-gray-900 dark:text-white">{doc.name}</h3>
+                    <div className="mt-2 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                      <HiDocument className="h-4 w-4" />
+                      <span>{getProjectName(doc.projectId)} → {getPhaseName(doc.phaseId)}</span>
                     </div>
                   </div>
-                  <span className={`badge ${getStatusColor(doc.status)}`}>
+                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold tracking-wide ${getStatusColor(doc.status)}`}>
                     {doc.status.replace('-', ' ').toUpperCase()}
                   </span>
                 </div>
 
-                {/* Metadata Row */}
-                <div className="flex items-center space-x-6 mb-4 text-sm text-gray-600 dark:text-gray-400">
-                  <div className="flex items-center space-x-1">
-                    <HiUser className="h-4 w-4" />
-                    <span>Uploaded by</span>
-                    <span className="text-blue-600 dark:text-blue-400 font-medium">{doc.uploadedBy}</span>
-                    {doc.uploadedByRole && (
-                      <>
-                        <span className="mx-1">•</span>
-                        <span className="capitalize">{doc.uploadedByRole}</span>
-                      </>
-                    )}
+                {/* Metadata */}
+                <div className="mt-6 grid gap-3 text-sm text-gray-600 dark:text-gray-400">
+                  <div className="flex items-center gap-4">
+                    <span className="w-24 text-xs uppercase tracking-wide text-gray-500 dark:text-gray-500">Uploaded by</span>
+                    <div className="flex items-center gap-2">
+                      <div className="h-7 w-7 rounded-full border border-gray-200 dark:border-white/10 bg-gray-100 dark:bg-black/50 text-xs font-semibold text-gray-700 dark:text-gray-200 flex items-center justify-center">
+                        {getInitials(doc.uploadedBy)}
+                      </div>
+                      <span className="text-gray-900 dark:text-white">{doc.uploadedBy}</span>
+                      {doc.uploadedByRole && <span className="text-gray-500 dark:text-gray-400">· {formatRole(doc.uploadedByRole)}</span>}
+                    </div>
                   </div>
-                  <div className="flex items-center space-x-1">
-                    <HiPaperAirplane className="h-4 w-4" />
-                    <span>Sent to</span>
-                    <span className="text-blue-600 dark:text-blue-400 font-medium">{doc.sentTo[0]}</span>
-                    {doc.reviewerRole && (
-                      <>
-                        <span className="mx-1">•</span>
-                        <span className="capitalize">{doc.reviewerRole}</span>
-                      </>
-                    )}
+                  <div className="flex items-center gap-4">
+                    <span className="w-24 text-xs uppercase tracking-wide text-gray-500 dark:text-gray-500">Sent to</span>
+                    <div className="flex items-center gap-2">
+                      <div className="h-7 w-7 rounded-full border border-gray-200 dark:border-white/10 bg-gray-100 dark:bg-black/50 text-xs font-semibold text-gray-700 dark:text-gray-200 flex items-center justify-center">
+                        {getInitials(doc.sentTo[0] || 'R')}
+                      </div>
+                      <span className="text-gray-900 dark:text-white">{doc.sentTo[0] || 'Reviewer'}</span>
+                      {doc.reviewerRole && <span className="text-gray-500 dark:text-gray-400">· {formatRole(doc.reviewerRole)}</span>}
+                    </div>
                   </div>
-                  <div className="flex items-center space-x-1">
-                    <HiCalendar className="h-4 w-4" />
-                    <span>Submitted</span>
-                    <span className="font-medium">{new Date(doc.dateSubmitted).toLocaleDateString('en-GB')}</span>
+                  <div className="flex items-center gap-4">
+                    <span className="w-24 text-xs uppercase tracking-wide text-gray-500 dark:text-gray-500">Submitted</span>
+                    <div className="flex items-center gap-2 text-gray-900 dark:text-white">
+                      <HiCalendar className="h-4 w-4 text-gray-400" />
+                      <span>{new Date(doc.dateSubmitted).toLocaleDateString('en-GB')}</span>
+                    </div>
                   </div>
                 </div>
 
-                {/* File Names and View Button */}
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center space-x-2">
-                    <HiDocument className="h-4 w-4 text-gray-400" />
-                    <span className="text-sm text-gray-600 dark:text-gray-400">{displayFileName(doc.fileName)}</span>
+                {/* File Row */}
+                <div className="mt-6 rounded-2xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/50 p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="h-12 w-12 rounded-xl bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
+                      <HiDocument className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-gray-900 dark:text-white">{displayFileName(doc.fileName)}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{(doc.fileType || 'file').toUpperCase()} file</div>
+                    </div>
                   </div>
-                  <div className="flex items-center space-x-4">
+                  <div className="flex items-center gap-3">
                     {doc.externalLink && (
                       <a
                         href={doc.externalLink}
                         target="_blank"
                         rel="noreferrer"
-                        className="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                        className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white inline-flex items-center gap-2"
                       >
                         <HiLink className="h-4 w-4" />
-                        <span>Open Link</span>
+                        Open Link
                       </a>
                     )}
                     <a
                       href={getDocumentUrl(doc)}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                      className="h-10 w-10 rounded-full border border-gray-200 dark:border-white/10 bg-white dark:bg-black/50 flex items-center justify-center hover:bg-gray-50 dark:hover:bg-black/40"
+                      title="View document"
                     >
-                      <HiEye className="h-4 w-4" />
-                      <span>View Document</span>
+                      <HiEye className="h-4 w-4 text-gray-600 dark:text-gray-300" />
                     </a>
                   </div>
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-6">
-                    <button 
+                <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-6 text-sm">
+                    <button
                       onClick={() => handleEditDocument(doc)}
-                      className="btn-outline px-2 py-1 text-xs rounded-md gap-1 shadow-none"
+                      className="inline-flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
                     >
-                      <HiPencil className="h-3 w-3" />
-                      <span>Edit</span>
+                      <HiPencil className="h-4 w-4" />
+                      Edit
                     </button>
-                    {/* Annotate feature removed */}
-                    <button className="btn-danger px-2 py-1 text-xs rounded-md gap-1 shadow-none">
-                      <HiTrash className="h-3 w-3" />
-                      <span>Delete</span>
+                    <button className="inline-flex items-center gap-2 text-red-500 hover:text-red-600">
+                      <HiTrash className="h-4 w-4" />
+                      Delete
                     </button>
                   </div>
-                  <div className="flex items-center">
+                  <div className="flex items-center gap-3">
+                    <a
+                      href={getDocumentUrl(doc)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn-outline"
+                    >
+                      <HiEye className="h-4 w-4 mr-2" />
+                      View Document
+                    </a>
                     {(activeView === 'inbox' || doc.reviewerId === (user?.id || '')) && (
-                      <button 
+                      <button
                         onClick={() => handleReviewDocument(doc)}
                         className="btn-primary"
                       >
@@ -667,8 +740,8 @@ const Documents: React.FC = () => {
                 </div>
 
                 {/* Timeline Toggle */}
-                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                  <button 
+                <div className="mt-6 pt-4 border-t border-gray-200 dark:border-white/10 flex items-center justify-center">
+                  <button
                     onClick={() => toggleTimeline(doc.id)}
                     className="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
                   >
@@ -683,7 +756,7 @@ const Documents: React.FC = () => {
 
                 {/* Document Journey Timeline */}
                 {expandedTimelines.has(doc.id) && (
-                  <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                  <div className="mt-4 pt-4 border-t border-gray-200 dark:border-white/10">
                     <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-4">Document Journey</h4>
                     <div className="space-y-4">
                       {getDocumentTimeline(doc).map((step, index) => (
@@ -712,13 +785,13 @@ const Documents: React.FC = () => {
                               )}
                             </div>
                             {index < getDocumentTimeline(doc).length - 1 && (
-                              <div className="w-0.5 h-8 bg-gray-300 dark:bg-gray-600 mt-2"></div>
+                              <div className="w-0.5 h-8 bg-gray-300 dark:bg-black/40 mt-2"></div>
                             )}
                           </div>
                           
                           {/* Timeline Event Box */}
                           <div className="flex-1 min-w-0">
-                            <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-600">
+                            <div className="bg-gray-50 dark:bg-black/50 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-white/10">
                               <div className="flex items-center justify-between mb-2">
                                 <h5 className="text-sm font-semibold text-gray-900 dark:text-white">{step.title}</h5>
                                 <span className="text-xs text-gray-500 dark:text-gray-400">{step.timestamp}</span>
@@ -732,7 +805,7 @@ const Documents: React.FC = () => {
                               </div>
                               {/* Comment box for rejected documents */}
                               {step.comment && (
-                                <div className="mt-3 bg-gray-100 dark:bg-gray-600 rounded-lg p-3 border border-gray-200 dark:border-gray-500">
+                                <div className="mt-3 bg-gray-100 dark:bg-black/40 rounded-lg p-3 border border-gray-200 dark:border-white/10">
                                   <p className="text-sm text-gray-800 dark:text-gray-200">{step.comment}</p>
                                 </div>
                               )}
@@ -752,7 +825,7 @@ const Documents: React.FC = () => {
       {/* Upload Modal */}
       {isUploadModalOpen && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
+          <div className="bg-white dark:bg-black/60 rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
             {/* Modal Header */}
             <div className="flex items-center justify-between mb-6">
               <div>
@@ -761,7 +834,7 @@ const Documents: React.FC = () => {
               </div>
               <button
                 onClick={() => setIsUploadModalOpen(false)}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors duration-200"
+                className="p-2 hover:bg-gray-100 dark:hover:bg-black/40 rounded-xl transition-colors duration-200"
               >
                 <HiX className="h-5 w-5 text-gray-500 dark:text-gray-400" />
               </button>
@@ -900,7 +973,7 @@ const Documents: React.FC = () => {
                   />
                   <label
                     htmlFor="upload-file-input"
-                    className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors duration-200"
+                    className="px-4 py-2 bg-gray-100 dark:bg-black/50 text-gray-700 dark:text-gray-300 rounded-xl cursor-pointer hover:bg-gray-200 dark:hover:bg-black/40 transition-colors duration-200"
                   >
                     Choose files
                   </label>
@@ -943,7 +1016,7 @@ const Documents: React.FC = () => {
       {/* Review Document Modal */}
       {isReviewModalOpen && selectedDocument && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
+          <div className="bg-white dark:bg-black/60 rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
             {/* Modal Header */}
             <div className="flex items-center justify-between mb-6">
               <div>
@@ -963,7 +1036,7 @@ const Documents: React.FC = () => {
               </div>
               <button
                 onClick={() => setIsReviewModalOpen(false)}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors duration-200"
+                className="p-2 hover:bg-gray-100 dark:hover:bg-black/40 rounded-xl transition-colors duration-200"
               >
                 <HiX className="h-5 w-5 text-gray-500 dark:text-gray-400" />
               </button>
@@ -981,7 +1054,7 @@ const Documents: React.FC = () => {
                     className={`p-4 rounded-xl border-2 cursor-pointer transition-colors duration-200 ${
                       reviewData.action === 'approve' 
                         ? 'border-green-500 bg-green-50 dark:bg-green-900/20' 
-                        : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
+                        : 'border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-gray-500'
                     }`}
                     onClick={() => {
                       setReviewData(prev => ({ ...prev, action: 'approve' }))
@@ -1004,7 +1077,7 @@ const Documents: React.FC = () => {
                     className={`p-4 rounded-xl cursor-pointer transition-all duration-200 transform ${
                       reviewData.action === 'request-changes' 
                         ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md ring-2 ring-amber-400/60' 
-                        : 'border border-gray-200 dark:border-gray-600 hover:border-amber-400/50 bg-white dark:bg-gray-800'
+                        : 'border border-gray-200 dark:border-white/10 hover:border-amber-400/50 bg-white dark:bg-black/60'
                     } hover:scale-[1.01]`}
                     onClick={() => {
                       setReviewData(prev => ({ ...prev, action: 'request-changes' }))
@@ -1029,7 +1102,7 @@ const Documents: React.FC = () => {
                     className={`p-4 rounded-xl border-2 cursor-pointer transition-colors duration-200 ${
                       reviewData.action === 'reject' 
                         ? 'border-red-500 bg-red-50 dark:bg-red-900/20' 
-                        : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
+                        : 'border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-gray-500'
                     }`}
                     onClick={() => {
                       setReviewData(prev => ({ ...prev, action: 'reject' }))
@@ -1088,7 +1161,7 @@ const Documents: React.FC = () => {
                   />
                   <label
                     htmlFor="review-file-input"
-                    className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors duration-200"
+                    className="px-4 py-2 bg-gray-100 dark:bg-black/50 text-gray-700 dark:text-gray-300 rounded-xl cursor-pointer hover:bg-gray-200 dark:hover:bg-black/40 transition-colors duration-200"
                   >
                     Choose file
                   </label>
@@ -1131,7 +1204,7 @@ const Documents: React.FC = () => {
       {/* Edit Document Modal */}
       {isEditModalOpen && selectedDocument && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
+          <div className="bg-white dark:bg-black/60 rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
             {/* Modal Header */}
             <div className="flex items-center justify-between mb-6">
               <div>
@@ -1140,7 +1213,7 @@ const Documents: React.FC = () => {
               </div>
               <button
                 onClick={() => setIsEditModalOpen(false)}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors duration-200"
+                className="p-2 hover:bg-gray-100 dark:hover:bg-black/40 rounded-xl transition-colors duration-200"
               >
                 <HiX className="h-5 w-5 text-gray-500 dark:text-gray-400" />
               </button>
@@ -1191,7 +1264,7 @@ const Documents: React.FC = () => {
                   />
                   <label
                     htmlFor="edit-file-input"
-                    className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors duration-200"
+                    className="px-4 py-2 bg-gray-100 dark:bg-black/50 text-gray-700 dark:text-gray-300 rounded-xl cursor-pointer hover:bg-gray-200 dark:hover:bg-black/40 transition-colors duration-200"
                   >
                     Choose files
                   </label>

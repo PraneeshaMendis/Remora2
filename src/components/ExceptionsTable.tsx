@@ -84,9 +84,9 @@ const ExceptionsTable: React.FC<ExceptionsTableProps> = ({
       case 'disallowed_type':
         return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`
       case 'av_failed':
-        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`
+        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-black/50 dark:text-gray-200`
       default:
-        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`
+        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-black/50 dark:text-gray-200`
     }
   }
 
@@ -221,7 +221,7 @@ const ExceptionsTable: React.FC<ExceptionsTableProps> = ({
       )}
 
       {/* Sub-tabs for exception types */}
-      <div className="border-b border-gray-200 dark:border-gray-700">
+      <div className="border-b border-gray-200 dark:border-white/10">
         <nav className="-mb-px flex space-x-8 overflow-x-auto">
           <button
             onClick={() => setActiveSubTab('all')}
@@ -232,7 +232,7 @@ const ExceptionsTable: React.FC<ExceptionsTableProps> = ({
             }`}
           >
             All Exceptions
-            <span className="ml-2 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 py-0.5 px-2 rounded-full text-xs">
+            <span className="ml-2 bg-gray-100 dark:bg-black/50 text-gray-600 dark:text-gray-300 py-0.5 px-2 rounded-full text-xs">
               {emails.length}
             </span>
           </button>
@@ -248,7 +248,7 @@ const ExceptionsTable: React.FC<ExceptionsTableProps> = ({
               }`}
             >
               {getReasonDescription(reason)}
-              <span className="ml-2 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 py-0.5 px-2 rounded-full text-xs">
+              <span className="ml-2 bg-gray-100 dark:bg-black/50 text-gray-600 dark:text-gray-300 py-0.5 px-2 rounded-full text-xs">
                 {count}
               </span>
             </button>
@@ -266,7 +266,7 @@ const ExceptionsTable: React.FC<ExceptionsTableProps> = ({
               const type = e.target.value === 'all' ? undefined : [e.target.value]
               onFiltersChange({ ...filters, type })
             }}
-            className="text-sm border border-gray-300 dark:border-gray-600 rounded-md px-3 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            className="text-sm border border-gray-300 dark:border-white/10 rounded-md px-3 py-1 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
           >
             <option value="all">All Reasons</option>
             <option value="paymentId_missing">Payment ID Missing</option>
@@ -302,8 +302,8 @@ const ExceptionsTable: React.FC<ExceptionsTableProps> = ({
 
       {/* Table */}
       <div className="overflow-x-auto shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
-        <table className="min-w-full divide-y divide-gray-300 dark:divide-gray-700" style={{ minWidth: '1200px' }}>
-          <thead className="bg-gray-50 dark:bg-gray-800">
+        <table className="min-w-full divide-y divide-gray-300 dark:divide-white/10" style={{ minWidth: '1200px' }}>
+          <thead className="bg-gray-50 dark:bg-black/60">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-32">
                 Sender
@@ -325,9 +325,9 @@ const ExceptionsTable: React.FC<ExceptionsTableProps> = ({
               </th>
             </tr>
           </thead>
-          <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+          <tbody className="bg-white dark:bg-black/60 divide-y divide-gray-200 dark:divide-white/10">
             {filteredEmails.map((email) => (
-              <tr key={email.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+              <tr key={email.id} className="hover:bg-gray-50 dark:hover:bg-black/40">
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm font-medium text-gray-900 dark:text-white">
                     {email.senderEmail}
@@ -357,7 +357,7 @@ const ExceptionsTable: React.FC<ExceptionsTableProps> = ({
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                     email.archived 
-                      ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+                      ? 'bg-gray-100 text-gray-800 dark:bg-black/50 dark:text-gray-200'
                       : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
                   }`}>
                     {email.archived ? 'Archived' : 'Active'}
@@ -461,9 +461,9 @@ const EmailDrawer: React.FC<{
       case 'disallowed_type':
         return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`
       case 'av_failed':
-        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`
+        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-black/50 dark:text-gray-200`
       default:
-        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`
+        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-black/50 dark:text-gray-200`
     }
   }
 
@@ -535,9 +535,9 @@ const EmailDrawer: React.FC<{
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-white dark:bg-black/60 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+        <div className="p-6 border-b border-gray-200 dark:border-white/10">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -585,7 +585,7 @@ const EmailDrawer: React.FC<{
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                 Email Information
               </h3>
-              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 space-y-3">
+              <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-4 space-y-3">
                 <div>
                   <div className="text-sm text-gray-600 dark:text-gray-400">Sender Email</div>
                   <div className="font-medium text-gray-900 dark:text-white">{email.senderEmail}</div>
@@ -617,7 +617,7 @@ const EmailDrawer: React.FC<{
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                 Exception Details
               </h3>
-              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 space-y-3">
+              <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-4 space-y-3">
                 <div>
                   <div className="text-sm text-gray-600 dark:text-gray-400">Exception Type</div>
                   <div className="flex items-center space-x-2 mt-1">
@@ -632,7 +632,7 @@ const EmailDrawer: React.FC<{
                   <div className="text-sm text-gray-600 dark:text-gray-400">Status</div>
                   <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium ${
                     email.archived 
-                      ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+                      ? 'bg-gray-100 text-gray-800 dark:bg-black/50 dark:text-gray-200'
                       : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
                   }`}>
                     {email.archived ? 'Archived' : 'Active'}
@@ -655,7 +655,7 @@ const EmailDrawer: React.FC<{
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                 Email Content Preview
               </h3>
-              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+              <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-4">
                 <p className="text-gray-900 dark:text-white whitespace-pre-wrap">
                   {email.snippet}
                 </p>
@@ -694,7 +694,7 @@ const EmailDrawer: React.FC<{
         </div>
 
         {/* Footer Actions */}
-        <div className="p-6 border-t border-gray-200 dark:border-gray-700">
+        <div className="p-6 border-t border-gray-200 dark:border-white/10">
           <div className="flex items-center justify-end space-x-3">
             <button
               onClick={onClose}

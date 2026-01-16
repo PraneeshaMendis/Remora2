@@ -123,7 +123,12 @@ const Sidebar: React.FC = () => {
           {/* Brand */}
           <div className="px-4 pt-6 pb-5 border-b border-[hsl(var(--sidebar-border))]">
             <div className="flex items-center justify-center">
-              <CyberLabsLogo size={44} className="shrink-0" />
+              <div className="rounded-2xl px-3 py-2 bg-gradient-to-b from-white to-gray-50 dark:from-black/60 dark:to-black/30 ring-1 ring-black/10 dark:ring-white/10 shadow-[0_10px_28px_rgba(15,23,42,0.18)] dark:shadow-[0_0_24px_rgba(59,130,246,0.22)]">
+                <CyberLabsLogo
+                  size={48}
+                  className="shrink-0 drop-shadow-[0_4px_10px_rgba(15,23,42,0.28)] dark:drop-shadow-[0_0_12px_rgba(96,165,250,0.45)]"
+                />
+              </div>
             </div>
           </div>
 

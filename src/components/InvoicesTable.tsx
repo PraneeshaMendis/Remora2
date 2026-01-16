@@ -164,11 +164,11 @@ const InvoicesTable: React.FC<InvoicesTableProps> = ({
       case 'Sent':
         return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`
       case 'Draft':
-        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`
+        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-black/50 dark:text-gray-200`
       case 'Canceled':
-        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`
+        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-black/50 dark:text-gray-200`
       default:
-        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`
+        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-black/50 dark:text-gray-200`
     }
   }
 
@@ -284,7 +284,7 @@ const InvoicesTable: React.FC<InvoicesTableProps> = ({
               const status = e.target.value === 'all' ? undefined : [e.target.value]
               onFiltersChange({ ...filters, status })
             }}
-            className="text-sm border border-gray-300 dark:border-gray-600 rounded-md px-3 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            className="text-sm border border-gray-300 dark:border-white/10 rounded-md px-3 py-1 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
           >
             <option value="all">All Status</option>
             <option value="Draft">Draft</option>
@@ -320,8 +320,8 @@ const InvoicesTable: React.FC<InvoicesTableProps> = ({
 
       {/* Table */}
       <div className="overflow-x-auto shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
-        <table className="min-w-full divide-y divide-gray-300 dark:divide-gray-700" style={{ minWidth: '1250px' }}>
-          <thead className="bg-gray-50 dark:bg-gray-800">
+        <table className="min-w-full divide-y divide-gray-300 dark:divide-white/10" style={{ minWidth: '1250px' }}>
+          <thead className="bg-gray-50 dark:bg-black/60">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-32">
                 Invoice No
@@ -355,9 +355,9 @@ const InvoicesTable: React.FC<InvoicesTableProps> = ({
               </th>
             </tr>
           </thead>
-          <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+          <tbody className="bg-white dark:bg-black/60 divide-y divide-gray-200 dark:divide-white/10">
             {invoices.map((invoice) => (
-              <tr key={invoice.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+              <tr key={invoice.id} className="hover:bg-gray-50 dark:hover:bg-black/40">
                 <td className="px-6 py-4 whitespace-nowrap">
                   <button
                     onClick={() => handleViewInvoice(invoice)}
@@ -397,7 +397,7 @@ const InvoicesTable: React.FC<InvoicesTableProps> = ({
                           </svg>
                         </button>
                         {/* Tooltip */}
-                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 dark:bg-gray-700 text-white text-sm rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10 max-w-xs">
+                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 dark:bg-black/50 text-white text-sm rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10 max-w-xs">
                           <div className="whitespace-pre-wrap break-words">{invoice.notes}</div>
                           <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900 dark:border-t-gray-700"></div>
                         </div>
@@ -422,7 +422,7 @@ const InvoicesTable: React.FC<InvoicesTableProps> = ({
                       value={invoice.status}
                       onChange={(e) => handleStatusChange(invoice, e.target.value)}
                       disabled={loading}
-                      className="border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-xs disabled:opacity-50"
+                      className="border border-gray-300 dark:border-white/10 rounded-md px-2 py-1 bg-white dark:bg-black/50 text-gray-900 dark:text-white text-xs disabled:opacity-50"
                     >
                       <option value="Draft">Draft</option>
                       <option value="Sent">Sent</option>
@@ -641,19 +641,19 @@ const InvoiceDrawer: React.FC<{
       case 'Sent':
         return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`
       case 'Draft':
-        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`
+        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-black/50 dark:text-gray-200`
       case 'Canceled':
-        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`
+        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-black/50 dark:text-gray-200`
       default:
-        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`
+        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-black/50 dark:text-gray-200`
     }
   }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-white dark:bg-black/60 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+        <div className="p-6 border-b border-gray-200 dark:border-white/10">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -667,7 +667,7 @@ const InvoiceDrawer: React.FC<{
                       value={invoice.status}
                       onChange={(e) => onStatusChange(invoice, e.target.value)}
                       disabled={loading}
-                      className="border border-gray-300 dark:border-gray-600 rounded-md px-3 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm disabled:opacity-50"
+                      className="border border-gray-300 dark:border-white/10 rounded-md px-3 py-1 bg-white dark:bg-black/50 text-gray-900 dark:text-white text-sm disabled:opacity-50"
                     >
                       <option value="Draft">Draft</option>
                       <option value="Sent">Sent</option>
@@ -716,7 +716,7 @@ const InvoiceDrawer: React.FC<{
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
               Project Information
             </h3>
-            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+            <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <div className="text-sm text-gray-600 dark:text-gray-400">Project</div>
@@ -735,7 +735,7 @@ const InvoiceDrawer: React.FC<{
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
               Financial Summary
             </h3>
-            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+            <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="text-center">
                   <div className="text-sm text-gray-600 dark:text-gray-400">Subtotal</div>
@@ -775,7 +775,7 @@ const InvoiceDrawer: React.FC<{
                 {Math.round((invoice.collected / invoice.total) * 100)}%
               </span>
             </div>
-            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+            <div className="w-full bg-gray-200 dark:bg-black/50 rounded-full h-3">
               <div 
                 className="bg-primary-600 h-3 rounded-full transition-all duration-300"
                 style={{ width: `${Math.min(100, (invoice.collected / invoice.total) * 100)}%` }}
@@ -793,7 +793,7 @@ const InvoiceDrawer: React.FC<{
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
                 Notes
               </h3>
-              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+              <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-4">
                 <p className="text-gray-900 dark:text-white">{invoice.notes}</p>
               </div>
             </div>
@@ -801,7 +801,7 @@ const InvoiceDrawer: React.FC<{
         </div>
 
         {/* Footer Actions */}
-        <div className="p-6 border-t border-gray-200 dark:border-gray-700">
+        <div className="p-6 border-t border-gray-200 dark:border-white/10">
           <div className="flex items-center justify-end space-x-3">
             <button
               onClick={onClose}
@@ -955,9 +955,9 @@ const CreateInvoiceModal: React.FC<{
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-white dark:bg-black/60 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+        <div className="p-6 border-b border-gray-200 dark:border-white/10">
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
               Create New Invoice
@@ -994,7 +994,7 @@ const CreateInvoiceModal: React.FC<{
                   handleInputChange('projectId', e.target.value)
                   handleInputChange('phaseId', '') // Reset phase when project changes
                 }}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
                 required
               >
                 <option value="">Select Project</option>
@@ -1013,7 +1013,7 @@ const CreateInvoiceModal: React.FC<{
               <select
                 value={formData.phaseId}
                 onChange={(e) => handleInputChange('phaseId', e.target.value)}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
                 required
                 disabled={!formData.projectId}
               >
@@ -1044,7 +1044,7 @@ const CreateInvoiceModal: React.FC<{
                 type="date"
                 value={formData.issueDate}
                 onChange={(e) => handleInputChange('issueDate', e.target.value)}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
                 required
               />
             </div>
@@ -1057,7 +1057,7 @@ const CreateInvoiceModal: React.FC<{
                 type="date"
                 value={formData.dueDate}
                 onChange={(e) => handleInputChange('dueDate', e.target.value)}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
                 required
               />
             </div>
@@ -1072,7 +1072,7 @@ const CreateInvoiceModal: React.FC<{
               <select
                 value={formData.currency}
                 onChange={(e) => handleInputChange('currency', e.target.value)}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
               >
                 <option value="USD">USD</option>
                 <option value="EUR">EUR</option>
@@ -1092,7 +1092,7 @@ const CreateInvoiceModal: React.FC<{
                 min="0"
                 value={formData.subtotal}
                 onChange={(e) => handleInputChange('subtotal', parseFloat(e.target.value) || 0)}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
                 required
               />
             </div>
@@ -1108,13 +1108,13 @@ const CreateInvoiceModal: React.FC<{
                 max="100"
                 value={formData.taxRate}
                 onChange={(e) => handleInputChange('taxRate', parseFloat(e.target.value) || 0)}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
               />
             </div>
           </div>
 
           {/* Calculated Amounts */}
-          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+          <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <div className="text-sm text-gray-600 dark:text-gray-400">Subtotal</div>
@@ -1146,13 +1146,13 @@ const CreateInvoiceModal: React.FC<{
               value={formData.notes}
               onChange={(e) => handleInputChange('notes', e.target.value)}
               rows={3}
-              className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
               placeholder="Additional notes for this invoice..."
             />
           </div>
 
           {/* Footer Actions */}
-          <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-white/10">
             <button
               type="button"
               onClick={onClose}
@@ -1281,9 +1281,9 @@ const EditInvoiceModal: React.FC<{
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-white dark:bg-black/60 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+        <div className="p-6 border-b border-gray-200 dark:border-white/10">
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
               Edit Invoice {invoice.invoiceNo}
@@ -1320,7 +1320,7 @@ const EditInvoiceModal: React.FC<{
                   handleInputChange('projectId', e.target.value)
                   handleInputChange('phaseId', '') // Reset phase when project changes
                 }}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
                 required
               >
                 <option value="">Select Project</option>
@@ -1339,7 +1339,7 @@ const EditInvoiceModal: React.FC<{
               <select
                 value={formData.phaseId}
                 onChange={(e) => handleInputChange('phaseId', e.target.value)}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
                 required
                 disabled={!formData.projectId}
               >
@@ -1370,7 +1370,7 @@ const EditInvoiceModal: React.FC<{
                 type="date"
                 value={formData.issueDate}
                 onChange={(e) => handleInputChange('issueDate', e.target.value)}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
                 required
               />
             </div>
@@ -1383,7 +1383,7 @@ const EditInvoiceModal: React.FC<{
                 type="date"
                 value={formData.dueDate}
                 onChange={(e) => handleInputChange('dueDate', e.target.value)}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
                 required
               />
             </div>
@@ -1398,7 +1398,7 @@ const EditInvoiceModal: React.FC<{
               <select
                 value={formData.currency}
                 onChange={(e) => handleInputChange('currency', e.target.value)}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
               >
                 <option value="USD">USD</option>
                 <option value="EUR">EUR</option>
@@ -1418,7 +1418,7 @@ const EditInvoiceModal: React.FC<{
                 min="0"
                 value={formData.subtotal}
                 onChange={(e) => handleInputChange('subtotal', parseFloat(e.target.value) || 0)}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
                 required
               />
             </div>
@@ -1434,13 +1434,13 @@ const EditInvoiceModal: React.FC<{
                 max="100"
                 value={formData.taxRate}
                 onChange={(e) => handleInputChange('taxRate', parseFloat(e.target.value) || 0)}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
               />
             </div>
           </div>
 
           {/* Calculated Amounts */}
-          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+          <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <div className="text-sm text-gray-600 dark:text-gray-400">Subtotal</div>
@@ -1472,13 +1472,13 @@ const EditInvoiceModal: React.FC<{
               value={formData.notes}
               onChange={(e) => handleInputChange('notes', e.target.value)}
               rows={3}
-              className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
               placeholder="Additional notes for this invoice..."
             />
           </div>
 
           {/* Footer Actions */}
-          <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-white/10">
             <button
               type="button"
               onClick={onClose}
@@ -1507,9 +1507,9 @@ const CommentModal: React.FC<{
 }> = ({ comment, onClose }) => {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md">
+      <div className="bg-white dark:bg-black/60 rounded-2xl w-full max-w-md">
         {/* Header */}
-        <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+        <div className="p-6 border-b border-gray-200 dark:border-white/10">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center">
               <svg className="h-5 w-5 mr-2 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1530,7 +1530,7 @@ const CommentModal: React.FC<{
 
         {/* Comment Content */}
         <div className="p-6">
-          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+          <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-4">
             <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words">
               {comment}
             </div>
@@ -1538,7 +1538,7 @@ const CommentModal: React.FC<{
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end p-6 border-t border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-end p-6 border-t border-gray-200 dark:border-white/10">
           <button
             onClick={onClose}
             className="btn-primary"
@@ -1596,8 +1596,8 @@ const SendInvoiceModal: React.FC<{
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md overflow-hidden">
-        <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+      <div className="bg-white dark:bg-black/60 rounded-2xl w-full max-w-md overflow-hidden">
+        <div className="p-5 border-b border-gray-200 dark:border-white/10 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Send Invoice</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
             ✕
@@ -1616,7 +1616,7 @@ const SendInvoiceModal: React.FC<{
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="client@example.com"
-              className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
               required
             />
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">We’ll send from your connected Gmail account.</p>

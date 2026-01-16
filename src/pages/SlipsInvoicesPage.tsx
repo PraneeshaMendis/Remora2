@@ -148,13 +148,13 @@ const SlipsInvoicesPage: React.FC = () => {
     return (
       <div className="space-y-6">
         <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-1/4 mb-4"></div>
+          <div className="h-8 bg-gray-200 dark:bg-black/50 rounded w-1/4 mb-4"></div>
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
             {[...Array(5)].map((_, i) => (
-              <div key={i} className="h-24 bg-gray-200 dark:bg-gray-700 rounded"></div>
+              <div key={i} className="h-24 bg-gray-200 dark:bg-black/50 rounded"></div>
             ))}
           </div>
-          <div className="h-64 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          <div className="h-64 bg-gray-200 dark:bg-black/50 rounded"></div>
         </div>
       </div>
     )
@@ -201,7 +201,7 @@ const SlipsInvoicesPage: React.FC = () => {
         <select
           value={currentWeek}
           onChange={(e) => handleWeekChange(e.target.value)}
-          className="text-sm border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          className="text-sm border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
         >
           <option value="2024-W01">2024-W01</option>
           <option value="2024-W02">2024-W02</option>
@@ -220,7 +220,7 @@ const SlipsInvoicesPage: React.FC = () => {
               alert('Failed to start Google session')
             }
           }}
-          className={`text-sm px-3 py-2 rounded-md border ${gmailConnected ? 'border-green-300 text-green-700 bg-green-50 dark:bg-green-900/20' : 'border-gray-300 text-gray-700 bg-gray-50 dark:bg-gray-800'}`}
+          className={`text-sm px-3 py-2 rounded-md border ${gmailConnected ? 'border-green-300 text-green-700 bg-green-50 dark:bg-green-900/20' : 'border-gray-300 text-gray-700 bg-gray-50 dark:bg-black/60'}`}
           title={gmailConnected ? `Connected: ${gmailEmail || 'Gmail'}` : 'Connect Gmail to send and ingest emails'}
         >
           {gmailConnected ? (gmailEmail || 'Gmail Connected') : 'Connect Gmail'}
@@ -232,7 +232,7 @@ const SlipsInvoicesPage: React.FC = () => {
       {summary && (
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div 
-            className="card cursor-pointer hover:shadow-md transition-shadow"
+            className="card dark:bg-black/60 dark:border-white/10 cursor-pointer hover:shadow-md transition-shadow"
             onClick={() => handleKPIClick('invoices')}
           >
             <div className="text-center">
@@ -247,7 +247,7 @@ const SlipsInvoicesPage: React.FC = () => {
           </div>
 
           <div 
-            className="card cursor-pointer hover:shadow-md transition-shadow"
+            className="card dark:bg-black/60 dark:border-white/10 cursor-pointer hover:shadow-md transition-shadow"
             onClick={() => handleKPIClick('receipts')}
           >
             <div className="text-center">
@@ -262,7 +262,7 @@ const SlipsInvoicesPage: React.FC = () => {
           </div>
 
           <div 
-            className="card cursor-pointer hover:shadow-md transition-shadow"
+            className="card dark:bg-black/60 dark:border-white/10 cursor-pointer hover:shadow-md transition-shadow"
             onClick={() => handleKPIClick('bank-credits')}
           >
             <div className="text-center">
@@ -277,7 +277,7 @@ const SlipsInvoicesPage: React.FC = () => {
           </div>
 
           <div 
-            className="card cursor-pointer hover:shadow-md transition-shadow"
+            className="card dark:bg-black/60 dark:border-white/10 cursor-pointer hover:shadow-md transition-shadow"
             onClick={() => handleKPIClick('overdue')}
           >
             <div className="text-center">
@@ -292,7 +292,7 @@ const SlipsInvoicesPage: React.FC = () => {
           </div>
 
           <div 
-            className="card cursor-pointer hover:shadow-md transition-shadow"
+            className="card dark:bg-black/60 dark:border-white/10 cursor-pointer hover:shadow-md transition-shadow"
             onClick={() => handleKPIClick('exceptions')}
           >
             <div className="text-center">
@@ -309,8 +309,8 @@ const SlipsInvoicesPage: React.FC = () => {
       )}
 
       {/* Tabs */}
-      <div className="card">
-        <div className="border-b border-gray-200 dark:border-gray-700">
+      <div className="card dark:bg-black/60 dark:border-white/10">
+        <div className="border-b border-gray-200 dark:border-white/10">
           <nav className="-mb-px flex space-x-8">
             {[
               { id: 'invoices', label: 'Invoices (This Week)', count: invoices.length },
@@ -329,7 +329,7 @@ const SlipsInvoicesPage: React.FC = () => {
               >
                 {tab.label}
                 {tab.count > 0 && (
-                  <span className="ml-2 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 py-0.5 px-2 rounded-full text-xs">
+                  <span className="ml-2 bg-gray-100 dark:bg-black/50 text-gray-600 dark:text-gray-300 py-0.5 px-2 rounded-full text-xs">
                     {tab.count}
                   </span>
                 )}
@@ -371,7 +371,7 @@ const SlipsInvoicesPage: React.FC = () => {
                       alert('Failed to sync from Gmail')
                     }
                   }}
-                  className="text-sm px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50"
+                  className="text-sm px-3 py-2 rounded-md border border-gray-300 dark:border-white/10 bg-white dark:bg-black/50 text-gray-900 dark:text-white hover:bg-gray-50"
                 >
                   Sync Client Slips
                 </button>
@@ -407,7 +407,7 @@ const SlipsInvoicesPage: React.FC = () => {
                       alert('Failed to sync from Gmail')
                     }
                   }}
-                  className="text-sm px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50"
+                  className="text-sm px-3 py-2 rounded-md border border-gray-300 dark:border-white/10 bg-white dark:bg-black/50 text-gray-900 dark:text-white hover:bg-gray-50"
                 >
                   Sync Bank Emails
                 </button>

@@ -550,7 +550,7 @@ const CompletedProjectDetail: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-black dark:to-black dark:bg-black flex items-center justify-center">
         <div className="text-gray-600 dark:text-gray-300">Loading completed project...</div>
       </div>
     )
@@ -558,14 +558,14 @@ const CompletedProjectDetail: React.FC = () => {
 
   if (loadError || !project) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-black dark:to-black dark:bg-black flex items-center justify-center">
         <div className="text-gray-600 dark:text-gray-300">{loadError || 'Project not found.'}</div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-black dark:to-black dark:bg-black">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8 animate-fade-in">
@@ -595,7 +595,7 @@ const CompletedProjectDetail: React.FC = () => {
         </div>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-8">
+        <div className="bg-white dark:bg-black/60 rounded-2xl shadow-sm border border-gray-200 dark:border-white/10 p-8">
           <div className="flex items-start justify-between mb-6">
             <div className="flex-1">
               <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">{project.title}</h1>
@@ -684,7 +684,7 @@ const CompletedProjectDetail: React.FC = () => {
 
       {/* Tabs */}
       <div className="mb-8">
-        <div className="border-b border-gray-200 dark:border-gray-700">
+        <div className="border-b border-gray-200 dark:border-white/10">
           <nav className="-mb-px flex space-x-8">
             {[
               { id: 'timeline', name: 'Timeline', icon: Clock },
@@ -714,7 +714,7 @@ const CompletedProjectDetail: React.FC = () => {
       {activeTab === 'timeline' && (
         <div className="space-y-6">
           {/* Timeline Controls */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+          <div className="bg-white dark:bg-black/60 rounded-xl border border-gray-200 dark:border-white/10 p-6">
             <div className="flex flex-col lg:flex-row gap-4">
               <div className="flex-1">
                 <div className="relative">
@@ -724,7 +724,7 @@ const CompletedProjectDetail: React.FC = () => {
                     placeholder="Search timeline events..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-white/10 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-black/50 dark:text-white"
                   />
                 </div>
               </div>
@@ -733,7 +733,7 @@ const CompletedProjectDetail: React.FC = () => {
                 <select
                   value={timeWindow}
                   onChange={(e) => setTimeWindow(e.target.value as any)}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                  className="px-3 py-2 border border-gray-300 dark:border-white/10 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-black/50 dark:text-white"
                 >
                   <option value="all">All Time</option>
                   <option value="phase">By Phase</option>
@@ -743,7 +743,7 @@ const CompletedProjectDetail: React.FC = () => {
                 <select
                   value={selectedPhase}
                   onChange={(e) => setSelectedPhase(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                  className="px-3 py-2 border border-gray-300 dark:border-white/10 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-black/50 dark:text-white"
                 >
                   <option value="all">All Phases</option>
                   {project.phases.map(phase => (
@@ -754,7 +754,7 @@ const CompletedProjectDetail: React.FC = () => {
                 <select
                   value={selectedEventType}
                   onChange={(e) => setSelectedEventType(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                  className="px-3 py-2 border border-gray-300 dark:border-white/10 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-black/50 dark:text-white"
                 >
                   <option value="all">All Events</option>
                   <option value="PROJECT_KICKOFF">Project Events</option>
@@ -794,17 +794,17 @@ const CompletedProjectDetail: React.FC = () => {
                   
                   <div className="relative pl-8 space-y-4">
                     {/* Timeline line */}
-                    <div className="absolute left-2.5 top-2 bottom-2 w-px bg-gray-300 dark:bg-gray-600" />
+                    <div className="absolute left-2.5 top-2 bottom-2 w-px bg-gray-300 dark:bg-white/10" />
                     
                     {events.map((event) => (
                       <div key={event.id} className="relative">
                         {/* Timeline dot */}
-                        <div className="absolute -left-[1.375rem] top-1.5 w-5 h-5 rounded-full bg-white dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 flex items-center justify-center">
+                        <div className="absolute -left-[1.375rem] top-1.5 w-5 h-5 rounded-full bg-white dark:bg-black/60 border-2 border-gray-300 dark:border-white/10 flex items-center justify-center">
                           {getEventIcon(event.type)}
                         </div>
                         
                         {/* Content */}
-                        <div className={`bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 hover:shadow-md transition-shadow ${
+                        <div className={`bg-white dark:bg-black/60 rounded-lg border border-gray-200 dark:border-white/10 p-4 hover:shadow-md transition-shadow ${
                           event.type === 'DOC_UPLOADED' || event.type === 'DOC_APPROVED' ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700' : ''
                         }`}
                         onClick={() => {
@@ -886,7 +886,7 @@ const CompletedProjectDetail: React.FC = () => {
       {/* Documents Tab */}
       {activeTab === 'documents' && (
         <div className="space-y-6">
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+          <div className="bg-white dark:bg-black/60 rounded-xl border border-gray-200 dark:border-white/10 p-6">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Project Documents</h3>
               <div className="flex items-center space-x-2">
@@ -899,7 +899,7 @@ const CompletedProjectDetail: React.FC = () => {
             
             <div className="space-y-4">
               {documents.map((doc) => (
-                <div key={doc.id} className="flex items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
+                <div key={doc.id} className="flex items-center justify-between p-4 border border-gray-200 dark:border-white/10 rounded-lg hover:bg-gray-50 dark:hover:bg-black/70">
                   <div className="flex items-center space-x-4">
                     <div className="h-10 w-10 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
                       <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" />
@@ -943,7 +943,7 @@ const CompletedProjectDetail: React.FC = () => {
       {/* Comments Tab */}
       {activeTab === 'comments' && (
         <div className="space-y-6">
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+          <div className="bg-white dark:bg-black/60 rounded-xl border border-gray-200 dark:border-white/10 p-6">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Project Comments</h3>
               
@@ -952,7 +952,7 @@ const CompletedProjectDetail: React.FC = () => {
                 <select
                   value={selectedPhase}
                   onChange={(e) => setSelectedPhase(e.target.value)}
-                  className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="text-sm border border-gray-300 dark:border-white/10 rounded-lg px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="all">All Phases</option>
                   {project.phases.map((phase) => (
@@ -968,7 +968,7 @@ const CompletedProjectDetail: React.FC = () => {
               {comments
                 .filter(comment => selectedPhase === 'all' || comment.phaseId === selectedPhase)
                 .map((comment) => (
-                <div key={comment.id} className="border-b border-gray-200 dark:border-gray-700 pb-6 last:border-b-0 last:pb-0">
+                <div key={comment.id} className="border-b border-gray-200 dark:border-white/10 pb-6 last:border-b-0 last:pb-0">
                   <div className="flex items-start space-x-4">
                     <div className="h-10 w-10 rounded-full bg-blue-500 flex items-center justify-center text-white font-medium">
                       {comment.author.avatar}
@@ -1015,7 +1015,7 @@ const CompletedProjectDetail: React.FC = () => {
       {/* Time Logs Tab */}
       {activeTab === 'time-logs' && (
         <div className="space-y-6">
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+          <div className="bg-white dark:bg-black/60 rounded-xl border border-gray-200 dark:border-white/10 p-6">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Project Time Logs</h3>
               
@@ -1024,7 +1024,7 @@ const CompletedProjectDetail: React.FC = () => {
                 <select
                   value={selectedPhase}
                   onChange={(e) => setSelectedPhase(e.target.value)}
-                  className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="text-sm border border-gray-300 dark:border-white/10 rounded-lg px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="all">All Phases</option>
                   {project.phases.map((phase) => (
@@ -1066,7 +1066,7 @@ const CompletedProjectDetail: React.FC = () => {
                   const totalHours = events.reduce((sum, event) => sum + (event.duration || 0), 0)
                   
                   return (
-                    <div key={personName} className="border border-gray-200 dark:border-gray-700 rounded-lg p-6">
+                    <div key={personName} className="border border-gray-200 dark:border-white/10 rounded-lg p-6">
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center space-x-3">
                           <div className="h-10 w-10 rounded-full bg-orange-500 flex items-center justify-center text-white font-medium">
@@ -1095,7 +1095,7 @@ const CompletedProjectDetail: React.FC = () => {
                             const task = tasks.find(t => t.id === event.taskId)
                             
                             return (
-                              <div key={event.id} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                              <div key={event.id} className="bg-gray-50 dark:bg-black/50 rounded-lg p-4">
                                 <div className="flex items-start justify-between">
                                   <div className="flex-1">
                                     <div className="flex items-center space-x-2 mb-2">
@@ -1190,12 +1190,12 @@ const CompletedProjectDetail: React.FC = () => {
       {/* Team Analytics Tab */}
       {activeTab === 'analytics' && (
         <div className="space-y-6">
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+          <div className="bg-white dark:bg-black/60 rounded-xl border border-gray-200 dark:border-white/10 p-6">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Team Performance Analytics</h3>
             
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead className="bg-gray-50 dark:bg-gray-700">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-white/10">
+                <thead className="bg-gray-50 dark:bg-black/50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Member</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Tasks Completed</th>
@@ -1206,7 +1206,7 @@ const CompletedProjectDetail: React.FC = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">KPI Score</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                <tbody className="bg-white dark:bg-black/60 divide-y divide-gray-200 dark:divide-white/10">
                   {teamPerformance.map((member) => (
                     <tr key={member.member.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -1238,7 +1238,7 @@ const CompletedProjectDetail: React.FC = () => {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center space-x-2">
                           <span className="text-sm font-medium text-gray-900 dark:text-white">{member.kpiScore}</span>
-                          <div className="w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                          <div className="w-16 bg-gray-200 dark:bg-black/50 rounded-full h-2">
                             <div 
                               className="bg-blue-500 h-2 rounded-full" 
                               style={{ width: `${member.kpiScore}%` }}
@@ -1264,7 +1264,7 @@ const CompletedProjectDetail: React.FC = () => {
       )}
 
       {/* Manager Notes Section */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 mt-6 bg-opacity-50 backdrop-blur-sm animate-fade-in" style={{ animationDelay: '0.4s' }}>
+      <div className="bg-white dark:bg-black/60 rounded-xl border border-gray-200 dark:border-white/10 p-6 mt-6 bg-opacity-50 backdrop-blur-sm animate-fade-in" style={{ animationDelay: '0.4s' }}>
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
           <MessageSquare className="w-5 h-5" />
           Manager Notes & Final Comments
@@ -1287,9 +1287,9 @@ const CompletedProjectDetail: React.FC = () => {
       {/* Document Preview Modal */}
       {showDocumentModal && selectedDocument && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white dark:bg-black/60 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-white/10">
               <div className="flex items-center space-x-4">
                 <div className="h-12 w-12 bg-blue-100 dark:bg-blue-900/20 rounded-lg flex items-center justify-center">
                   <FileText className="h-6 w-6 text-blue-600 dark:text-blue-400" />
@@ -1311,7 +1311,7 @@ const CompletedProjectDetail: React.FC = () => {
 
             {/* Content */}
             <div className="p-6">
-              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-8 text-center">
+              <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-8 text-center">
                 <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
                   Document Preview

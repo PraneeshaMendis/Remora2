@@ -1493,7 +1493,7 @@ const TaskDetail: React.FC = () => {
       </div>
 
       {/* Tab Navigation */}
-      <div className="border-b border-gray-200 dark:border-gray-700">
+      <div className="border-b border-gray-200 dark:border-white/10">
         <nav className="-mb-px flex space-x-8">
           {[
             { id: 'overview', label: 'Overview', icon: HiEye },
@@ -1595,7 +1595,7 @@ const TaskDetail: React.FC = () => {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Progress
                   </label>
-                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                  <div className="w-full bg-gray-200 dark:bg-black/50 rounded-full h-2">
                     <div 
                       className="bg-primary-600 h-2 rounded-full transition-all duration-300"
                       style={{ width: `${task.progress}%` }}
@@ -1720,7 +1720,7 @@ const TaskDetail: React.FC = () => {
                   <span>Progress</span>
                   <span>{project.allocatedHours > 0 ? Math.round((project.loggedHours / project.allocatedHours) * 100) : 0}%</span>
                 </div>
-                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                <div className="w-full bg-gray-200 dark:bg-black/50 rounded-full h-2">
                   <div 
                     className="bg-gradient-to-r from-blue-500 to-green-500 h-2 rounded-full transition-all duration-300"
                     style={{ width: `${project.allocatedHours > 0 ? Math.min(100, (project.loggedHours / project.allocatedHours) * 100) : 0}%` }}
@@ -1767,7 +1767,7 @@ const TaskDetail: React.FC = () => {
             </div>
 
             {/* Add Time Log Form */}
-            <form onSubmit={(e) => { e.preventDefault(); handleTimeLogSubmit(); }} className="p-4 bg-gray-50 dark:bg-gray-700 rounded-xl">
+            <form onSubmit={(e) => { e.preventDefault(); handleTimeLogSubmit(); }} className="p-4 bg-gray-50 dark:bg-black/50 rounded-xl">
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
@@ -1858,7 +1858,7 @@ const TaskDetail: React.FC = () => {
                     className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
                       timeLogFilter === 'all'
                         ? 'bg-primary-600 text-white'
-                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                        : 'bg-gray-100 dark:bg-black/50 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-black/40'
                     }`}
                   >
                     All Time Logs
@@ -1868,7 +1868,7 @@ const TaskDetail: React.FC = () => {
                     className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
                       timeLogFilter === 'mine'
                         ? 'bg-primary-600 text-white'
-                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                        : 'bg-gray-100 dark:bg-black/50 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-black/40'
                     }`}
                   >
                     My Time Logs
@@ -1891,7 +1891,7 @@ const TaskDetail: React.FC = () => {
                     <div key={log.id} className={`border rounded-xl p-4 ${
                       isMyLog && timeLogFilter === 'all'
                         ? 'border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-900/20'
-                        : 'border-gray-200 dark:border-gray-700'
+                        : 'border-gray-200 dark:border-white/10'
                     }`}>
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center space-x-3">
@@ -2017,14 +2017,14 @@ const TaskDetail: React.FC = () => {
                 
                 {/* Mention Dropdown */}
                 {showMentionDropdown && (
-                  <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                  <div className="absolute z-10 mt-1 w-full bg-white dark:bg-black/60 border border-gray-300 dark:border-white/10 rounded-lg shadow-lg max-h-40 overflow-y-auto">
                     {filteredUsers.length > 0 ? (
                       filteredUsers.map((user) => (
                         <button
                           key={user.id}
                           type="button"
                           onClick={() => handleMentionSelect(user.name)}
-                          className="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
+                          className="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-black/40 flex items-center space-x-2"
                         >
                           <div className="h-6 w-6 rounded-full bg-primary-600 flex items-center justify-center text-xs text-white">
                             {user.name.split(' ').map(n => n[0]).join('')}
@@ -2061,7 +2061,7 @@ const TaskDetail: React.FC = () => {
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Comments & Updates</h3>
             <div className="space-y-4">
               {comments.map((comment) => (
-                <div key={comment.id} className="border border-gray-200 dark:border-gray-700 rounded-xl p-4">
+                <div key={comment.id} className="border border-gray-200 dark:border-white/10 rounded-xl p-4">
                   <div className="flex items-start space-x-3">
                     <div className="h-8 w-8 rounded-full bg-primary-600 flex items-center justify-center text-xs text-white">
                       {comment.author.avatar}
@@ -2102,7 +2102,7 @@ const TaskDetail: React.FC = () => {
                       
                       {/* Reply Form */}
                       {replyingTo === comment.id && (
-                        <div className="ml-4 mb-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                        <div className="ml-4 mb-4 p-3 bg-gray-50 dark:bg-black/50 rounded-lg">
                           <div className="flex items-start space-x-2">
                             <div className="h-6 w-6 rounded-full bg-gray-400 flex items-center justify-center text-xs text-white">
                               {currentUser?.name.split(' ').map(n => n[0]).join('') || 'U'}
@@ -2112,7 +2112,7 @@ const TaskDetail: React.FC = () => {
                                 value={replyText}
                                 onChange={(e) => setReplyText(e.target.value)}
                                 rows={2}
-                                className="w-full text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                className="w-full text-sm border border-gray-300 dark:border-white/10 rounded-lg px-3 py-2 bg-white dark:bg-black/60 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                                 placeholder={`Reply to ${comment.author.name}...`}
                               />
                               <div className="flex items-center justify-end space-x-2 mt-2">
@@ -2239,7 +2239,7 @@ const TaskDetail: React.FC = () => {
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Documents</h3>
             <div className="space-y-4">
               {taskDocuments.map((doc) => (
-                <div key={doc.id} className="border border-gray-200 dark:border-gray-700 rounded-xl p-4">
+                <div key={doc.id} className="border border-gray-200 dark:border-white/10 rounded-xl p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                       <HiDocument className="h-8 w-8 text-primary-600" />
@@ -2287,7 +2287,7 @@ const TaskDetail: React.FC = () => {
                   <div className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">{label}</div>
                   <div className="space-y-3">
                     {groups[label].map((it) => (
-                      <div key={it.id} className="flex items-start justify-between p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                      <div key={it.id} className="flex items-start justify-between p-4 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-black/60">
                         <div className="flex items-start space-x-3">
                           <div className={`h-8 w-8 rounded-full flex items-center justify-center text-white ${it.type === 'document' ? 'bg-blue-600' : it.type === 'timelog' ? 'bg-green-600' : 'bg-gray-600'}`}>
                             {it.type === 'document' ? '📄' : it.type === 'timelog' ? '⏱️' : '📝'}

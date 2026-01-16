@@ -468,7 +468,7 @@ const ProjectsList: React.FC = () => {
 
       {/* Project Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="card">
+        <div className="card dark:bg-black/60 dark:border-white/10">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Projects</p>
@@ -482,7 +482,7 @@ const ProjectsList: React.FC = () => {
           </div>
         </div>
 
-        <div className="card">
+        <div className="card dark:bg-black/60 dark:border-white/10">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Active</p>
@@ -496,7 +496,7 @@ const ProjectsList: React.FC = () => {
           </div>
         </div>
 
-        <div className="card">
+        <div className="card dark:bg-black/60 dark:border-white/10">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Planning</p>
@@ -510,7 +510,7 @@ const ProjectsList: React.FC = () => {
           </div>
         </div>
 
-        <div className="card">
+        <div className="card dark:bg-black/60 dark:border-white/10">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Completed</p>
@@ -526,7 +526,7 @@ const ProjectsList: React.FC = () => {
       </div>
 
       {/* Filters */}
-      <div className="card">
+      <div className="card dark:bg-black/60 dark:border-white/10">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -594,7 +594,7 @@ const ProjectsList: React.FC = () => {
           {showDrafts && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {drafts.map((draft) => (
-                <div key={draft.id} className="card border-2 border-dashed border-orange-200 dark:border-orange-800">
+                <div key={draft.id} className="card dark:bg-black/60 dark:border-white/10 border-2 border-dashed border-orange-200 dark:border-orange-800">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
                       <h3 className="font-semibold text-gray-900 dark:text-white text-sm mb-1">
@@ -654,7 +654,7 @@ const ProjectsList: React.FC = () => {
         </div>
 
         {filteredProjects.length === 0 ? (
-          <div className="card text-center py-12">
+          <div className="card dark:bg-black/60 dark:border-white/10 text-center py-12">
             <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
@@ -671,7 +671,7 @@ const ProjectsList: React.FC = () => {
                 to={`/projects/${project.id}`}
                 className="block"
               >
-                <div className="card hover:shadow-lg transition-shadow duration-200 cursor-pointer group border border-gray-200 dark:border-gray-700">
+                <div className="card dark:bg-black/60 dark:border-white/10 hover:shadow-lg transition-shadow duration-200 cursor-pointer group border border-gray-200 dark:border-white/10">
                   {/* Project Header */}
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">
@@ -683,7 +683,7 @@ const ProjectsList: React.FC = () => {
                           project.priority === 'critical' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
                           project.priority === 'high' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' :
                           project.priority === 'medium' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
-                          'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+                          'bg-gray-100 text-gray-800 dark:bg-black/50 dark:text-gray-200'
                         }`}>
                           {project.priority.toUpperCase()}
                         </span>
@@ -743,7 +743,7 @@ const ProjectsList: React.FC = () => {
                       <span className="text-gray-600 dark:text-gray-400">Progress</span>
                       <span className="font-medium text-gray-900 dark:text-white">{project.progress}%</span>
                     </div>
-                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                    <div className="w-full bg-gray-200 dark:bg-black/50 rounded-full h-2">
                       <div 
                         className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(project.progress)}`}
                         style={{ width: `${project.progress}%` }}
@@ -779,7 +779,7 @@ const ProjectsList: React.FC = () => {
                           {Math.round((project.loggedHours / project.allocatedHours) * 100)}%
                         </span>
                       </div>
-                      <div className="w-1/6 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                      <div className="w-1/6 bg-gray-200 dark:bg-black/50 rounded-full h-2">
                         <div 
                           className="bg-gradient-to-r from-blue-500 to-green-500 h-2 rounded-full transition-all duration-300"
                           style={{ width: `${Math.min(100, (project.loggedHours / project.allocatedHours) * 100)}%` }}
@@ -806,7 +806,7 @@ const ProjectsList: React.FC = () => {
       {/* View Project Modal */}
       {isViewModalOpen && selectedProject && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white dark:bg-black/60 rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Project Details</h2>
               <button
@@ -819,7 +819,7 @@ const ProjectsList: React.FC = () => {
 
             <div className="space-y-6">
               {/* Project Header */}
-              <div className="border-b border-gray-200 dark:border-gray-700 pb-4">
+              <div className="border-b border-gray-200 dark:border-white/10 pb-4">
                 <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
                   {selectedProject.name}
                 </h3>
@@ -887,7 +887,7 @@ const ProjectsList: React.FC = () => {
                       <span className="text-gray-600 dark:text-gray-400 text-sm">Team Members:</span>
                       <div className="mt-1">
                         {selectedProject.team.map((member, index) => (
-                          <span key={index} className="inline-block bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-2 py-1 rounded-md text-sm mr-2 mb-1">
+                          <span key={index} className="inline-block bg-gray-100 dark:bg-black/50 text-gray-700 dark:text-gray-300 px-2 py-1 rounded-md text-sm mr-2 mb-1">
                             {member}
                           </span>
                         ))}
@@ -913,7 +913,7 @@ const ProjectsList: React.FC = () => {
                   <span className="text-gray-600 dark:text-gray-400">Overall Progress</span>
                   <span className="font-medium text-gray-900 dark:text-white">{selectedProject.progress}%</span>
                 </div>
-                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                <div className="w-full bg-gray-200 dark:bg-black/50 rounded-full h-2">
                   <div 
                     className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(selectedProject.progress)}`}
                     style={{ width: `${selectedProject.progress}%` }}
@@ -937,8 +937,8 @@ const ProjectsList: React.FC = () => {
       {/* Edit Project Modal */}
       {isEditModalOpen && selectedProject && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-6xl max-h-[95vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+          <div className="bg-white dark:bg-black/60 rounded-xl w-full max-w-6xl max-h-[95vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200 dark:border-white/10">
               <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Edit Project</h2>
                 <button
@@ -955,7 +955,7 @@ const ProjectsList: React.FC = () => {
                 {/* Main Form */}
                 <div className="lg:col-span-2 space-y-8">
                   {/* 1. Project Basic Information */}
-                  <div className="card">
+                  <div className="card dark:bg-black/60 dark:border-white/10">
                     <div className="flex items-center mb-6">
                       <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg mr-3">
                         <HiDocument className="h-5 w-5 text-blue-600 dark:text-blue-400" />
@@ -1112,7 +1112,7 @@ const ProjectsList: React.FC = () => {
               </div>
 
               {/* 2. Timeline & Scheduling */}
-              <div className="card">
+              <div className="card dark:bg-black/60 dark:border-white/10">
                     <div className="flex items-center mb-6">
                       <div className="p-2 bg-green-100 dark:bg-green-900/20 rounded-lg mr-3">
                         <HiClock className="h-5 w-5 text-green-600 dark:text-green-400" />
@@ -1177,7 +1177,7 @@ const ProjectsList: React.FC = () => {
 
                       {/* Calculated Values Display */}
                       {(editData.estimatedDuration > 0 || editData.workingDays > 0) && (
-                        <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                        <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-4">
                           <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Calculated Timeline</h4>
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="text-center">
@@ -1200,7 +1200,7 @@ const ProjectsList: React.FC = () => {
                                 <span>Project Hours Allocation</span>
                                 <span>{Math.round((editData.projectHours / editData.totalWorkingHours) * 100)}% of available time</span>
                               </div>
-                              <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2">
+                              <div className="w-full bg-gray-200 dark:bg-black/40 rounded-full h-2">
                                 <div 
                                   className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                                   style={{ 
@@ -1218,7 +1218,7 @@ const ProjectsList: React.FC = () => {
                   {/* 3. Assign Team & Roles — consolidated below */}
 
                   {/* 4. Project Status & Priority */}
-                  <div className="card">
+                  <div className="card dark:bg-black/60 dark:border-white/10">
                     <div className="flex items-center mb-6">
                       <div className="p-2 bg-orange-100 dark:bg-orange-900/20 rounded-lg mr-3">
                         <HiCheckCircle className="h-5 w-5 text-orange-600 dark:text-orange-400" />
@@ -1265,7 +1265,7 @@ const ProjectsList: React.FC = () => {
                 {/* Sidebar */}
                 <div className="space-y-6">
                   {/* Project Owner */}
-                  <div className="card">
+                  <div className="card dark:bg-black/60 dark:border-white/10">
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Project Owner</h3>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -1283,7 +1283,7 @@ const ProjectsList: React.FC = () => {
                   </div>
 
                   {/* Attachments */}
-                  <div className="card">
+                  <div className="card dark:bg-black/60 dark:border-white/10">
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Attachments</h3>
                     <div>
                       <input
@@ -1296,7 +1296,7 @@ const ProjectsList: React.FC = () => {
                       {attachments.length > 0 && (
                         <div className="mt-3 space-y-2">
                           {attachments.map((file, index) => (
-                            <div key={index} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                            <div key={index} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-black/50 rounded-lg">
                               <span className="text-sm text-gray-700 dark:text-gray-300">{file.name}</span>
                               <button
                                 type="button"
@@ -1315,7 +1315,7 @@ const ProjectsList: React.FC = () => {
               </div>
 
               {/* 3. Assign Team & Roles */}
-              <div className="card">
+              <div className="card dark:bg-black/60 dark:border-white/10">
                 <div className="flex items-center justify-between mb-6">
                   <div className="flex items-center">
                     <div className="p-2 bg-purple-100 dark:bg-purple-900/20 rounded-lg mr-3">
@@ -1385,7 +1385,7 @@ const ProjectsList: React.FC = () => {
                         className={`flex items-center p-3 rounded-lg border cursor-pointer transition-colors duration-200 ${
                           selectedTeamMembers.includes(member.id)
                             ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                            : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
+                            : 'border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-black/40'
                         }`}
                         onClick={() => setSelectedTeamMembers(prev => prev.includes(member.id) ? prev.filter(x => x !== member.id) : [...prev, member.id])}
                       >
@@ -1399,7 +1399,7 @@ const ProjectsList: React.FC = () => {
                           </div>
                           <div className="text-xs text-gray-500 dark:text-gray-400">{member.email}</div>
                         </div>
-                        <div className={`h-5 w-5 rounded border-2 ${selectedTeamMembers.includes(member.id) ? 'bg-primary-600 border-primary-600' : 'border-gray-300 dark:border-gray-600'}`} />
+                        <div className={`h-5 w-5 rounded border-2 ${selectedTeamMembers.includes(member.id) ? 'bg-primary-600 border-primary-600' : 'border-gray-300 dark:border-white/10'}`} />
                       </div>
                     ))
                   ) : (
@@ -1413,7 +1413,7 @@ const ProjectsList: React.FC = () => {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex justify-end space-x-3 mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
+              <div className="flex justify-end space-x-3 mt-8 pt-6 border-t border-gray-200 dark:border-white/10">
                 <button
                   type="button"
                   onClick={handleCloseModals}

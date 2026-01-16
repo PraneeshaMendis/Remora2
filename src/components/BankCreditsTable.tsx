@@ -117,7 +117,7 @@ const BankCreditsTable: React.FC<BankCreditsTableProps> = ({
       case 'NeedsReview':
         return `${baseClasses} bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200`
       default:
-        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`
+        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-black/50 dark:text-gray-200`
     }
   }
 
@@ -211,7 +211,7 @@ const BankCreditsTable: React.FC<BankCreditsTableProps> = ({
               const status = e.target.value === 'all' ? undefined : [e.target.value]
               onFiltersChange({ ...filters, status })
             }}
-            className="text-sm border border-gray-300 dark:border-gray-600 rounded-md px-3 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            className="text-sm border border-gray-300 dark:border-white/10 rounded-md px-3 py-1 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
           >
             <option value="all">All Status</option>
             <option value="Unmatched">Unmatched</option>
@@ -228,7 +228,7 @@ const BankCreditsTable: React.FC<BankCreditsTableProps> = ({
               const sourceMailbox = e.target.value === 'all' ? undefined : [e.target.value]
               onFiltersChange({ ...filters, sourceMailbox })
             }}
-            className="text-sm border border-gray-300 dark:border-gray-600 rounded-md px-3 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            className="text-sm border border-gray-300 dark:border-white/10 rounded-md px-3 py-1 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
           >
             <option value="all">All Mailboxes</option>
             <option value="bank@company.com">Bank Email</option>
@@ -257,7 +257,7 @@ const BankCreditsTable: React.FC<BankCreditsTableProps> = ({
               const threshold = e.target.value === 'all' ? undefined : parseFloat(e.target.value)
               onFiltersChange({ ...filters, confidenceThreshold: threshold })
             }}
-            className="text-sm border border-gray-300 dark:border-gray-600 rounded-md px-3 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            className="text-sm border border-gray-300 dark:border-white/10 rounded-md px-3 py-1 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
           >
             <option value="all">All Confidence</option>
             <option value="0.9">High (90%+)</option>
@@ -278,8 +278,8 @@ const BankCreditsTable: React.FC<BankCreditsTableProps> = ({
 
       {/* Table */}
       <div className="overflow-x-auto shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
-        <table className="min-w-full divide-y divide-gray-300 dark:divide-gray-700" style={{ minWidth: '1500px' }}>
-          <thead className="bg-gray-50 dark:bg-gray-800">
+        <table className="min-w-full divide-y divide-gray-300 dark:divide-white/10" style={{ minWidth: '1500px' }}>
+          <thead className="bg-gray-50 dark:bg-black/60">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                 Credit ID
@@ -313,9 +313,9 @@ const BankCreditsTable: React.FC<BankCreditsTableProps> = ({
               </th>
             </tr>
           </thead>
-          <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+          <tbody className="bg-white dark:bg-black/60 divide-y divide-gray-200 dark:divide-white/10">
             {bankCredits.map((credit) => (
-              <tr key={credit.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+              <tr key={credit.id} className="hover:bg-gray-50 dark:hover:bg-black/40">
                 <td className="px-6 py-4 whitespace-nowrap">
                   <button
                     onClick={() => handleViewCredit(credit)}
@@ -363,7 +363,7 @@ const BankCreditsTable: React.FC<BankCreditsTableProps> = ({
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                   {credit.confidence ? (
                     <div className="flex items-center">
-                      <div className="w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-2 mr-2">
+                      <div className="w-16 bg-gray-200 dark:bg-black/50 rounded-full h-2 mr-2">
                         <div 
                           className={`h-2 rounded-full ${getConfidenceBarColor(credit.confidence || 0)}`}
                           style={{ width: `${Math.min(100, (credit.confidence || 0) * 100)}%` }}
@@ -467,7 +467,7 @@ const BankCreditDrawer: React.FC<{
       case 'NeedsReview':
         return `${baseClasses} bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200`
       default:
-        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`
+        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-black/50 dark:text-gray-200`
     }
   }
 
@@ -485,9 +485,9 @@ const BankCreditDrawer: React.FC<{
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-white dark:bg-black/60 rounded-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+        <div className="p-6 border-b border-gray-200 dark:border-white/10">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -526,7 +526,7 @@ const BankCreditDrawer: React.FC<{
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                 Credit Information
               </h3>
-              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 space-y-3">
+              <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-4 space-y-3">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <div className="text-sm text-gray-600 dark:text-gray-400">Credit ID</div>
@@ -627,7 +627,7 @@ const BankCreditDrawer: React.FC<{
                       </div>
                       <div className="space-y-2">
                         {suggestedInvoices.map((invoice) => (
-                          <div key={invoice.id} className="flex items-center justify-between bg-white dark:bg-gray-800 rounded p-3">
+                          <div key={invoice.id} className="flex items-center justify-between bg-white dark:bg-black/60 rounded p-3">
                             <div>
                               <div className="font-medium text-gray-900 dark:text-white">
                                 {invoice.invoiceNo}
@@ -652,12 +652,12 @@ const BankCreditDrawer: React.FC<{
 
               {/* Confidence Score */}
               {credit.confidence && (
-                <div className="mt-4 bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                <div className="mt-4 bg-gray-50 dark:bg-black/50 rounded-lg p-4">
                   <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
                     Confidence Score
                   </div>
                   <div className="flex items-center">
-                    <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-3 mr-3">
+                    <div className="w-full bg-gray-200 dark:bg-black/40 rounded-full h-3 mr-3">
                       <div 
                         className={`h-3 rounded-full ${getConfidenceBarColor(credit.confidence)}`}
                         style={{ width: `${credit.confidence * 100}%` }}
@@ -680,7 +680,7 @@ const BankCreditDrawer: React.FC<{
               </h3>
               <div className="space-y-3">
                 {suggestedInvoices.map((invoice, index) => (
-                  <div key={invoice.id} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                  <div key={invoice.id} className="bg-gray-50 dark:bg-black/50 rounded-lg p-4">
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
                         <div className="font-medium text-gray-900 dark:text-white">
@@ -717,7 +717,7 @@ const BankCreditDrawer: React.FC<{
         </div>
 
         {/* Footer Actions */}
-        <div className="p-6 border-t border-gray-200 dark:border-gray-700">
+        <div className="p-6 border-t border-gray-200 dark:border-white/10">
           <div className="flex items-center justify-end space-x-3">
             <button
               onClick={onClose}
