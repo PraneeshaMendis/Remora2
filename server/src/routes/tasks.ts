@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express'
 import { TaskStatus, HistoryType } from '@prisma/client'
 import { z } from 'zod'
 import { prisma } from '../prisma.ts'
+import { createNotifications } from '../utils/notifications.ts'
 
 const router = Router()
 
@@ -46,6 +47,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 
 router.patch('/:id', async (req: Request, res: Response) => {
   const id = req.params.id
+  const actorId = (req as any).userId as string | null
   const schema = z.object({
     title: z.string().optional(),
     description: z.string().optional(),
@@ -57,21 +59,33 @@ router.patch('/:id', async (req: Request, res: Response) => {
   const parsed = schema.safeParse(req.body)
   if (!parsed.success) return res.status(400).json(parsed.error.flatten())
   const { assigneeUserIds, ...rest } = parsed.data as any
+  let taskMeta: { title: string; phaseName: string; projectId: string } | null = null
+  let existingAssignees: string[] = []
+  if (assigneeUserIds !== undefined) {
+    const taskInfo = await prisma.task.findUnique({
+      where: { id },
+      include: {
+        assignees: { select: { userId: true } },
+        phase: { select: { name: true, projectId: true, project: { select: { title: true } } } },
+      },
+    })
+    if (!taskInfo) return res.status(404).json({ error: 'Task not found' })
+    existingAssignees = taskInfo.assignees.map(a => a.userId)
+    taskMeta = { title: taskInfo.title, phaseName: taskInfo.phase.name, projectId: taskInfo.phase.projectId }
+  }
   const data: any = { ...rest }
   if (data.dueDate !== undefined) {
     data.dueDate = data.dueDate ? new Date(data.dueDate) : null
+  }
+  if (taskMeta && data.title) {
+    taskMeta.title = data.title
   }
   // Update basic fields first
   await prisma.task.update({ where: { id }, data })
 
   // If assigneeUserIds is provided, update the relation
   if (assigneeUserIds !== undefined) {
-    // Determine projectId via task -> phase
-    const t = await prisma.task.findUnique({
-      where: { id },
-      select: { phase: { select: { projectId: true } } },
-    })
-    const projectId = t?.phase?.projectId
+    const projectId = taskMeta?.projectId
     if (!projectId) return res.status(400).json({ error: 'Task phase/project not found' })
 
     // Find existing memberships and create missing ones
@@ -94,6 +108,22 @@ router.patch('/:id', async (req: Request, res: Response) => {
         assignees: { set: [], ...(allMemberships.length ? { connect: allMemberships.map(m => ({ id: m.id })) } : {}) },
       },
     })
+
+    const newAssignees = (assigneeUserIds || []).filter((uid: string) => !existingAssignees.includes(uid))
+    const notifyIds = newAssignees.filter((uid: string) => uid && uid !== actorId)
+    if (notifyIds.length && taskMeta) {
+      try {
+        await createNotifications(
+          notifyIds.map((uid: string) => ({
+            userId: uid,
+            type: 'TASK_ASSIGNMENT',
+            title: 'Assigned to task',
+            message: `You were assigned to "${taskMeta.title}" in phase "${taskMeta.phaseName}".`,
+            targetUrl: `/projects/${taskMeta.projectId}/tasks/${id}`,
+          })),
+        )
+      } catch {}
+    }
   }
 
   const updated = await prisma.task.findUnique({
@@ -119,7 +149,13 @@ router.post('/:taskId/comments', async (req: Request, res: Response) => {
 
   try {
     // Ensure task exists
-    const task = await prisma.task.findUnique({ where: { id: taskId } })
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      include: {
+        assignees: { select: { userId: true } },
+        phase: { select: { name: true, projectId: true, project: { select: { title: true } } } },
+      },
+    })
     if (!task) return res.status(404).json({ error: 'Task not found' })
 
     const comment = await prisma.comment.create({
@@ -145,6 +181,26 @@ router.post('/:taskId/comments', async (req: Request, res: Response) => {
         createdById: userId,
       },
     })
+
+    const recipientIds = new Set<string>()
+    task.assignees.forEach(a => recipientIds.add(a.userId))
+    ;(mentionUserIds || []).forEach(id => recipientIds.add(id))
+    recipientIds.delete(String(userId))
+    if (recipientIds.size > 0) {
+      const authorName = comment.author?.name || 'Someone'
+      const targetUrl = `/projects/${task.phase.projectId}/tasks/${taskId}`
+      try {
+        await createNotifications(
+          Array.from(recipientIds).map(uid => ({
+            userId: uid,
+            type: 'COMMENT',
+            title: 'New comment',
+            message: `${authorName} commented on "${task.title}": ${snippet}`,
+            targetUrl,
+          })),
+        )
+      } catch {}
+    }
 
     res.status(201).json(comment)
   } catch (e: any) {

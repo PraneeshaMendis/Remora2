@@ -4,6 +4,7 @@ import path from 'path'
 import fs from 'fs/promises'
 import { z } from 'zod'
 import { prisma } from '../prisma.ts'
+import { createNotifications } from '../utils/notifications.ts'
 
 const db: any = prisma
 const router = Router()
@@ -98,9 +99,12 @@ router.post('/upload', upload.array('files'), async (req: Request, res: Response
     if (!project) return res.status(400).json({ error: 'Invalid projectId' })
     if (!phase || phase.projectId !== projectId) return res.status(400).json({ error: 'Invalid phaseId for project' })
     if (!reviewer) return res.status(400).json({ error: 'Invalid reviewerId' })
+    const uploader = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } })
+    const uploaderName = uploader?.name || 'Someone'
 
     const statusDb = status === 'in-review' ? 'IN_REVIEW' : 'DRAFT'
     const created = [] as any[]
+    const notifyQueue: Array<{ userId: string; type: string; title: string; message: string; targetUrl: string }> = []
     if (hasFiles) {
       for (const f of files) {
         const relPath = path.posix.join('documents', path.basename(f.path))
@@ -119,6 +123,16 @@ router.post('/upload', upload.array('files'), async (req: Request, res: Response
           include: { reviewer: { include: { role: true } }, createdBy: { include: { role: true } }, project: true, phase: true, task: true },
         })
         created.push(mapDocument(doc))
+        if (reviewerId !== userId) {
+          const targetUrl = taskId ? `/projects/${projectId}/tasks/${taskId}` : `/documents?tab=inbox&docId=${doc.id}`
+          notifyQueue.push({
+            userId: reviewerId,
+            type: 'DOCUMENT_SHARED',
+            title: 'Document shared',
+            message: `${uploaderName} shared "${doc.name}" for review.`,
+            targetUrl,
+          })
+        }
         // Add to task history timeline if associated with a task
         try {
           if (taskId) {
@@ -149,6 +163,16 @@ router.post('/upload', upload.array('files'), async (req: Request, res: Response
         include: { reviewer: { include: { role: true } }, createdBy: { include: { role: true } }, project: true, phase: true, task: true },
       })
       created.push(mapDocument(doc))
+      if (reviewerId !== userId) {
+        const targetUrl = taskId ? `/projects/${projectId}/tasks/${taskId}` : `/documents?tab=inbox&docId=${doc.id}`
+        notifyQueue.push({
+          userId: reviewerId,
+          type: 'DOCUMENT_SHARED',
+          title: 'Document shared',
+          message: `${uploaderName} shared "${doc.name}" for review.`,
+          targetUrl,
+        })
+      }
       try {
         if (taskId) {
           await prisma.historyEvent.create({
@@ -160,6 +184,11 @@ router.post('/upload', upload.array('files'), async (req: Request, res: Response
             },
           })
         }
+      } catch {}
+    }
+    if (notifyQueue.length) {
+      try {
+        await createNotifications(notifyQueue)
       } catch {}
     }
     res.status(201).json(created)

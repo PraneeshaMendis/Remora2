@@ -33,6 +33,7 @@ import invoicesRouter from './routes/invoices.ts'
 import receiptsRouter from './routes/receipts.ts'
 import bankCreditsRouter from './routes/bank-credits.ts'
 import documentsRouter from './routes/documents.ts'
+import notificationsRouter from './routes/notifications.ts'
 import adminRouter from './routes/admin.ts'
 import settingsRouter from './routes/settings.ts'
 import speechRouter from './routes/speech.ts'
@@ -144,6 +145,8 @@ app.use('/api/settings', settingsRouter)
 app.use('/api/speech', speechRouter)
 // Chatbot proxy (RapidAPI)
 app.use('/api/chatbot', loginRateLimiter(), chatbotRouter)
+// Notifications
+app.use('/api/notifications', notificationsRouter)
 
 const port = process.env.PORT || 4000
 app.listen(port, () => {

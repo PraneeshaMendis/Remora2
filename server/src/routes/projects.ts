@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express'
 import { TaskStatus, type PrismaClient } from '@prisma/client'
 import { z } from 'zod'
 import { prisma } from '../prisma.ts'
+import { createNotifications } from '../utils/notifications.ts'
 
 const router = Router()
 
@@ -108,6 +109,7 @@ const createProjectSchema = z.object({
 })
 
 router.post('/', async (req: Request, res: Response) => {
+  const actorId = (req as any).userId as string | null
   const parsed = createProjectSchema.safeParse(req.body)
   if (!parsed.success) return res.status(400).json(parsed.error.flatten())
   const data = parsed.data as any
@@ -130,6 +132,20 @@ router.post('/', async (req: Request, res: Response) => {
           update: { role },
           create: { projectId: project.id, userId, role },
         })
+      }
+      const notifyIds = memberUserIds.filter((uid: string) => uid && uid !== actorId)
+      if (notifyIds.length) {
+        try {
+          await createNotifications(
+            notifyIds.map((uid: string) => ({
+              userId: uid,
+              type: 'PROJECT_ASSIGNMENT',
+              title: 'Assigned to project',
+              message: `You were added to project "${project.title}".`,
+              targetUrl: `/projects/${project.id}`,
+            })),
+          )
+        } catch {}
       }
     }
 
@@ -239,15 +255,22 @@ router.patch('/:id/phases/:phaseId', async (req: Request, res: Response) => {
 // Add members to a project by user IDs
 router.post('/:id/members', async (req: Request, res: Response) => {
   const projectId = req.params.id
+  const actorId = (req as any).userId as string | null
   const schema = z.object({ userIds: z.array(z.string()).min(1), role: z.enum(['DIRECTOR','MANAGER','CONSULTANT','LEAD','ENGINEER','OPS']).optional() })
   const parsed = schema.safeParse(req.body)
   if (!parsed.success) return res.status(400).json(parsed.error.flatten())
   const { userIds, role } = parsed.data
   try {
+    const [project, existingMemberships] = await Promise.all([
+      prisma.project.findUnique({ where: { id: projectId }, select: { title: true } }),
+      prisma.projectMembership.findMany({ where: { projectId, userId: { in: userIds } }, select: { userId: true } }),
+    ])
     let roleMap: Record<string, string> = {}
     if (!role) {
       roleMap = await inferProjectRoles(prisma, userIds)
     }
+    const existingIds = new Set(existingMemberships.map(m => m.userId))
+    const newUserIds = userIds.filter(uid => !existingIds.has(uid))
     let count = 0
     for (const userId of userIds) {
       const r = (role || roleMap[userId] || 'ENGINEER') as any
@@ -257,6 +280,20 @@ router.post('/:id/members', async (req: Request, res: Response) => {
         create: { projectId, userId, role: r },
       })
       count++
+    }
+    const notifyIds = newUserIds.filter(uid => uid && uid !== actorId)
+    if (notifyIds.length && project?.title) {
+      try {
+        await createNotifications(
+          notifyIds.map(uid => ({
+            userId: uid,
+            type: 'PROJECT_ASSIGNMENT',
+            title: 'Assigned to project',
+            message: `You were added to project "${project.title}".`,
+            targetUrl: `/projects/${projectId}`,
+          })),
+        )
+      } catch {}
     }
     res.status(201).json({ count })
   } catch (e: any) {
@@ -285,6 +322,7 @@ router.delete('/:id/members', async (req: Request, res: Response) => {
 router.post('/:id/phases/:phaseId/tasks', async (req: Request, res: Response) => {
   const projectId = req.params.id
   const phaseId = req.params.phaseId
+  const actorId = (req as any).userId as string | null
 
   const schema = z.object({
     title: z.string().min(1),
@@ -301,7 +339,7 @@ router.post('/:id/phases/:phaseId/tasks', async (req: Request, res: Response) =>
 
   try {
     // Ensure phase belongs to project
-    const phase = await prisma.phase.findFirst({ where: { id: phaseId, projectId } })
+    const phase = await prisma.phase.findFirst({ where: { id: phaseId, projectId }, include: { project: true } })
     if (!phase) return res.status(404).json({ error: 'Phase not found for project' })
 
     // Normalize date string (support date-only)
@@ -357,6 +395,20 @@ router.post('/:id/phases/:phaseId/tasks', async (req: Request, res: Response) =>
       },
     })
 
+    const notifyIds = (assigneeUserIds || []).filter((uid: string) => uid && uid !== actorId)
+    if (notifyIds.length) {
+      try {
+        await createNotifications(
+          notifyIds.map((uid: string) => ({
+            userId: uid,
+            type: 'TASK_ASSIGNMENT',
+            title: 'Assigned to task',
+            message: `You were assigned to "${created.title}" in phase "${phase.name}".`,
+            targetUrl: `/projects/${projectId}/tasks/${created.id}`,
+          })),
+        )
+      } catch {}
+    }
     res.status(201).json(created)
   } catch (e: any) {
     console.error('Failed to create task', e)

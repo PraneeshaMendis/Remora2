@@ -4,6 +4,7 @@ import multer from 'multer'
 import fs from 'fs'
 import path from 'path'
 import { prisma } from '../prisma.ts'
+import { createNotifications } from '../utils/notifications.ts'
 
 const router = Router()
 
@@ -69,6 +70,35 @@ router.post('/tasks/:taskId/timelogs', upload.single('file'), async (req: Reques
           createdById: String(userId),
         },
       })
+    } catch {}
+    try {
+      const [task, actor] = await Promise.all([
+        prisma.task.findUnique({
+          where: { id: taskId },
+          include: {
+            assignees: { select: { userId: true } },
+            phase: { select: { projectId: true, project: { select: { title: true } } } },
+          },
+        }),
+        prisma.user.findUnique({ where: { id: String(userId) }, select: { name: true } }),
+      ])
+      if (task) {
+        const recipientIds = new Set(task.assignees.map(a => a.userId))
+        recipientIds.delete(String(userId))
+        if (recipientIds.size > 0) {
+          const hours = Math.round((durationMins / 60) * 10) / 10
+          const actorName = actor?.name || 'Someone'
+          await createNotifications(
+            Array.from(recipientIds).map(uid => ({
+              userId: uid,
+              type: 'TIME_LOG',
+              title: 'Time log added',
+              message: `${actorName} logged ${hours}h on "${task.title}".`,
+              targetUrl: `/projects/${task.phase.projectId}/tasks/${taskId}`,
+            })),
+          )
+        }
+      }
     } catch {}
     res.status(201).json(log)
   } catch (e: any) {

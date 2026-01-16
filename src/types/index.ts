@@ -173,3 +173,13 @@ export interface TimeLog {
   attachmentUrl?: string
   attachmentFileName?: string
 }
+
+export interface NotificationItem {
+  id: string
+  type: 'PROJECT_ASSIGNMENT' | 'TASK_ASSIGNMENT' | 'COMMENT' | 'TIME_LOG' | 'DOCUMENT_SHARED'
+  title: string
+  message: string
+  targetUrl?: string | null
+  read: boolean
+  createdAt: string
+}

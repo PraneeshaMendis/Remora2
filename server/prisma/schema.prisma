@@ -372,9 +372,23 @@ model Notification {
   id        String   @id @default(cuid())
   user      User     @relation("UserNotifications", fields: [userId], references: [id])
   userId    String
+  type      NotificationType @default(COMMENT)
+  title     String   @default("")
   message   String
+  targetUrl String?
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, read])
+}
+
+enum NotificationType {
+  PROJECT_ASSIGNMENT
+  TASK_ASSIGNMENT
+  COMMENT
+  TIME_LOG
+  DOCUMENT_SHARED
 }
 
 model HistoryEvent {

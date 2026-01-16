@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Document } from '../types/index.ts'
 import { uploadDocuments, listInbox, listSent, reviewDocument } from '../services/documentsAPI'
 import { getProjectsWithPhases } from '../services/projectsAPI'
@@ -79,6 +80,8 @@ const Documents: React.FC = () => {
   const [inboxDocs, setInboxDocs] = useState<Document[]>([])
   const [sentDocs, setSentDocs] = useState<Document[]>([])
   const [activeView, setActiveView] = useState<'inbox' | 'sent'>('inbox')
+  const [highlightedDocId, setHighlightedDocId] = useState<string | null>(null)
+  const [searchParams] = useSearchParams()
   const [projectDetail, setProjectDetail] = useState<any | null>(null)
   const availableTasks = useMemo(() => {
     if (!projectDetail || !uploadData.phase) return [] as Array<{ id: string; title: string }>
@@ -177,6 +180,13 @@ const Documents: React.FC = () => {
     setPhaseFilter('all')
   }, [projectFilter])
 
+  useEffect(() => {
+    const tab = searchParams.get('tab')
+    if (tab === 'sent' || tab === 'inbox') {
+      setActiveView(tab)
+    }
+  }, [searchParams.toString()])
+
   function mapApiDocToUi(d: any): Document {
     const filePath: string = String(d.fileUrl || d.filePath || '')
     const hasFile = Boolean(filePath)
@@ -242,6 +252,18 @@ const Documents: React.FC = () => {
     
     return matchesSearch && matchesProject && matchesPhase && matchesStatus
   })
+
+  useEffect(() => {
+    const docId = searchParams.get('docId')
+    if (!docId) return
+    setHighlightedDocId(docId)
+    const el = document.getElementById(`doc-${docId}`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+    const timer = window.setTimeout(() => setHighlightedDocId(null), 4000)
+    return () => window.clearTimeout(timer)
+  }, [searchParams.toString(), filteredDocuments.length])
 
   const getProjectName = (projectId: string) => {
     const project = projects.find(p => p.id === projectId)
@@ -630,7 +652,13 @@ const Documents: React.FC = () => {
         ) : (
           <div className="space-y-4">
             {filteredDocuments.map((doc) => (
-              <div key={doc.id} className="rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-black/60 p-6 shadow-sm">
+              <div
+                key={doc.id}
+                id={`doc-${doc.id}`}
+                className={`rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-black/60 p-6 shadow-sm ${
+                  highlightedDocId === doc.id ? 'ring-2 ring-primary-500/60 shadow-[0_0_18px_rgba(59,130,246,0.25)]' : ''
+                }`}
+              >
                 {/* Document Header */}
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div>

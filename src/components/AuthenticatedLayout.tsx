@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext.tsx'
 import Topbar from './Topbar.tsx'
 import Sidebar from './Sidebar.tsx'
 import ChatBotWidget from './ChatBotWidget.tsx'
+import Toaster from './Toaster.tsx'
 
 const AuthenticatedLayout: React.FC = () => {
   const { isAuthenticated, isLoading } = useAuth()
@@ -36,6 +37,7 @@ const AuthenticatedLayout: React.FC = () => {
         </main>
       </div>
       <ChatBotWidget />
+      <Toaster />
     </div>
   )
 }
