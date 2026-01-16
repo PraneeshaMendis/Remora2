@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { listUsers, updateUser, deleteUser as apiDeleteUser } from '../services/usersAPI.ts'
 import { inviteUser } from '../services/adminAPI.ts'
-import { listDepartments, deleteDepartment as apiDeleteDepartment } from '../services/departmentsAPI.ts'
+import { listDepartments, createDepartment as apiCreateDepartment, deleteDepartment as apiDeleteDepartment } from '../services/departmentsAPI.ts'
 import { listRoles, createRole as apiCreateRole, deleteRole as apiDeleteRole } from '../services/rolesAPI.ts'
 import { startImpersonation, stopImpersonation, getImpersonationStatus, purgeNonAdminUsers } from '../services/adminAPI'
 import { Button } from '@/components/ui/button'
@@ -22,11 +22,28 @@ const Users: React.FC = () => {
   })
   const [isManageDepartmentsOpen, setIsManageDepartmentsOpen] = useState(false)
   const [newDepartmentName, setNewDepartmentName] = useState('')
-  const handleAddDepartment = () => {
+  const handleAddDepartment = async () => {
     const trimmed = newDepartmentName.trim()
     if (!trimmed) return
-    // Departments are derived from users; keep UI but no local mutation
-    setNewDepartmentName('')
+    const exists = departmentOptions.some((dept) => dept.toLowerCase() === trimmed.toLowerCase())
+      || departments.some((dept) => String(dept || '').toLowerCase() === trimmed.toLowerCase())
+    if (exists) {
+      alert('Department already exists')
+      return
+    }
+    try {
+      const created = await apiCreateDepartment(trimmed)
+      const name = String(created?.name || trimmed)
+      const id = String(created?.id || '')
+      setDepartmentOptions(prev => Array.from(new Set([...prev, name])))
+      if (id) {
+        setDepartmentIdByName(prev => ({ ...prev, [name]: id }))
+      }
+      setNewDepartmentName('')
+    } catch (e: any) {
+      console.error('Failed to create department', e)
+      alert(e?.message || 'Failed to create department')
+    }
   }
   const handleDeleteDepartment = async (name: string) => {
     try {

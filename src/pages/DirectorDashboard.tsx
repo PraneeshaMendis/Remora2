@@ -293,7 +293,7 @@ const DirectorDashboard: React.FC = () => {
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {kpis.map((kpi, index) => (
-          <div key={index} className="card">
+          <div key={index} className="card dark:bg-black/60 dark:border-white/10">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600 dark:text-gray-400">{kpi.label}</p>
@@ -323,13 +323,13 @@ const DirectorDashboard: React.FC = () => {
       {/* Charts and Projects Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Status Distribution Chart */}
-        <div className="card">
+        <div className="card dark:bg-black/60 dark:border-white/10">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Project Status Distribution</h3>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-600 dark:text-gray-400">In Progress</span>
               <div className="flex items-center">
-                <div className="w-32 bg-gray-200 dark:bg-gray-700 rounded-full h-2 mr-3">
+                <div className="w-32 bg-gray-200 dark:bg-black/50 rounded-full h-2 mr-3">
                   <div className="bg-blue-600 h-2 rounded-full" style={{ width: '60%' }}></div>
                 </div>
                 <span className="text-sm font-medium text-gray-900 dark:text-white">60%</span>
@@ -338,7 +338,7 @@ const DirectorDashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-600 dark:text-gray-400">In Review</span>
               <div className="flex items-center">
-                <div className="w-32 bg-gray-200 dark:bg-gray-700 rounded-full h-2 mr-3">
+                <div className="w-32 bg-gray-200 dark:bg-black/50 rounded-full h-2 mr-3">
                   <div className="bg-yellow-600 h-2 rounded-full" style={{ width: '25%' }}></div>
                 </div>
                 <span className="text-sm font-medium text-gray-900 dark:text-white">25%</span>
@@ -347,7 +347,7 @@ const DirectorDashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-600 dark:text-gray-400">Completed</span>
               <div className="flex items-center">
-                <div className="w-32 bg-gray-200 dark:bg-gray-700 rounded-full h-2 mr-3">
+                <div className="w-32 bg-gray-200 dark:bg-black/50 rounded-full h-2 mr-3">
                   <div className="bg-green-600 h-2 rounded-full" style={{ width: '15%' }}></div>
                 </div>
                 <span className="text-sm font-medium text-gray-900 dark:text-white">15%</span>
@@ -357,7 +357,7 @@ const DirectorDashboard: React.FC = () => {
         </div>
 
         {/* Progress Over Time Chart */}
-        <div className="card">
+        <div className="card dark:bg-black/60 dark:border-white/10">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Progress Over Time</h3>
           <div className="h-32 flex items-end space-x-2">
             {[20, 35, 45, 60, 75, 80, 85].map((height, index) => (
@@ -371,13 +371,13 @@ const DirectorDashboard: React.FC = () => {
       </div>
 
       {/* Projects Grid */}
-      <div className="card">
+      <div className="card dark:bg-black/60 dark:border-white/10">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">All Projects</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {displayProjects.map((project) => (
             <div 
               key={project.id} 
-              className="border border-gray-200 dark:border-gray-700 rounded-xl p-4 hover:shadow-md transition-shadow duration-200 cursor-pointer"
+              className="border border-gray-200 dark:border-white/10 rounded-xl p-4 hover:shadow-md transition-shadow duration-200 cursor-pointer"
               onClick={() => {
                 setSelectedProject(project)
                 setIsProjectModalOpen(true)
@@ -396,7 +396,7 @@ const DirectorDashboard: React.FC = () => {
                   <span className="text-gray-600 dark:text-gray-400">Progress</span>
                   <span className="font-medium text-gray-900 dark:text-white">{project.progress}%</span>
                 </div>
-                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                <div className="w-full bg-gray-200 dark:bg-black/50 rounded-full h-2">
                   <div 
                     className="bg-primary-600 h-2 rounded-full transition-all duration-300" 
                     style={{ width: `${project.progress}%` }}
@@ -413,7 +413,7 @@ const DirectorDashboard: React.FC = () => {
                       {Math.round((project.loggedHours / project.allocatedHours) * 100)}%
                     </span>
                   </div>
-                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                  <div className="w-full bg-gray-200 dark:bg-black/50 rounded-full h-2">
                     <div 
                       className={`h-2 rounded-full transition-all duration-300 ${
                         (project.loggedHours / project.allocatedHours) >= 1 ? 'bg-red-500' :
@@ -437,13 +437,13 @@ const DirectorDashboard: React.FC = () => {
                   {project.team.slice(0, 3).map((memberId, index) => {
                     const member = teamMembers.find(m => m.id === memberId)
                     return (
-                      <div key={index} className="h-6 w-6 rounded-full bg-primary-600 flex items-center justify-center text-xs text-white border-2 border-white dark:border-gray-800">
+                      <div key={index} className="h-6 w-6 rounded-full bg-primary-600 flex items-center justify-center text-xs text-white border-2 border-white dark:border-white/10">
                         {member ? member.name.charAt(0) : memberId.charAt(0)}
                       </div>
                     )
                   })}
                   {project.team.length > 3 && (
-                    <div className="h-6 w-6 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center text-xs text-gray-600 dark:text-gray-300 border-2 border-white dark:border-gray-800">
+                    <div className="h-6 w-6 rounded-full bg-gray-300 dark:bg-black/40 flex items-center justify-center text-xs text-gray-600 dark:text-gray-300 border-2 border-white dark:border-white/10">
                       +{project.team.length - 3}
                     </div>
                   )}
@@ -457,7 +457,7 @@ const DirectorDashboard: React.FC = () => {
       {/* Activity Feed and Deadlines */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Activity Feed */}
-        <div className="card">
+        <div className="card dark:bg-black/60 dark:border-white/10">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Recent Activity</h3>
           <div className="space-y-4">
             {recentActivity.map((activity) => (
@@ -478,11 +478,11 @@ const DirectorDashboard: React.FC = () => {
         </div>
 
         {/* Upcoming Deadlines */}
-        <div className="card">
+        <div className="card dark:bg-black/60 dark:border-white/10">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Upcoming Deadlines</h3>
           <div className="space-y-3">
             {upcomingDeadlines.map((deadline, index) => (
-              <div key={index} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-xl">
+              <div key={index} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-black/50 rounded-xl">
                 <div>
                   <p className="text-sm font-medium text-gray-900 dark:text-white">{deadline.task}</p>
                   <p className="text-xs text-gray-600 dark:text-gray-400">{deadline.project}</p>
@@ -500,8 +500,8 @@ const DirectorDashboard: React.FC = () => {
       {/* Project Detail Modal */}
       {isProjectModalOpen && selectedProject && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+          <div className="bg-white dark:bg-black/60 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200 dark:border-white/10">
               <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
                   {selectedProject.name} - Team Performance
@@ -524,25 +524,25 @@ const DirectorDashboard: React.FC = () => {
               {/* Project Overview */}
               <div className="mb-6">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                  <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-4">
                     <div className="text-2xl font-bold text-gray-900 dark:text-white">
                       {selectedProject.allocatedHours}h
                     </div>
                     <div className="text-sm text-gray-600 dark:text-gray-400">Total Allocated</div>
                   </div>
-                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                  <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-4">
                     <div className="text-2xl font-bold text-gray-900 dark:text-white">
                       {selectedProject.loggedHours}h
                     </div>
                     <div className="text-sm text-gray-600 dark:text-gray-400">Total Logged</div>
                   </div>
-                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                  <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-4">
                     <div className="text-2xl font-bold text-gray-900 dark:text-white">
                       {Math.round((selectedProject.loggedHours / selectedProject.allocatedHours) * 100)}%
                     </div>
                     <div className="text-sm text-gray-600 dark:text-gray-400">Utilization</div>
                   </div>
-                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                  <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-4">
                     <div className="text-2xl font-bold text-gray-900 dark:text-white">
                       {selectedProject.team.length}
                     </div>
@@ -573,7 +573,7 @@ const DirectorDashboard: React.FC = () => {
                     const commentsAdded = Math.floor(Math.random() * 10) + 1
 
                     return (
-                      <div key={memberId} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                      <div key={memberId} className="border border-gray-200 dark:border-white/10 rounded-lg p-4">
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center space-x-3">
                             <div className="w-10 h-10 bg-primary-600 rounded-full flex items-center justify-center text-white font-semibold">
@@ -651,7 +651,7 @@ const DirectorDashboard: React.FC = () => {
                             </div>
                           </div>
 
-                          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
+                          <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-3">
                             <div className="flex items-center space-x-2">
                               <svg className="h-5 w-5 text-gray-600 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />

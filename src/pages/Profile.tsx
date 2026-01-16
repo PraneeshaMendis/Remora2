@@ -406,7 +406,7 @@ const Profile: React.FC = () => {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <div className="card">
+        <div className="card dark:bg-black/60 dark:border-white/10">
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
@@ -421,7 +421,7 @@ const Profile: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header Section */}
-      <div className="card">
+      <div className="card dark:bg-black/60 dark:border-white/10">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-6">
             <div className="relative">
@@ -429,7 +429,7 @@ const Profile: React.FC = () => {
                 {profileData.name.charAt(0).toUpperCase()}
               </div>
               {isEditing && (
-                <label className="absolute bottom-0 right-0 bg-white dark:bg-gray-800 rounded-full p-2 shadow-lg cursor-pointer border-2 border-primary-500">
+                <label className="absolute bottom-0 right-0 bg-white dark:bg-black/60 rounded-full p-2 shadow-lg cursor-pointer border-2 border-primary-500">
                   <Camera className="h-4 w-4 text-primary-600" />
                   <input
                     type="file"
@@ -501,14 +501,14 @@ const Profile: React.FC = () => {
         </div>
 
         {/* Current Projects */}
-        <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+        <div className="border-t border-gray-200 dark:border-white/10 pt-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Current Projects Assigned</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {profileData.currentProjects.map((project) => (
               <a
                 key={project.id}
                 href={project.link}
-                className="block p-4 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                className="block p-4 border border-gray-200 dark:border-white/10 rounded-xl hover:bg-gray-50 dark:hover:bg-black/40 transition-colors"
               >
                 <h4 className="font-medium text-gray-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400">
                   {project.name}
@@ -536,7 +536,7 @@ const Profile: React.FC = () => {
       </div>
 
       {/* KPI Score Section */}
-      <div className="card">
+      <div className="card dark:bg-black/60 dark:border-white/10">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">KPI Score</h2>
           <div className="flex items-center space-x-3">
@@ -616,7 +616,7 @@ const Profile: React.FC = () => {
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{kpi.name}</span>
                   <span className="text-sm font-bold text-gray-900 dark:text-white">{kpi.score}%</span>
                 </div>
-                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                <div className="w-full bg-gray-200 dark:bg-black/50 rounded-full h-3">
                   <div
                     className={`h-3 rounded-full ${kpi.color}`}
                     style={{ width: `${kpi.score}%` }}
@@ -630,12 +630,12 @@ const Profile: React.FC = () => {
         {/* KPI Details Modal */}
         {showKPIDetails && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-4xl mx-4 max-h-[80vh] overflow-y-auto">
+            <div className="bg-white dark:bg-black/60 rounded-2xl p-6 w-full max-w-4xl mx-4 max-h-[80vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-semibold text-gray-900 dark:text-white">KPI Calculation Details</h3>
                 <button
                   onClick={() => setShowKPIDetails(false)}
-                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-black/40 rounded-lg transition-colors"
                 >
                   <X className="h-5 w-5 text-gray-500" />
                 </button>
@@ -705,7 +705,7 @@ const Profile: React.FC = () => {
 
       {/* Contribution Overview */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="card">
+        <div className="card dark:bg-black/60 dark:border-white/10">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">High-level Stats</h3>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -727,7 +727,7 @@ const Profile: React.FC = () => {
           </div>
         </div>
 
-        <div className="card">
+        <div className="card dark:bg-black/60 dark:border-white/10">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Time Distribution</h3>
           <div className="space-y-3">
             {timeAllocation.map((item, index) => (
@@ -738,7 +738,7 @@ const Profile: React.FC = () => {
                     {item.hours}h ({item.percentage}%)
                   </span>
                 </div>
-                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                <div className="w-full bg-gray-200 dark:bg-black/50 rounded-full h-2">
                   <div
                     className={`h-2 rounded-full ${item.color}`}
                     style={{ width: `${item.percentage}%` }}
@@ -751,7 +751,7 @@ const Profile: React.FC = () => {
       </div>
 
       {/* Task & Deadline Performance */}
-      <div className="card">
+      <div className="card dark:bg-black/60 dark:border-white/10">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Task & Deadline Performance</h3>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div>
@@ -788,7 +788,7 @@ const Profile: React.FC = () => {
       </div>
 
       {/* Collaboration Metrics */}
-      <div className="card">
+      <div className="card dark:bg-black/60 dark:border-white/10">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Collaboration Metrics</h3>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="space-y-4">
@@ -826,7 +826,7 @@ const Profile: React.FC = () => {
       </div>
 
       {/* Efficiency Metrics */}
-      <div className="card">
+      <div className="card dark:bg-black/60 dark:border-white/10">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Efficiency Metrics</h3>
           <div className="text-xs text-gray-500 dark:text-gray-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded">
@@ -860,7 +860,7 @@ const Profile: React.FC = () => {
           <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Project Efficiency Breakdown</h4>
           <div className="space-y-3">
             {efficiencyMetrics.efficiencyBreakdown.map((project, index) => (
-              <div key={index} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+              <div key={index} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-black/50 rounded-lg">
                 <div className="flex-1">
                   <div className="text-sm font-medium text-gray-900 dark:text-white">{project.project}</div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">
@@ -878,14 +878,14 @@ const Profile: React.FC = () => {
       </div>
 
       {/* Project-wise Performance Breakdown */}
-      <div className="card">
+      <div className="card dark:bg-black/60 dark:border-white/10">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Project-wise Performance Breakdown</h3>
           <button className="btn-secondary text-sm">View All Projects</button>
         </div>
         <div className="space-y-4">
           {projectPerformance.map((project) => (
-            <div key={project.id} className="border border-gray-200 dark:border-gray-700 rounded-xl p-4">
+            <div key={project.id} className="border border-gray-200 dark:border-white/10 rounded-xl p-4">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
                   <h4 className="font-semibold text-gray-900 dark:text-white mb-1">{project.name}</h4>
@@ -938,7 +938,7 @@ const Profile: React.FC = () => {
       </div>
 
       {/* Time Tracking Insights */}
-      <div className="card">
+      <div className="card dark:bg-black/60 dark:border-white/10">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-xl font-semibold text-gray-900 dark:text-white">{getLabel()}</h3>
           <div className="flex gap-2">
@@ -946,7 +946,7 @@ const Profile: React.FC = () => {
               className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
                 timeView === 'daily'
                   ? 'bg-primary-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  : 'bg-gray-100 dark:bg-black/50 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-black/40'
               }`}
               onClick={() => setTimeView('daily')}
             >
@@ -956,7 +956,7 @@ const Profile: React.FC = () => {
               className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
                 timeView === 'weekly'
                   ? 'bg-primary-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  : 'bg-gray-100 dark:bg-black/50 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-black/40'
               }`}
               onClick={() => setTimeView('weekly')}
             >
@@ -966,7 +966,7 @@ const Profile: React.FC = () => {
               className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
                 timeView === 'monthly'
                   ? 'bg-primary-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  : 'bg-gray-100 dark:bg-black/50 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-black/40'
               }`}
               onClick={() => setTimeView('monthly')}
             >

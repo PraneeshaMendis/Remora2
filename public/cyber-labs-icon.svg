@@ -1,0 +1,43 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Cyber Labs padlock icon">
+  <defs>
+    <linearGradient id="neon-gradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#A855F7" />
+      <stop offset="55%" stop-color="#EC4899" />
+      <stop offset="100%" stop-color="#22D3EE" />
+    </linearGradient>
+    <linearGradient id="neon-gradient-soft" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#C084FC" />
+      <stop offset="100%" stop-color="#38BDF8" />
+    </linearGradient>
+    <filter id="neon-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+    <filter id="pulse-glow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="10" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <g transform="translate(8 8)">
+    <circle cx="56" cy="56" r="44" fill="url(#neon-gradient)" opacity="0.25" filter="url(#pulse-glow)">
+      <animate attributeName="opacity" values="0.2;0.55;0.2" dur="3.2s" repeatCount="indefinite" />
+      <animate attributeName="r" values="40;48;40" dur="3.2s" repeatCount="indefinite" />
+    </circle>
+    <g filter="url(#neon-glow)">
+      <path d="M32 44V34C32 18 44 6 60 6C76 6 88 18 88 34V44" stroke="url(#neon-gradient)" stroke-width="8" stroke-linecap="round" />
+      <rect x="20" y="44" width="80" height="68" rx="16" fill="#0B1020" stroke="url(#neon-gradient)" stroke-width="3" />
+    </g>
+    <rect x="28" y="52" width="64" height="52" rx="14" fill="#0F172A" stroke="url(#neon-gradient-soft)" stroke-opacity="0.6" stroke-width="1.5" />
+    <path d="M36 64H48M92 64H80M36 92H48M92 92H80" stroke="#7C3AED" stroke-opacity="0.4" stroke-width="2" stroke-linecap="round" />
+    <path d="M48 60V72M80 60V72M48 96V80M80 96V80" stroke="#EC4899" stroke-opacity="0.3" stroke-width="1.5" stroke-linecap="round" />
+    <circle cx="60" cy="82" r="8" fill="#0B1020" stroke="url(#neon-gradient)" stroke-width="2" />
+    <rect x="57" y="82" width="6" height="16" rx="3" fill="#0B1020" stroke="url(#neon-gradient)" stroke-width="1.5" />
+  </g>
+</svg>
