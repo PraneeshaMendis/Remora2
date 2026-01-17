@@ -13,7 +13,6 @@ import {
   ArrowUpDown,
   Filter,
   Search,
-  Bell,
   ChevronDown
 } from 'lucide-react'
 import { getProjects } from '../services/projectsAPI'
@@ -321,17 +320,6 @@ const CompletedProjects: React.FC = () => {
               className="px-4 py-1.5 rounded-full border border-gray-200 dark:border-white/10 bg-white/70 dark:bg-white/5 text-xs font-semibold tracking-[0.2em] text-gray-600 dark:text-gray-300"
             >
               ARCHIVE
-            </button>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="hidden sm:block h-6 w-px bg-gray-200 dark:bg-white/10"></div>
-            <button
-              type="button"
-              className="relative h-10 w-10 rounded-full border border-gray-200 dark:border-white/10 bg-white/70 dark:bg-white/5 flex items-center justify-center hover:bg-gray-50 dark:hover:bg-white/10 transition-colors"
-              aria-label="Notifications"
-            >
-              <Bell className="h-5 w-5 text-gray-600 dark:text-gray-300" />
-              <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-red-500"></span>
             </button>
           </div>
         </div>

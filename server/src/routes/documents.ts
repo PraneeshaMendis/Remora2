@@ -59,6 +59,7 @@ function mapDocument(d: any) {
     phaseName: d.phase?.name || '',
     taskTitle: d.task?.title || '',
     reviewComment: d.reviewComment || null,
+    reviewLink: d.reviewLink || null,
     reviewedAt: d.reviewedAt || null,
     version: d.version || 1,
     createdAt: d.createdAt,
@@ -253,10 +254,11 @@ router.patch('/:id/review', async (req: Request, res: Response) => {
   const schema = z.object({
     status: z.enum(['approved','rejected','needs-changes','in-review']),
     reviewComment: z.string().optional(),
+    reviewLink: z.string().optional(),
   })
   const parsed = schema.safeParse(req.body)
   if (!parsed.success) return res.status(400).json(parsed.error.flatten())
-  const { status, reviewComment } = parsed.data
+  const { status, reviewComment, reviewLink } = parsed.data
   const d = await db.document.findUnique({ where: { id: req.params.id } })
   if (!d) return res.status(404).json({ error: 'Not found' })
   if (d.reviewerId !== userId) return res.status(403).json({ error: 'Only assigned reviewer can update status' })
@@ -267,7 +269,12 @@ router.patch('/:id/review', async (req: Request, res: Response) => {
 
   const updated = await db.document.update({
     where: { id: d.id },
-    data: { status: statusDb, reviewComment: reviewComment || undefined, reviewedAt: new Date() },
+    data: {
+      status: statusDb,
+      reviewComment: reviewComment || undefined,
+      reviewLink: reviewLink || undefined,
+      reviewedAt: new Date(),
+    },
     include: { reviewer: { include: { role: true } }, createdBy: { include: { role: true } }, project: true, phase: true, task: true },
   })
   res.json(mapDocument(updated))

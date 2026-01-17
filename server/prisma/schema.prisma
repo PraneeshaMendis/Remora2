@@ -341,6 +341,7 @@ model Document {
   createdById String
   status      DocumentStatus @default(DRAFT)
   reviewComment String?
+  reviewLink  String?
   reviewedAt  DateTime?
   version     Int      @default(1)
   createdAt   DateTime @default(now())

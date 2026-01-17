@@ -18,6 +18,7 @@ interface TimelineStep {
   icon: string
   color: string
   comment?: string
+  link?: string
 }
 import {
   HiDocument,
@@ -60,6 +61,7 @@ const Documents: React.FC = () => {
   const [reviewData, setReviewData] = useState({
     action: 'approve' as 'approve' | 'request-changes' | 'reject',
     notes: '',
+    reviewLink: '',
     file: null as File | null
   })
   const [validationError, setValidationError] = useState('')
@@ -215,6 +217,7 @@ const Documents: React.FC = () => {
       reviewedAt: d.reviewedAt ? String(d.reviewedAt) : undefined,
       reviewNote: d.reviewComment ? String(d.reviewComment) : undefined,
       externalLink: d.externalLink ? String(d.externalLink) : undefined,
+      reviewLink: d.reviewLink ? String(d.reviewLink) : undefined,
     }
   }
 
@@ -352,6 +355,12 @@ const Documents: React.FC = () => {
 
   const handleReviewDocument = (doc: Document) => {
     setSelectedDocument(doc)
+    setReviewData({
+      action: 'approve',
+      notes: doc.reviewNote || '',
+      reviewLink: doc.reviewLink || '',
+      file: null
+    })
     setValidationError('')
     setIsReviewModalOpen(true)
   }
@@ -412,7 +421,8 @@ const Documents: React.FC = () => {
 
     try {
       const status = reviewData.action === 'approve' ? 'approved' : reviewData.action === 'reject' ? 'rejected' : 'needs-changes'
-      const updated = await reviewDocument(selectedDocument.id, status as any, reviewData.notes || undefined)
+      const link = reviewData.reviewLink.trim()
+      const updated = await reviewDocument(selectedDocument.id, status as any, reviewData.notes || undefined, link || undefined)
       const mapped = mapApiDocToUi(updated)
       setInboxDocs(prev => prev.map(d => d.id === mapped.id ? mapped : d))
       setSentDocs(prev => prev.map(d => d.id === mapped.id ? mapped : d))
@@ -421,6 +431,7 @@ const Documents: React.FC = () => {
       setReviewData({
         action: 'approve',
         notes: '',
+        reviewLink: '',
         file: null
       })
       setValidationError('')
@@ -490,7 +501,8 @@ const Documents: React.FC = () => {
         role: reviewerRoleTitle,
         timestamp: fmt(doc.reviewedAt),
         icon: 'approved',
-        color: 'green'
+        color: 'green',
+        link: doc.reviewLink
       })
     } else if (doc.status === 'needs-changes' && doc.reviewedAt) {
       timeline.push({
@@ -502,7 +514,8 @@ const Documents: React.FC = () => {
         timestamp: fmt(doc.reviewedAt),
         icon: 'changes-requested',
         color: 'yellow',
-        comment: doc.reviewNote || undefined
+        comment: doc.reviewNote || undefined,
+        link: doc.reviewLink
       })
     } else if (doc.status === 'rejected' && doc.reviewedAt) {
       timeline.push({
@@ -514,7 +527,8 @@ const Documents: React.FC = () => {
         timestamp: fmt(doc.reviewedAt),
         icon: 'rejected',
         color: 'red',
-        comment: doc.reviewNote || undefined
+        comment: doc.reviewNote || undefined,
+        link: doc.reviewLink
       })
     }
 
@@ -729,6 +743,17 @@ const Documents: React.FC = () => {
                         Open Link
                       </a>
                     )}
+                    {doc.reviewLink && (
+                      <a
+                        href={doc.reviewLink}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 inline-flex items-center gap-2"
+                      >
+                        <HiLink className="h-4 w-4" />
+                        Review Link
+                      </a>
+                    )}
                     {doc.fileType !== 'link' && (
                       <a
                         href={getDocumentUrl(doc)}
@@ -850,6 +875,19 @@ const Documents: React.FC = () => {
                               {step.comment && (
                                 <div className="mt-3 bg-gray-100 dark:bg-black/40 rounded-lg p-3 border border-gray-200 dark:border-white/10">
                                   <p className="text-sm text-gray-800 dark:text-gray-200">{step.comment}</p>
+                                </div>
+                              )}
+                              {step.link && (
+                                <div className="mt-3">
+                                  <a
+                                    href={step.link}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+                                  >
+                                    <HiLink className="h-4 w-4" />
+                                    <span>Open review link</span>
+                                  </a>
                                 </div>
                               )}
                             </div>
@@ -1186,6 +1224,20 @@ const Documents: React.FC = () => {
                 {validationError && (
                   <p className="mt-1 text-sm text-red-600 dark:text-red-400">{validationError}</p>
                 )}
+              </div>
+
+              {/* Optional Review Link */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Review Link (Optional)
+                </label>
+                <input
+                  type="url"
+                  value={reviewData.reviewLink}
+                  onChange={(e) => setReviewData(prev => ({ ...prev, reviewLink: e.target.value }))}
+                  className="input-field"
+                  placeholder="https://example.com/review-notes"
+                />
               </div>
 
               {/* Upload Document Section */}

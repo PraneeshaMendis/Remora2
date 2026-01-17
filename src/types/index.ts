@@ -89,6 +89,7 @@ export interface Document {
   reviewedAt?: string
   reviewNote?: string
   externalLink?: string
+  reviewLink?: string
 }
 
 export interface Review {

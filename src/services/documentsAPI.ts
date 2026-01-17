@@ -61,11 +61,11 @@ export async function getDocument(id: string) {
   return res.json()
 }
 
-export async function reviewDocument(id: string, status: ReviewStatus, reviewComment?: string) {
+export async function reviewDocument(id: string, status: ReviewStatus, reviewComment?: string, reviewLink?: string) {
   const res = await fetch(`${API_BASE}/api/documents/${id}/review?_ts=${Date.now()}`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({ status, reviewComment }),
+    body: JSON.stringify({ status, reviewComment, reviewLink }),
   })
   if (!res.ok) throw new Error(await res.text())
   return res.json()
