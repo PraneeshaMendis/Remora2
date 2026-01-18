@@ -17,10 +17,14 @@ import {
   Shield
 } from 'lucide-react'
 import CyberLabsLogo from './CyberLabsLogo.tsx'
+import SidebarLogoScene from './SidebarLogoScene.tsx'
 
 const Sidebar: React.FC = () => {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const [showLogoScene, setShowLogoScene] = React.useState(false)
+  const [logoExpanded, setLogoExpanded] = React.useState(false)
+  const logoHeight = 48
 
   const navigation = [
     { 
@@ -115,20 +119,49 @@ const Sidebar: React.FC = () => {
     return user?.role ? item.roles.includes(user.role) : false
   })
 
+  const sidebarWidth = showLogoScene ? (logoExpanded ? 'w-96' : 'w-80') : 'w-72'
+  const logoHeightClass = showLogoScene ? (logoExpanded ? 'h-44' : 'h-32') : ''
+
   return (
     <div className="hidden lg:flex lg:flex-shrink-0 lg:h-screen lg:sticky lg:top-0">
-      <div className="flex flex-col w-72 h-screen p-3">
+      <div className={`flex flex-col h-screen p-3 transition-all duration-300 ${sidebarWidth}`}>
         <div className="flex flex-col flex-1 sidebar-surface sidebar-card shadow-lg overflow-hidden">
 
           {/* Brand */}
           <div className="px-4 pt-6 pb-5 border-b border-[hsl(var(--sidebar-border))]">
             <div className="flex items-center justify-center">
-              <div className="sidebar-logo-shell">
-                <CyberLabsLogo
-                  size={48}
-                  className="sidebar-logo-img shrink-0"
-                />
-              </div>
+              {showLogoScene ? (
+                <button
+                  type="button"
+                  className={`sidebar-logo-shell logo-static logo-clean w-full ${logoHeightClass} flex items-center justify-center transition-all duration-300`}
+                  aria-label={logoExpanded ? 'Show logo' : 'Expand moonwalk'}
+                  onClick={() => {
+                    if (!logoExpanded) {
+                      setLogoExpanded(true)
+                      return
+                    }
+                    setLogoExpanded(false)
+                    setShowLogoScene(false)
+                  }}
+                >
+                  <SidebarLogoScene className="w-full h-full pointer-events-none" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="sidebar-logo-shell"
+                  aria-label="Show moonwalk"
+                  onClick={() => {
+                    setLogoExpanded(false)
+                    setShowLogoScene(true)
+                  }}
+                >
+                  <CyberLabsLogo
+                    size={logoHeight}
+                    className="sidebar-logo-img shrink-0"
+                  />
+                </button>
+              )}
             </div>
           </div>
 
