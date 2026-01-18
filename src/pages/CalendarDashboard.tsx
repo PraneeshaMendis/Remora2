@@ -4,6 +4,14 @@ import {
   Clock, 
   Users, 
   Plus, 
+  LayoutGrid,
+  Search,
+  Globe2,
+  SlidersHorizontal,
+  RefreshCw,
+  Link2,
+  Mail,
+  Upload,
   ChevronLeft, 
   ChevronRight, 
   CheckCircle2, 
@@ -835,6 +843,23 @@ const CalendarDashboard: React.FC = () => {
       : ''
   }
 
+  const getSourceIcon = (type: CalendarSourceType) => {
+    switch (type) {
+      case 'google':
+        return Mail
+      case 'outlook':
+        return Mail
+      case 'ics-url':
+        return Link2
+      case 'ics-upload':
+        return Upload
+      case 'holidays':
+        return Globe2
+      default:
+        return Calendar
+    }
+  }
+
   // Filter events
   const filteredTodayEvents = filterType === 'all' 
     ? todayEvents 
@@ -846,6 +871,7 @@ const CalendarDashboard: React.FC = () => {
 
   const canAddEvent = !(isExecutive && calendarScope === 'team' && !selectedUserId)
   const addEventLabel = isExecutive && calendarScope === 'team' ? 'Assign Event' : 'Add Event'
+  const userInitial = String(user?.name || user?.email || 'U').trim().charAt(0).toUpperCase()
 
   // --- Calendar sync helpers ---
   const parseICalDate = (val: string): { date: string; time: string } => {
@@ -1149,18 +1175,24 @@ const CalendarDashboard: React.FC = () => {
     <div className="min-h-screen bg-gray-50 dark:bg-black">
       {/* Header */}
       <div className="bg-white dark:bg-black/60 shadow-sm border-b border-gray-200 dark:border-white/10">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Calendar Dashboard</h1>
+        <div className="px-6 py-5">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_auto_1fr] items-center">
+            <div className="flex items-center gap-3">
+              <div className="h-11 w-11 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-sm">
+                <LayoutGrid className="h-5 w-5" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Calendar Dashboard</h1>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Manage schedules and connected calendars</p>
+              </div>
             </div>
-            
-            <div className="flex items-center space-x-4">
-              {isExecutive && (
-                <div className="flex items-center rounded-xl bg-gray-100 dark:bg-black/40 p-1">
+
+            <div className="flex items-center justify-center">
+              {isExecutive ? (
+                <div className="flex items-center rounded-full bg-gray-100 dark:bg-black/40 p-1 border border-gray-200/70 dark:border-white/10">
                   <button
                     onClick={() => setCalendarScope('mine')}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                    className={`px-4 py-2 text-xs font-semibold rounded-full transition-colors ${
                       calendarScope === 'mine'
                         ? 'bg-blue-600 text-white'
                         : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-black/50'
@@ -1170,7 +1202,7 @@ const CalendarDashboard: React.FC = () => {
                   </button>
                   <button
                     onClick={() => setCalendarScope('team')}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                    className={`px-4 py-2 text-xs font-semibold rounded-full transition-colors ${
                       calendarScope === 'team'
                         ? 'bg-blue-600 text-white'
                         : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-black/50'
@@ -1179,45 +1211,86 @@ const CalendarDashboard: React.FC = () => {
                     Team View
                   </button>
                 </div>
+              ) : (
+                <span className="px-4 py-2 text-xs font-semibold rounded-full border border-gray-200/70 dark:border-white/10 bg-gray-100 dark:bg-black/40 text-gray-700 dark:text-gray-300">
+                  My Calendar
+                </span>
               )}
-              {/* Sync status */}
-              {isSyncing && (
-                <span className="text-sm text-gray-500 dark:text-gray-400">Syncing…</span>
-              )}
-              {/* Holidays toggle */}
-              <div className="flex items-center space-x-2">
-                <label className="text-sm text-gray-600 dark:text-gray-400">Holidays</label>
+            </div>
+
+            <div className="flex items-center justify-end gap-3">
+              <div className="hidden md:flex items-center gap-2 rounded-full border border-gray-200/70 dark:border-white/10 bg-gray-100 dark:bg-black/40 px-3 py-2">
+                <Search className="h-4 w-4 text-gray-500 dark:text-gray-400" />
                 <input
-                  type="checkbox"
-                  checked={showHolidays}
-                  onChange={(e) => setShowHolidays(e.target.checked)}
+                  type="text"
+                  placeholder="Search"
+                  aria-label="Search calendars"
+                  className="w-28 bg-transparent text-sm text-gray-700 dark:text-gray-200 placeholder:text-gray-400 focus:outline-none"
                 />
-                {showHolidays && (
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">Country</span>
-                    <CountrySelect value={holidayCountry} onChange={(code) => setHolidayCountry(code.toUpperCase())} />
-                  </div>
-                )}
+                <span className="text-[11px] px-2 py-0.5 rounded-full border border-gray-200/70 dark:border-white/10 bg-white/70 dark:bg-black/60 text-gray-500 dark:text-gray-400">
+                  Cmd + K
+                </span>
               </div>
-              {/* Filter */}
-              <select
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value)}
-                className="px-3 py-2 border border-gray-300 dark:border-white/10 rounded-lg bg-white dark:bg-black/50 text-gray-900 dark:text-white"
-              >
-                <option value="all">All Events</option>
-                <option value="task">Tasks</option>
-                <option value="meeting">Meetings</option>
-                <option value="reminder">Reminders</option>
-                <option value="personal">Personal</option>
-                <option value="outsourced">Outsourced</option>
-              </select>
-              
-              {/* Add Event Button */}
+              {isSyncing && (
+                <span className="hidden sm:inline text-xs text-gray-500 dark:text-gray-400">Syncing...</span>
+              )}
+              <div className="h-10 w-10 rounded-full bg-gray-100 dark:bg-black/40 border border-gray-200/70 dark:border-white/10 flex items-center justify-center text-sm font-semibold text-gray-700 dark:text-gray-200">
+                {userInitial}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2 rounded-full border border-gray-200/70 dark:border-white/10 bg-gray-100 dark:bg-black/40 px-3 py-2">
+                <Globe2 className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+                <span className="text-sm font-medium text-gray-800 dark:text-gray-100">Holidays</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={showHolidays}
+                  onClick={() => setShowHolidays(v => !v)}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                    showHolidays ? 'bg-emerald-500' : 'bg-gray-400/60 dark:bg-gray-600/60'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      showHolidays ? 'translate-x-4' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {showHolidays && (
+                <CountrySelect value={holidayCountry} onChange={(code) => setHolidayCountry(code.toUpperCase())} />
+              )}
+
+              <div className="flex items-center gap-2 rounded-full border border-gray-200/70 dark:border-white/10 bg-gray-100 dark:bg-black/40 px-3 py-2">
+                <SlidersHorizontal className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+                <select
+                  value={filterType}
+                  onChange={(e) => setFilterType(e.target.value)}
+                  className="bg-transparent text-sm font-medium text-gray-900 dark:text-white focus:outline-none"
+                >
+                  <option value="all">All Events</option>
+                  <option value="task">Tasks</option>
+                  <option value="meeting">Meetings</option>
+                  <option value="reminder">Reminders</option>
+                  <option value="personal">Personal</option>
+                  <option value="outsourced">Outsourced</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {isSyncing && (
+                <span className="text-xs text-gray-500 dark:text-gray-400 sm:hidden">Syncing...</span>
+              )}
               <button
                 onClick={() => handleCreateEvent(today)}
                 disabled={!canAddEvent}
-                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center space-x-2 px-5 py-2.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
                 <Plus className="h-4 w-4" />
                 <span>{addEventLabel}</span>
@@ -1260,72 +1333,91 @@ const CalendarDashboard: React.FC = () => {
         )}
         {/* Connected Calendars */}
         {calendarScope === 'mine' && (
-        <div className="bg-white dark:bg-black/60 rounded-xl shadow-sm border border-gray-200 dark:border-white/10 mb-6">
-          <div className="p-6 border-b border-gray-200 dark:border-white/10 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Connected Calendars</h2>
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={async () => {
-                  const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
-                  try {
-                    const res = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/google/session`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() } })
-                    if (!res.ok) throw new Error(await res.text())
-                    const data = await res.json()
-                    window.location.href = data.redirectUrl
-                  } catch (e) { alert('Failed to start Google OAuth. Please ensure you are logged in.')} 
-                }}
-                className="px-3 py-2 text-sm bg-white dark:bg-black/50 border border-gray-300 dark:border-white/10 rounded-lg hover:bg-gray-50 dark:hover:bg-black/40"
-                title="Connect Google Calendar (requires backend OAuth setup)"
-              >Connect Google</button>
-              <button
-                onClick={async () => {
-                  const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
-                  try {
-                    const res = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/microsoft/session`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() } })
-                    if (!res.ok) throw new Error(await res.text())
-                    const data = await res.json()
-                    window.location.href = data.redirectUrl
-                  } catch (e) { alert('Failed to start Microsoft OAuth. Please ensure you are logged in.') }
-                }}
-                className="px-3 py-2 text-sm bg-white dark:bg-black/50 border border-gray-300 dark:border-white/10 rounded-lg hover:bg-gray-50 dark:hover:bg-black/40"
-                title="Connect Outlook Calendar (requires backend OAuth setup)"
-              >Connect Outlook</button>
-              <button
-                onClick={() => setShowAddIcs(v => !v)}
-                className="px-3 py-2 text-sm bg-white dark:bg-black/50 border border-gray-300 dark:border-white/10 rounded-lg hover:bg-gray-50 dark:hover:bg-black/40"
-              >{showAddIcs ? 'Cancel' : 'Add ICS URL'}</button>
-              <label className="px-3 py-2 text-sm bg-white dark:bg-black/50 border border-gray-300 dark:border-white/10 rounded-lg hover:bg-gray-50 dark:hover:bg-black/40 cursor-pointer">
-                Upload .ics
-                <input type="file" accept=".ics,text/calendar" className="hidden" onChange={(e) => {
-                  const f = e.target.files?.[0]
-                  if (f) handleIcsUpload(f)
-                  e.currentTarget.value = ''
-                }} />
-              </label>
+        <div className="bg-white dark:bg-black/60 rounded-2xl shadow-sm border border-gray-200 dark:border-white/10 mb-6">
+          <div className="p-6 border-b border-gray-200 dark:border-white/10">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Connected Calendars</h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Manage your synced external calendars and holiday feeds.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={async () => {
+                    const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
+                    try {
+                      const res = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/google/session`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() } })
+                      if (!res.ok) throw new Error(await res.text())
+                      const data = await res.json()
+                      window.location.href = data.redirectUrl
+                    } catch (e) { alert('Failed to start Google OAuth. Please ensure you are logged in.') }
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-gray-100 dark:bg-black/50 border border-gray-200/70 dark:border-white/10 rounded-full hover:bg-gray-200/80 dark:hover:bg-black/40 transition-colors"
+                  title="Connect Google Calendar (requires backend OAuth setup)"
+                >
+                  <Mail className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+                  Connect Google
+                </button>
+                <button
+                  onClick={async () => {
+                    const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
+                    try {
+                      const res = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/microsoft/session`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() } })
+                      if (!res.ok) throw new Error(await res.text())
+                      const data = await res.json()
+                      window.location.href = data.redirectUrl
+                    } catch (e) { alert('Failed to start Microsoft OAuth. Please ensure you are logged in.') }
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-gray-100 dark:bg-black/50 border border-gray-200/70 dark:border-white/10 rounded-full hover:bg-gray-200/80 dark:hover:bg-black/40 transition-colors"
+                  title="Connect Outlook Calendar (requires backend OAuth setup)"
+                >
+                  <Mail className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+                  Connect Outlook
+                </button>
+                <button
+                  onClick={() => setShowAddIcs(v => !v)}
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-gray-100 dark:bg-black/50 border border-gray-200/70 dark:border-white/10 rounded-full hover:bg-gray-200/80 dark:hover:bg-black/40 transition-colors"
+                >
+                  <Link2 className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+                  {showAddIcs ? 'Cancel' : 'Add ICS URL'}
+                </button>
+                <label className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-gray-100 dark:bg-black/50 border border-gray-200/70 dark:border-white/10 rounded-full hover:bg-gray-200/80 dark:hover:bg-black/40 transition-colors cursor-pointer">
+                  <Upload className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+                  Upload .ics
+                  <input type="file" accept=".ics,text/calendar" className="hidden" onChange={(e) => {
+                    const f = e.target.files?.[0]
+                    if (f) handleIcsUpload(f)
+                    e.currentTarget.value = ''
+                  }} />
+                </label>
+              </div>
             </div>
           </div>
           {errorBanner && (
             <div className="px-6 py-3 text-sm text-red-700 bg-red-50 dark:bg-red-900/20 dark:text-red-300 border-b border-red-200 dark:border-red-800">{errorBanner}</div>
           )}
           {showAddIcs && (
-            <div className="p-6 border-b border-gray-200 dark:border-white/10 flex items-center space-x-3">
+            <div className="p-6 border-b border-gray-200 dark:border-white/10 flex flex-wrap items-center gap-3">
               <input
                 value={newIcsName}
                 onChange={(e) => setNewIcsName(e.target.value)}
                 placeholder="Calendar name"
-                className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-white/10 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
+                className="flex-1 min-w-[200px] px-4 py-2 rounded-full border border-gray-200/70 dark:border-white/10 bg-white dark:bg-black/40 text-gray-900 dark:text-white"
               />
               <input
                 value={newIcsUrl}
                 onChange={(e) => setNewIcsUrl(e.target.value)}
                 placeholder="https://... (ICS feed URL)"
-                className="flex-[2] px-3 py-2 rounded-lg border border-gray-300 dark:border-white/10 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
+                className="flex-[2] min-w-[240px] px-4 py-2 rounded-full border border-gray-200/70 dark:border-white/10 bg-white dark:bg-black/40 text-gray-900 dark:text-white"
               />
               <button
                 onClick={addIcsUrlSource}
                 disabled={isSyncing || !newIcsUrl.trim() || !newIcsName.trim()}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50"
-              >Add</button>
+                className="px-5 py-2 bg-blue-600 text-white rounded-full disabled:opacity-50"
+              >
+                Add
+              </button>
             </div>
           )}
           <div className="p-6">
@@ -1333,43 +1425,80 @@ const CalendarDashboard: React.FC = () => {
               <p className="text-sm text-gray-600 dark:text-gray-400">No calendars connected. Connect Google/Outlook (requires backend), or add an ICS URL or upload an .ics file.</p>
             ) : (
               <div className="space-y-3">
-                {sources.map(src => (
-                  <div key={src.id} className="flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-white/10">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: src.color }} />
-                      <div>
-                        <div className="text-sm font-medium text-gray-900 dark:text-white">{src.name}</div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">{src.type} {src.lastSyncAt ? `• synced ${new Date(src.lastSyncAt).toLocaleString()}` : ''}</div>
+                {sources.map(src => {
+                  const SourceIcon = getSourceIcon(src.type)
+                  const typeLabel = String(src.type || '').replace('-', ' ').toUpperCase()
+                  const syncedLabel = src.lastSyncAt ? `Synced ${new Date(src.lastSyncAt).toLocaleString()}` : 'Not synced yet'
+                  return (
+                    <div
+                      key={src.id}
+                      className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl border border-gray-200/70 dark:border-white/10 bg-gray-50 dark:bg-black/40"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="h-11 w-11 rounded-2xl bg-white dark:bg-black/60 border border-gray-200/70 dark:border-white/10 flex items-center justify-center">
+                          <SourceIcon className="h-5 w-5" style={{ color: src.color }} />
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold text-gray-900 dark:text-white">{src.name}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">{typeLabel} - {syncedLabel}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => syncSource(src)}
+                          className="p-2 rounded-full border border-gray-200/70 dark:border-white/10 bg-white dark:bg-black/50 hover:bg-gray-100 dark:hover:bg-black/40 transition-colors"
+                          title="Sync"
+                        >
+                          <RefreshCw className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (src.type === 'ics-url') {
+                              try {
+                                const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
+                                await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/sources/${src.id}`, { method: 'DELETE', headers: { ...authHeaders() } })
+                              } catch {}
+                            }
+                            setSources(prev => prev.filter(s => s.id !== src.id))
+                          }}
+                          className="p-2 rounded-full border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+                          title="Remove"
+                        >
+                          <Trash2 className="h-4 w-4 text-red-600 dark:text-red-300" />
+                        </button>
+                        <div className="flex items-center gap-2 rounded-full border border-gray-200/70 dark:border-white/10 bg-white dark:bg-black/50 px-3 py-1.5">
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            {src.enabled ? 'Shown' : 'Hidden'}
+                          </span>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={src.enabled}
+                            onClick={async () => {
+                              const checked = !src.enabled
+                              setSources(prev => prev.map(s => s.id === src.id ? { ...s, enabled: checked } : s))
+                              if (src.type === 'ics-url') {
+                                try {
+                                  const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
+                                  await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/sources/${src.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify({ enabled: checked }) })
+                                } catch {}
+                              }
+                            }}
+                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                              src.enabled ? 'bg-emerald-500' : 'bg-gray-400/60 dark:bg-gray-600/60'
+                            }`}
+                          >
+                            <span
+                              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                src.enabled ? 'translate-x-4' : 'translate-x-0.5'
+                              }`}
+                            />
+                          </button>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <label className="text-sm text-gray-600 dark:text-gray-300 flex items-center space-x-1 cursor-pointer">
-                        <input type="checkbox" checked={src.enabled} onChange={async (e) => {
-                          const checked = e.target.checked
-                          setSources(prev => prev.map(s => s.id === src.id ? { ...s, enabled: checked } : s))
-                          // Persist only for ICS URL sources
-                          if (src.type === 'ics-url') {
-                            try {
-                              const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
-                            await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/sources/${src.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify({ enabled: checked }) })
-                            } catch {}
-                          }
-                        }} />
-                        <span>Show</span>
-                      </label>
-                      <button onClick={() => syncSource(src)} className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-black/50 rounded hover:bg-gray-200 dark:hover:bg-black/40">Sync</button>
-                      <button onClick={async () => {
-                        if (src.type === 'ics-url') {
-                          try {
-                            const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
-                            await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/sources/${src.id}`, { method: 'DELETE', headers: { ...authHeaders() } })
-                          } catch {}
-                        }
-                        setSources(prev => prev.filter(s => s.id !== src.id))
-                      }} className="px-3 py-1.5 text-sm bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded hover:bg-red-100 dark:hover:bg-red-900/40">Remove</button>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>

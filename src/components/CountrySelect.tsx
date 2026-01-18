@@ -29,11 +29,11 @@ const CountrySelect: React.FC<Props> = ({ value, onChange, placeholder = 'Select
   }, [])
 
   return (
-    <div ref={containerRef} className="relative w-56">
+    <div ref={containerRef} className="relative w-52 sm:w-56">
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600"
+        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm rounded-full border border-gray-200/70 dark:border-white/10 bg-gray-100/80 dark:bg-black/40 text-gray-900 dark:text-white hover:bg-gray-200/80 dark:hover:bg-black/50 transition-colors"
       >
         <span>
           {selected ? `${selected.name} (${selected.code})` : (value ? value.toUpperCase() : placeholder)}
@@ -41,14 +41,14 @@ const CountrySelect: React.FC<Props> = ({ value, onChange, placeholder = 'Select
         <svg className="w-4 h-4 opacity-70" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z" clipRule="evenodd"/></svg>
       </button>
       {open && (
-        <div className="absolute z-20 mt-2 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg overflow-hidden">
-          <div className="p-2 border-b border-gray-100 dark:border-gray-700">
+        <div className="absolute z-20 mt-2 w-full rounded-2xl border border-gray-200/70 dark:border-white/10 bg-white dark:bg-black/80 shadow-lg overflow-hidden">
+          <div className="p-2 border-b border-gray-100 dark:border-white/10">
             <input
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Type to search…"
-              className="w-full px-2 py-1.5 text-sm rounded-md bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white outline-none"
+              className="w-full px-2 py-1.5 text-sm rounded-lg bg-gray-50 dark:bg-black/60 text-gray-900 dark:text-white outline-none"
             />
           </div>
           <ul className="max-h-56 overflow-auto">
@@ -74,4 +74,3 @@ const CountrySelect: React.FC<Props> = ({ value, onChange, placeholder = 'Select
 }
 
 export default CountrySelect
-
