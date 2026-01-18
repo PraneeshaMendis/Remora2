@@ -211,6 +211,81 @@
     background-color: hsl(var(--sidebar));
     border-color: hsl(var(--sidebar-border));
   }
+
+  .sidebar-card {
+    border-radius: 28px;
+    border: 1px solid hsl(var(--sidebar-border));
+    overflow: hidden;
+    background-color: hsl(var(--sidebar));
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.9));
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+  }
+
+  .dark .sidebar-card {
+    border-color: rgba(255, 255, 255, 0.08);
+    background-image: linear-gradient(180deg, rgba(24, 24, 24, 0.92), rgba(8, 8, 8, 0.88));
+    box-shadow: 0 28px 64px rgba(0, 0, 0, 0.6);
+  }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sidebar-logo-shell {
+    position: relative;
+    overflow: hidden;
+    border-radius: 1.25rem;
+    padding: 0.6rem 0.85rem;
+    background: linear-gradient(180deg, #ffffff, #eef2f7);
+    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.18);
+    animation: logo-float 7s ease-in-out infinite;
+  }
+
+  .dark .sidebar-logo-shell {
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.3));
+    box-shadow: 0 0 26px rgba(96, 165, 250, 0.2);
+  }
+
+  .sidebar-logo-shell::before {
+    content: "";
+    position: absolute;
+    top: -80%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(120deg, transparent 0%, rgba(255, 255, 255, 0.75) 45%, transparent 60%);
+    transform: translateX(-60%) rotate(12deg);
+    opacity: 0;
+    animation: logo-sheen 5.5s ease-in-out infinite;
+  }
+
+  .sidebar-logo-shell::after {
+    content: "";
+    position: absolute;
+    inset: 1px;
+    border-radius: inherit;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.5), transparent 55%, rgba(0, 0, 0, 0.2));
+    opacity: 0.75;
+    pointer-events: none;
+  }
+
+  .sidebar-logo-shell > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .sidebar-logo-img {
+    filter: grayscale(1) contrast(1.25) brightness(0.95);
+  }
+
+  .dark .sidebar-logo-img {
+    filter: grayscale(1) invert(1) brightness(1.05) contrast(1.25);
+  }
   
   .badge {
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
@@ -304,4 +379,39 @@
 @keyframes confetti-fall {
   0% { transform: translateY(-10px) rotate(-10deg); opacity: 0; }
   100% { transform: translateY(0) rotate(0); opacity: 1; }
+}
+
+@keyframes logo-sheen {
+  0% {
+    transform: translateX(-70%) rotate(12deg);
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.45;
+  }
+  60% {
+    opacity: 0.25;
+  }
+  100% {
+    transform: translateX(70%) rotate(12deg);
+    opacity: 0;
+  }
+}
+
+@keyframes logo-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-logo-shell {
+    animation: none;
+  }
+  .sidebar-logo-shell::before {
+    animation: none;
+  }
 }

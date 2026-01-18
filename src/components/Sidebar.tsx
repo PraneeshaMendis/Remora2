@@ -116,24 +116,24 @@ const Sidebar: React.FC = () => {
   })
 
   return (
-    <div className="hidden lg:flex lg:flex-shrink-0 lg:min-h-screen">
-      <div className="flex flex-col w-56 min-h-screen">
-        <div className="flex flex-col flex-1 sidebar-surface border-r shadow-lg">
+    <div className="hidden lg:flex lg:flex-shrink-0 lg:h-screen lg:sticky lg:top-0">
+      <div className="flex flex-col w-72 h-screen p-3">
+        <div className="flex flex-col flex-1 sidebar-surface sidebar-card shadow-lg overflow-hidden">
 
           {/* Brand */}
           <div className="px-4 pt-6 pb-5 border-b border-[hsl(var(--sidebar-border))]">
             <div className="flex items-center justify-center">
-              <div className="rounded-2xl px-3 py-2 bg-gradient-to-b from-white to-gray-50 dark:from-black/60 dark:to-black/30 ring-1 ring-black/10 dark:ring-white/10 shadow-[0_10px_28px_rgba(15,23,42,0.18)] dark:shadow-[0_0_24px_rgba(59,130,246,0.22)]">
+              <div className="sidebar-logo-shell">
                 <CyberLabsLogo
                   size={48}
-                  className="shrink-0 drop-shadow-[0_4px_10px_rgba(15,23,42,0.28)] dark:drop-shadow-[0_0_12px_rgba(96,165,250,0.45)]"
+                  className="sidebar-logo-img shrink-0"
                 />
               </div>
             </div>
           </div>
 
           {/* Navigation */}
-              <nav className="flex-1 px-3 py-4 space-y-2 overflow-y-auto">
+              <nav className="flex-1 px-3 py-4 space-y-2 overflow-y-auto no-scrollbar">
             {filteredNavigation.map((item) => {
               const IconComponent = item.icon
               return (
