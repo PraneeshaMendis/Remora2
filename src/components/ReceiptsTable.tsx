@@ -608,7 +608,7 @@ const ReceiptsTable: React.FC<ReceiptsTableProps> = ({
       </div>
       {/* Slip-only fullscreen preview */}
       {slipPreviewUrl && (
-        <div className="fixed inset-0 z-50 bg-black bg-opacity-90 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black bg-opacity-90 flex items-center justify-center p-4 backdrop-blur-sm">
           <button
             onClick={closeSlipOnly}
             className="absolute top-4 right-4 text-white hover:text-gray-300"
@@ -722,7 +722,7 @@ const ReceiptDrawer: React.FC<{
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
       <div className="bg-white dark:bg-black/60 rounded-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="p-6 border-b border-gray-200 dark:border-white/10">

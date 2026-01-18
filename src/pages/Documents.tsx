@@ -905,7 +905,7 @@ const Documents: React.FC = () => {
 
       {/* Upload Modal */}
       {isUploadModalOpen && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center backdrop-blur-sm">
           <div className="bg-white dark:bg-black/60 rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
             {/* Modal Header */}
             <div className="flex items-center justify-between mb-6">
@@ -1095,7 +1095,7 @@ const Documents: React.FC = () => {
 
       {/* Review Document Modal */}
       {isReviewModalOpen && selectedDocument && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center backdrop-blur-sm">
           <div className="bg-white dark:bg-black/60 rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
             {/* Modal Header */}
             <div className="flex items-center justify-between mb-6">
@@ -1297,7 +1297,7 @@ const Documents: React.FC = () => {
 
       {/* Edit Document Modal */}
       {isEditModalOpen && selectedDocument && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center backdrop-blur-sm">
           <div className="bg-white dark:bg-black/60 rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
             {/* Modal Header */}
             <div className="flex items-center justify-between mb-6">

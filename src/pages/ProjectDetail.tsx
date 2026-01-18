@@ -1348,7 +1348,7 @@ const ProjectDetail: React.FC = () => {
 
       {/* Add Phase Modal */}
       {isAddPhaseModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md mx-4">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Add New Phase</h3>
@@ -1435,7 +1435,7 @@ const ProjectDetail: React.FC = () => {
 
       {/* Add Task Modal */}
       {isAddTaskModalOpen && selectedPhaseForTask && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md mx-4">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Add New Task</h3>

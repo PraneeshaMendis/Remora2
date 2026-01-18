@@ -13,6 +13,8 @@ import {
 import EventModal from '../components/modals/EventModal'
 import CountrySelect from '../components/CountrySelect'
 import { useAuth } from '../contexts/AuthContext'
+import { listReviewers } from '../services/usersAPI'
+import { createCalendarEvent, deleteCalendarEvent, listCalendarEvents, updateCalendarEvent } from '../services/calendarEventsAPI'
 
 // Types
 interface CalendarEvent {
@@ -26,6 +28,7 @@ interface CalendarEvent {
   priority: 'high' | 'medium' | 'low'
   status: 'scheduled' | 'in-progress' | 'completed' | 'cancelled'
   assignee?: string
+  assigneeId?: string
   project?: string
   platform?: 'teams' | 'zoom' | 'google-meet' | 'physical'
   meetingLink?: string
@@ -34,9 +37,12 @@ interface CalendarEvent {
   recurrenceType?: 'daily' | 'weekly' | 'monthly'
   createdBy: string
   createdAt: string
+  createdById?: string
+  userId?: string
+  isAssigned?: boolean
   // New: origin info (which calendar/source)
   sourceName?: string
-  sourceType?: CalendarSourceType | 'local'
+  sourceType?: CalendarSourceType | 'local' | 'assigned'
   sourceColor?: string
 }
 
@@ -272,8 +278,11 @@ const mockEvents: CalendarEvent[] = [
 
 const CalendarDashboard: React.FC = () => {
   const { user } = useAuth()
+  const isExecutive = String(user?.department || '').trim().toLowerCase() === 'executive department' || String(user?.role || '').trim().toLowerCase() === 'admin'
   const [currentDate, setCurrentDate] = useState(new Date())
-  const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('month')
+  const [calendarScope, setCalendarScope] = useState<'mine' | 'team'>('mine')
+  const [employees, setEmployees] = useState<Array<{ id: string; name: string; email: string }>>([])
+  const [selectedUserId, setSelectedUserId] = useState<string>('')
   const [selectedDate, setSelectedDate] = useState<string>('')
   // Local events represent events you create in-app
   const [localEvents, setLocalEvents] = useState<CalendarEvent[]>([])
@@ -281,7 +290,9 @@ const CalendarDashboard: React.FC = () => {
   const [sources, setSources] = useState<CalendarSource[]>([])
   // Combined events from local + enabled sources
   const events: CalendarEvent[] = useMemo(() => {
-    const ext = sources.filter(s => s.enabled).flatMap(s => s.events || [])
+    const ext = sources
+      .filter(s => s.enabled && (calendarScope === 'mine' || s.type === 'holidays'))
+      .flatMap(s => s.events || [])
     const localDecorated = localEvents.map(ev => ({
       ...ev,
       sourceName: ev.sourceName || 'My Calendar',
@@ -289,7 +300,7 @@ const CalendarDashboard: React.FC = () => {
       sourceColor: ev.sourceColor || '#6b7280', // gray-500
     }))
     return [...localDecorated, ...ext]
-  }, [localEvents, sources])
+  }, [localEvents, sources, calendarScope])
   const [isEventModalOpen, setIsEventModalOpen] = useState(false)
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null)
   const [selectedDayEvents, setSelectedDayEvents] = useState<CalendarEvent[]>([])
@@ -316,6 +327,12 @@ const CalendarDashboard: React.FC = () => {
       return localStorage.getItem(`calendar.holidayCountry.${uid}`) || 'LK'
     } catch { return 'LK' }
   })
+
+  useEffect(() => {
+    if (!isExecutive) {
+      setCalendarScope('mine')
+    }
+  }, [isExecutive])
 
   // Extract a clean http(s) URL from user input (handles pasted error blobs)
   const sanitizeUrlInput = (s: string): string | null => {
@@ -362,24 +379,39 @@ const CalendarDashboard: React.FC = () => {
     }
   }
 
-  // Load per-user local events on auth change
+  // Load in-app events (and employees for executive view)
   useEffect(() => {
-    try {
-      const uid = user?.id || 'guest'
-      const saved = localStorage.getItem(`calendar.localEvents.${uid}`)
-      setLocalEvents(saved ? JSON.parse(saved) : mockEvents)
-    } catch {
-      setLocalEvents(mockEvents)
-    }
-  }, [user?.id])
+    let active = true
+    const load = async () => {
+      if (!user?.id) return
+      if (isExecutive) {
+        try {
+          const list = await listReviewers()
+          const people = Array.isArray(list) ? list : (list?.items || [])
+          const mapped = people.map((u: any) => ({ id: String(u.id), name: String(u.name || u.email || 'User'), email: String(u.email || '') }))
+          if (active) {
+            setEmployees(mapped)
+            if (!selectedUserId && mapped.length > 0) {
+              setSelectedUserId(mapped[0].id)
+            }
+          }
+        } catch {}
+      }
 
-  // Persist local events per user
-  useEffect(() => {
-    try {
-      const uid = user?.id || 'guest'
-      localStorage.setItem(`calendar.localEvents.${uid}`, JSON.stringify(localEvents))
-    } catch {}
-  }, [localEvents, user?.id])
+      const targetId = isExecutive && calendarScope === 'team' ? selectedUserId : undefined
+      if (isExecutive && calendarScope === 'team' && !targetId) return
+      try {
+        const events = await listCalendarEvents(targetId || undefined)
+        if (active) {
+          setLocalEvents(Array.isArray(events) ? events : [])
+        }
+      } catch {
+        if (active) setLocalEvents([])
+      }
+    }
+    load()
+    return () => { active = false }
+  }, [user?.id, isExecutive, calendarScope, selectedUserId])
   // Persisted by backend; no localStorage write
   // Persist holidays prefs per user
   useEffect(() => {
@@ -388,6 +420,11 @@ const CalendarDashboard: React.FC = () => {
   useEffect(() => {
     try { const uid = user?.id || 'guest'; localStorage.setItem(`calendar.holidayCountry.${uid}`, holidayCountry) } catch {}
   }, [holidayCountry, user?.id])
+
+  useEffect(() => {
+    setSelectedDate('')
+    setSelectedDayEvents([])
+  }, [calendarScope, selectedUserId])
 
   // Detect linked accounts and per-user ICS sources from backend
   useEffect(() => {
@@ -623,6 +660,12 @@ const CalendarDashboard: React.FC = () => {
     return acc
   }, {} as DayEvents)
 
+  useEffect(() => {
+    if (selectedDate) {
+      setSelectedDayEvents(eventsByDate[selectedDate] || [])
+    }
+  }, [eventsByDate, selectedDate])
+
   // Calendar navigation
   const navigateMonth = (direction: 'prev' | 'next') => {
     setCurrentDate(prev => {
@@ -643,7 +686,8 @@ const CalendarDashboard: React.FC = () => {
     
     const firstDay = new Date(year, month, 1)
     const startDate = new Date(firstDay)
-    startDate.setDate(startDate.getDate() - firstDay.getDay())
+    const mondayOffset = (firstDay.getDay() + 6) % 7
+    startDate.setDate(startDate.getDate() - mondayOffset)
     
     const days = []
     const current = new Date(startDate)
@@ -683,6 +727,10 @@ const CalendarDashboard: React.FC = () => {
 
   // Handle event creation
   const handleCreateEvent = (date: string) => {
+    if (isExecutive && calendarScope === 'team' && !selectedUserId) {
+      alert('Select a team member to assign an event.')
+      return
+    }
     setSelectedDate(date)
     setEditingEvent(null)
     setIsEventModalOpen(true)
@@ -690,52 +738,84 @@ const CalendarDashboard: React.FC = () => {
 
   // Handle event edit
   const handleEditEvent = (event: CalendarEvent) => {
+    if (event.sourceType && event.sourceType !== 'local' && event.sourceType !== 'assigned') return
     setEditingEvent(event)
     setIsEventModalOpen(true)
   }
 
   // Handle event save
-  const handleSaveEvent = (eventData: CalendarEvent) => {
-    if (editingEvent) {
-      // Update existing event
-      setLocalEvents(prev => prev.map(event => event.id === eventData.id ? eventData : event))
-      setSelectedDayEvents(prev => prev.map(event => 
-        event.id === eventData.id ? eventData : event
-      ))
-    } else {
-      // Create new event
-      setLocalEvents(prev => [...prev, eventData])
-      if (eventData.date === selectedDate) {
-        setSelectedDayEvents(prev => [...prev, eventData])
+  const handleSaveEvent = async (eventData: CalendarEvent) => {
+    try {
+      const targetUserId = isExecutive && calendarScope === 'team'
+        ? (eventData.assigneeId || selectedUserId)
+        : undefined
+      const payload = {
+        userId: targetUserId || undefined,
+        title: eventData.title,
+        description: eventData.description,
+        type: eventData.type,
+        date: eventData.date,
+        startTime: eventData.startTime,
+        endTime: eventData.endTime,
+        priority: eventData.priority,
+        status: eventData.status,
+        project: eventData.project,
+        meetingLink: eventData.meetingLink,
+        platform: eventData.platform,
+        attendees: eventData.attendees,
+        isRecurring: eventData.isRecurring,
+        recurrenceType: eventData.recurrenceType,
       }
+      if (editingEvent) {
+        const updated = await updateCalendarEvent(eventData.id, payload)
+        const mapped = updated as CalendarEvent
+        setLocalEvents(prev => prev.map(event => event.id === mapped.id ? mapped : event))
+        setSelectedDayEvents(prev => prev.map(event => event.id === mapped.id ? mapped : event))
+      } else {
+        const created = await createCalendarEvent(payload)
+        const mapped = created as CalendarEvent
+        setLocalEvents(prev => [...prev, mapped])
+        if (mapped.date === selectedDate) {
+          setSelectedDayEvents(prev => [...prev, mapped])
+        }
+      }
+    } catch (error) {
+      console.error('Failed to save event:', error)
+      alert('Failed to save event')
     }
   }
 
   // Handle event delete
-  const handleDeleteEvent = (eventId: string) => {
-    setLocalEvents(prev => prev.filter(event => event.id !== eventId))
-    setSelectedDayEvents(prev => prev.filter(event => event.id !== eventId))
+  const handleDeleteEvent = async (eventId: string) => {
+    try {
+      await deleteCalendarEvent(eventId)
+      setLocalEvents(prev => prev.filter(event => event.id !== eventId))
+      setSelectedDayEvents(prev => prev.filter(event => event.id !== eventId))
+    } catch (error) {
+      console.error('Failed to delete event:', error)
+      alert('Failed to delete event')
+    }
   }
 
   // Get event type color
   const getEventTypeColor = (type: string) => {
     switch (type) {
-      case 'task': return 'bg-green-100 text-green-800 border-green-200'
-      case 'meeting': return 'bg-blue-100 text-blue-800 border-blue-200'
-      case 'reminder': return 'bg-purple-100 text-purple-800 border-purple-200'
-      case 'personal': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
-      case 'outsourced': return 'bg-orange-100 text-orange-800 border-orange-200'
-      default: return 'bg-gray-100 text-gray-800 border-gray-200'
+      case 'task': return 'bg-emerald-500 text-white border-emerald-400'
+      case 'meeting': return 'bg-sky-500 text-white border-sky-400'
+      case 'reminder': return 'bg-fuchsia-500 text-white border-fuchsia-400'
+      case 'personal': return 'bg-amber-400 text-amber-950 border-amber-300'
+      case 'outsourced': return 'bg-orange-500 text-white border-orange-400'
+      default: return 'bg-slate-600 text-white border-slate-500'
     }
   }
 
   // Get priority color
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'high': return 'bg-red-100 text-red-800'
-      case 'medium': return 'bg-yellow-100 text-yellow-800'
-      case 'low': return 'bg-green-100 text-green-800'
-      default: return 'bg-gray-100 text-gray-800'
+      case 'high': return 'bg-rose-500 text-white border-rose-400'
+      case 'medium': return 'bg-amber-400 text-amber-950 border-amber-300'
+      case 'low': return 'bg-emerald-500 text-white border-emerald-400'
+      default: return 'bg-slate-600 text-white border-slate-500'
     }
   }
 
@@ -749,6 +829,12 @@ const CalendarDashboard: React.FC = () => {
     }
   }
 
+  const getAssignedClass = (event: CalendarEvent) => {
+    return event.isAssigned
+      ? 'ring-1 ring-blue-500/40 bg-blue-50/40 dark:bg-blue-900/15'
+      : ''
+  }
+
   // Filter events
   const filteredTodayEvents = filterType === 'all' 
     ? todayEvents 
@@ -757,6 +843,9 @@ const CalendarDashboard: React.FC = () => {
   const filteredSelectedDayEvents = filterType === 'all' 
     ? selectedDayEvents 
     : selectedDayEvents.filter(event => event.type === filterType)
+
+  const canAddEvent = !(isExecutive && calendarScope === 'team' && !selectedUserId)
+  const addEventLabel = isExecutive && calendarScope === 'team' ? 'Assign Event' : 'Add Event'
 
   // --- Calendar sync helpers ---
   const parseICalDate = (val: string): { date: string; time: string } => {
@@ -1064,41 +1153,33 @@ const CalendarDashboard: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Calendar Dashboard</h1>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setViewMode('day')}
-                  className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                    viewMode === 'day' 
-                      ? 'bg-blue-600 text-white' 
-                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-black/40'
-                  }`}
-                >
-                  Day
-                </button>
-                <button
-                  onClick={() => setViewMode('week')}
-                  className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                    viewMode === 'week' 
-                      ? 'bg-blue-600 text-white' 
-                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-black/40'
-                  }`}
-                >
-                  Week
-                </button>
-                <button
-                  onClick={() => setViewMode('month')}
-                  className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                    viewMode === 'month' 
-                      ? 'bg-blue-600 text-white' 
-                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-black/40'
-                  }`}
-                >
-                  Month
-                </button>
-              </div>
             </div>
             
             <div className="flex items-center space-x-4">
+              {isExecutive && (
+                <div className="flex items-center rounded-xl bg-gray-100 dark:bg-black/40 p-1">
+                  <button
+                    onClick={() => setCalendarScope('mine')}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                      calendarScope === 'mine'
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-black/50'
+                    }`}
+                  >
+                    My Calendar
+                  </button>
+                  <button
+                    onClick={() => setCalendarScope('team')}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                      calendarScope === 'team'
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-black/50'
+                    }`}
+                  >
+                    Team View
+                  </button>
+                </div>
+              )}
               {/* Sync status */}
               {isSyncing && (
                 <span className="text-sm text-gray-500 dark:text-gray-400">Syncing…</span>
@@ -1135,10 +1216,11 @@ const CalendarDashboard: React.FC = () => {
               {/* Add Event Button */}
               <button
                 onClick={() => handleCreateEvent(today)}
-                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                disabled={!canAddEvent}
+                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Plus className="h-4 w-4" />
-                <span>Add Event</span>
+                <span>{addEventLabel}</span>
               </button>
             </div>
           </div>
@@ -1146,7 +1228,38 @@ const CalendarDashboard: React.FC = () => {
       </div>
 
       <div className="p-6">
+        {isExecutive && calendarScope === 'team' && (
+          <div className="bg-white dark:bg-black/60 rounded-xl shadow-sm border border-gray-200 dark:border-white/10 mb-6">
+            <div className="p-6 border-b border-gray-200 dark:border-white/10">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Team Calendar</h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Select a team member to view and assign events.</p>
+            </div>
+            <div className="p-6">
+              {employees.length === 0 ? (
+                <div className="text-sm text-gray-500 dark:text-gray-400">No team members available.</div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {employees.map(member => (
+                    <button
+                      key={member.id}
+                      type="button"
+                      onClick={() => setSelectedUserId(member.id)}
+                      className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                        selectedUserId === member.id
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'bg-gray-100 dark:bg-black/40 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-black/50'
+                      }`}
+                    >
+                      {member.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {/* Connected Calendars */}
+        {calendarScope === 'mine' && (
         <div className="bg-white dark:bg-black/60 rounded-xl shadow-sm border border-gray-200 dark:border-white/10 mb-6">
           <div className="p-6 border-b border-gray-200 dark:border-white/10 flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Connected Calendars</h2>
@@ -1265,6 +1378,7 @@ const CalendarDashboard: React.FC = () => {
             GET /api/calendar/google/events, GET /api/calendar/microsoft/events and corresponding connect/login flows. I can add these server routes if you want.
           </div>
         </div>
+        )}
         {/* Calendar - Full Width */}
         <div className="bg-white dark:bg-black/60 rounded-xl shadow-sm border border-gray-200 dark:border-white/10 mb-6">
           {/* Calendar Header */}
@@ -1363,7 +1477,7 @@ const CalendarDashboard: React.FC = () => {
                       {dayEvents.slice(0, 4).map(event => (
                         <div
                           key={event.id}
-                          className={`text-xs p-2 rounded border ${getEventTypeColor(event.type)} cursor-pointer hover:shadow-sm transition-shadow`}
+                          className={`text-xs px-3 py-1.5 rounded-full border shadow-sm ${getEventTypeColor(event.type)} cursor-pointer transition-shadow hover:shadow-md ${event.isAssigned ? 'ring-1 ring-blue-500/40' : ''}`}
                           onClick={(e) => {
                             e.stopPropagation()
                             handleEditEvent(event)
@@ -1392,20 +1506,24 @@ const CalendarDashboard: React.FC = () => {
           <div className="p-6 border-t border-gray-200 dark:border-white/10">
             <div className="flex items-center justify-center space-x-6">
               <div className="flex items-center space-x-2">
-                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                <div className="w-3 h-3 bg-emerald-500 rounded-full"></div>
                 <span className="text-sm text-gray-600 dark:text-gray-400">Tasks</span>
               </div>
               <div className="flex items-center space-x-2">
-                <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                <div className="w-3 h-3 bg-sky-500 rounded-full"></div>
                 <span className="text-sm text-gray-600 dark:text-gray-400">Meetings</span>
               </div>
               <div className="flex items-center space-x-2">
-                <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
+                <div className="w-3 h-3 bg-fuchsia-500 rounded-full"></div>
                 <span className="text-sm text-gray-600 dark:text-gray-400">Reminders</span>
               </div>
               <div className="flex items-center space-x-2">
                 <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
                 <span className="text-sm text-gray-600 dark:text-gray-400">Outsourcing</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                <span className="text-sm text-gray-600 dark:text-gray-400">Assigned</span>
               </div>
             </div>
           </div>
@@ -1433,16 +1551,21 @@ const CalendarDashboard: React.FC = () => {
                   {filteredTodayEvents.map(event => (
                     <div
                       key={event.id}
-                      className="p-4 border border-gray-200 dark:border-white/10 rounded-lg hover:bg-gray-50 dark:hover:bg-black/40 cursor-pointer transition-colors"
+                      className={`p-4 border border-gray-200 dark:border-white/10 rounded-lg hover:bg-gray-50 dark:hover:bg-black/40 cursor-pointer transition-colors ${getAssignedClass(event)}`}
                       onClick={() => handleEditEvent(event)}
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center space-x-3 mb-2">
-                            <span className={`px-3 py-1 text-sm rounded-full ${getEventTypeColor(event.type)}`}>
+                            <span className={`px-3 py-1.5 text-sm rounded-full border shadow-sm ${getEventTypeColor(event.type)}`}>
                               {event.type}
                             </span>
-                            <span className={`px-3 py-1 text-sm rounded-full ${getPriorityColor(event.priority)}`}>
+                            {event.isAssigned && (
+                              <span className="px-2 py-1 text-xs rounded-full bg-blue-600/10 text-blue-700 dark:text-blue-300 border border-blue-500/30">
+                                Assigned
+                              </span>
+                            )}
+                            <span className={`px-3 py-1.5 text-sm rounded-full border shadow-sm ${getPriorityColor(event.priority)}`}>
                               {event.priority}
                             </span>
                             <span className="text-sm text-gray-500 dark:text-gray-400">
@@ -1505,9 +1628,10 @@ const CalendarDashboard: React.FC = () => {
                   <p className="text-gray-500 dark:text-gray-400">No events on this day</p>
                   <button
                     onClick={() => handleCreateEvent(selectedDate)}
-                    className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                    disabled={!canAddEvent}
+                    className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Add Event
+                    {addEventLabel}
                   </button>
                 </div>
               ) : (
@@ -1515,16 +1639,21 @@ const CalendarDashboard: React.FC = () => {
                   {filteredSelectedDayEvents.map(event => (
                     <div
                       key={event.id}
-                      className="p-4 border border-gray-200 dark:border-white/10 rounded-lg hover:bg-gray-50 dark:hover:bg-black/40 cursor-pointer transition-colors"
+                      className={`p-4 border border-gray-200 dark:border-white/10 rounded-lg hover:bg-gray-50 dark:hover:bg-black/40 cursor-pointer transition-colors ${getAssignedClass(event)}`}
                       onClick={() => handleEditEvent(event)}
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center space-x-3 mb-2">
-                            <span className={`px-3 py-1 text-sm rounded-full ${getEventTypeColor(event.type)}`}>
+                            <span className={`px-3 py-1.5 text-sm rounded-full border shadow-sm ${getEventTypeColor(event.type)}`}>
                               {event.type}
                             </span>
-                            <span className={`px-3 py-1 text-sm rounded-full ${getPriorityColor(event.priority)}`}>
+                            {event.isAssigned && (
+                              <span className="px-2 py-1 text-xs rounded-full bg-blue-600/10 text-blue-700 dark:text-blue-300 border border-blue-500/30">
+                                Assigned
+                              </span>
+                            )}
+                            <span className={`px-3 py-1.5 text-sm rounded-full border shadow-sm ${getPriorityColor(event.priority)}`}>
                               {event.priority}
                             </span>
                             <span className="text-sm text-gray-500 dark:text-gray-400">
@@ -1572,11 +1701,13 @@ const CalendarDashboard: React.FC = () => {
         event={editingEvent}
         selectedDate={selectedDate}
         onSave={handleSaveEvent}
+        assigneeOptions={isExecutive ? employees.map(e => ({ id: e.id, name: e.name })) : undefined}
+        defaultAssigneeId={isExecutive && calendarScope === 'team' ? selectedUserId : undefined}
       />
 
       {/* Day Events Modal */}
       {isDayEventsModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 backdrop-blur-sm">
           <div className="bg-white dark:bg-black/60 rounded-lg shadow-xl w-full max-w-md mx-4">
             {/* Modal Header */}
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-white/10">
@@ -1609,7 +1740,7 @@ const CalendarDashboard: React.FC = () => {
                 {selectedDayEvents.map(event => (
                   <div
                     key={event.id}
-                    className="bg-gray-50 dark:bg-black/50 rounded-lg p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-black/40 transition-colors"
+                    className={`bg-gray-50 dark:bg-black/50 rounded-lg p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-black/40 transition-colors ${getAssignedClass(event)}`}
                     onClick={() => {
                       setIsDayEventsModalOpen(false)
                       handleEditEvent(event)
@@ -1618,21 +1749,26 @@ const CalendarDashboard: React.FC = () => {
                     <div className="flex items-start space-x-3">
                       {/* Event Type Indicator */}
                       <div className={`w-3 h-3 rounded-full mt-1 ${
-                        event.type === 'task' ? 'bg-green-500' :
-                        event.type === 'meeting' ? 'bg-blue-500' :
-                        event.type === 'reminder' ? 'bg-yellow-500' :
-                        event.type === 'personal' ? 'bg-purple-500' :
+                        event.type === 'task' ? 'bg-emerald-500' :
+                        event.type === 'meeting' ? 'bg-sky-500' :
+                        event.type === 'reminder' ? 'bg-fuchsia-500' :
+                        event.type === 'personal' ? 'bg-amber-400' :
                         'bg-orange-500'
                       }`} />
                       
                       <div className="flex-1 min-w-0">
                         {/* Event Type and Priority Badges */}
                         <div className="flex items-center space-x-2 mb-2">
-                          <span className="px-2 py-1 text-xs font-medium bg-gray-200 dark:bg-black/40 text-gray-700 dark:text-gray-300 rounded">
+                          <span className={`px-3 py-1.5 text-xs font-semibold rounded-full border shadow-sm ${getEventTypeColor(event.type)}`}>
                             {event.type.charAt(0).toUpperCase() + event.type.slice(1)}
                           </span>
+                          {event.isAssigned && (
+                            <span className="px-2 py-1 text-xs font-medium bg-blue-600/10 text-blue-700 dark:text-blue-300 rounded border border-blue-500/30">
+                              Assigned
+                            </span>
+                          )}
                           {event.priority === 'high' && (
-                            <span className="px-2 py-1 text-xs font-medium bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 rounded">
+                            <span className={`px-3 py-1.5 text-xs font-semibold rounded-full border shadow-sm ${getPriorityColor(event.priority)}`}>
                               High Priority
                             </span>
                           )}

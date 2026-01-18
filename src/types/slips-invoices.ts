@@ -3,10 +3,19 @@
 export interface Invoice {
   id: string
   invoiceNo: string
+  createdById?: string | null
+  createdByName?: string
+  approvedById?: string | null
+  approvedByName?: string
   projectId: string
   phaseId: string
   projectName: string
   phaseName: string
+  clientCompanyName?: string
+  clientAddress?: string
+  clientPhone?: string
+  clientName?: string
+  clientDesignation?: string
   issueDate: string
   dueDate: string
   currency: string
@@ -16,6 +25,9 @@ export interface Invoice {
   collected: number
   outstanding: number
   status: 'Draft' | 'Sent' | 'PartiallyPaid' | 'Paid' | 'Overdue' | 'Canceled'
+  approvalStatus?: 'PENDING' | 'APPROVED' | 'CHANGES_REQUESTED' | 'REJECTED'
+  approvalNote?: string
+  approvedAt?: string | null
   pdfKey?: string
   notes?: string
   createdAt: string

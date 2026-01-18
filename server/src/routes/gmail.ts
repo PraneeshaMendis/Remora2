@@ -164,6 +164,10 @@ router.post('/send', async (req: Request, res: Response) => {
       const project = String(i?.projectName || '')
       const phase = String(i?.phaseName || '')
       const clientName = String(i?.clientName || '')
+      const clientCompanyName = String(i?.clientCompanyName || '')
+      const clientDesignation = String(i?.clientDesignation || '')
+      const clientPhone = String(i?.clientPhone || '')
+      const clientAddress = String(i?.clientAddress || '')
       const issueDate = i?.issueDate ? new Date(i.issueDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : ''
       const dueDate = i?.dueDate ? new Date(i.dueDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : ''
       const currency = String(i?.currency || 'USD')
@@ -184,7 +188,10 @@ router.post('/send', async (req: Request, res: Response) => {
                   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#1f2937;border-radius:12px;padding:18px;">
                     <tr><td style="color:#93c5fd;font-weight:700;padding-bottom:4px;">Project:</td><td style="text-align:right;color:#e5e7eb;">${project}</td></tr>
                     <tr><td style="color:#93c5fd;font-weight:700;padding:6px 0 4px;">Phase:</td><td style="text-align:right;color:#e5e7eb;">${phase}</td></tr>
-                    ${clientName ? `<tr><td style=\"color:#93c5fd;font-weight:700;padding:6px 0 4px;\">Client:</td><td style=\"text-align:right;color:#e5e7eb;\">${clientName}</td></tr>` : ''}
+                    ${clientCompanyName ? `<tr><td style=\"color:#93c5fd;font-weight:700;padding:6px 0 4px;\">Company:</td><td style=\"text-align:right;color:#e5e7eb;\">${clientCompanyName}</td></tr>` : ''}
+                    ${clientName ? `<tr><td style=\"color:#93c5fd;font-weight:700;padding:6px 0 4px;\">Client:</td><td style=\"text-align:right;color:#e5e7eb;\">${clientName}${clientDesignation ? ` (${clientDesignation})` : ''}</td></tr>` : ''}
+                    ${clientPhone ? `<tr><td style=\"color:#93c5fd;font-weight:700;padding:6px 0 4px;\">Phone:</td><td style=\"text-align:right;color:#e5e7eb;\">${clientPhone}</td></tr>` : ''}
+                    ${clientAddress ? `<tr><td style=\"color:#93c5fd;font-weight:700;padding:6px 0 4px;\">Address:</td><td style=\"text-align:right;color:#e5e7eb;\">${clientAddress}</td></tr>` : ''}
                     ${issueDate ? `<tr><td style=\"color:#93c5fd;font-weight:700;padding:6px 0 4px;\">Issue Date:</td><td style=\"text-align:right;color:#e5e7eb;\">${issueDate}</td></tr>` : ''}
                     ${dueDate ? `<tr><td style=\"color:#93c5fd;font-weight:700;padding:6px 0 4px;\">Due Date:</td><td style=\"text-align:right;color:#e5e7eb;\">${dueDate}</td></tr>` : ''}
                   </table>

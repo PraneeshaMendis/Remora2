@@ -1,7 +1,9 @@
 import { Router, Request, Response } from 'express'
 import axios from 'axios'
 import crypto from 'crypto'
+import { z } from 'zod'
 import { prisma } from '../prisma.ts'
+import { createNotifications } from '../utils/notifications.ts'
 
 const router = Router()
 
@@ -384,6 +386,231 @@ async function resolveUserId(req: Request): Promise<string | null> {
   }
   return null
 }
+
+async function isExecutiveMember(userId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { department: true, role: true },
+  })
+  if (!user) return false
+  const dept = String(user.department?.name || '').trim().toLowerCase()
+  if (dept === 'executive department') return true
+  const role = String(user.role?.name || '').trim().toLowerCase()
+  return role === 'admin'
+}
+
+function mapEventForClient(ev: any) {
+  const startAt = new Date(ev.startAt)
+  const endAt = new Date(ev.endAt)
+  const date = startAt.toISOString().slice(0, 10)
+  const startTime = startAt.toISOString().slice(11, 16)
+  const endTime = endAt.toISOString().slice(11, 16)
+  const isAssigned = ev.createdById !== ev.userId
+  const platform = ev.platform
+    ? String(ev.platform).toLowerCase().replace('_', '-') 
+    : undefined
+  return {
+    id: ev.id,
+    title: ev.title,
+    description: ev.description || '',
+    type: String(ev.type).toLowerCase(),
+    startTime,
+    endTime,
+    date,
+    priority: String(ev.priority).toLowerCase(),
+    status: String(ev.status).toLowerCase().replace('_', '-'),
+    assignee: ev.user?.name || undefined,
+    assigneeId: ev.userId,
+    project: ev.project || undefined,
+    platform,
+    meetingLink: ev.meetingLink || undefined,
+    attendees: Array.isArray(ev.attendees) ? ev.attendees : [],
+    isRecurring: !!ev.isRecurring,
+    recurrenceType: ev.recurrenceType ? String(ev.recurrenceType).toLowerCase() : undefined,
+    createdBy: ev.createdBy?.name || '',
+    createdAt: ev.createdAt,
+    sourceName: isAssigned ? 'Executive Assignment' : 'My Calendar',
+    sourceType: isAssigned ? 'assigned' : 'local',
+    sourceColor: isAssigned ? '#2563eb' : '#6b7280',
+    createdById: ev.createdById,
+    userId: ev.userId,
+    isAssigned,
+  }
+}
+
+const eventSchema = z.object({
+  userId: z.string().optional(),
+  title: z.string().min(1),
+  description: z.string().optional(),
+  type: z.enum(['task', 'meeting', 'reminder', 'personal', 'outsourced']).optional().default('task'),
+  date: z.string(),
+  startTime: z.string(),
+  endTime: z.string(),
+  priority: z.enum(['high', 'medium', 'low']).optional().default('medium'),
+  status: z.enum(['scheduled', 'in-progress', 'completed', 'cancelled']).optional().default('scheduled'),
+  project: z.string().optional(),
+  meetingLink: z.string().optional(),
+  platform: z.enum(['teams', 'zoom', 'google-meet', 'physical']).optional(),
+  attendees: z.array(z.string()).optional(),
+  isRecurring: z.boolean().optional(),
+  recurrenceType: z.enum(['daily', 'weekly', 'monthly']).optional(),
+})
+
+const toDateTime = (date: string, time: string) => {
+  const normalizedDate = String(date).slice(0, 10)
+  const dt = new Date(`${normalizedDate}T${time}`)
+  return dt
+}
+
+// Local events (in-app) per user
+router.get('/events', async (req: Request, res: Response) => {
+  const requesterId = await resolveUserId(req)
+  if (!requesterId) return res.status(401).json({ error: 'Login required' })
+  const targetId = String(req.query.userId || requesterId)
+  if (targetId !== requesterId) {
+    const allowed = await isExecutiveMember(requesterId)
+    if (!allowed) return res.status(403).json({ error: 'Executive access required' })
+  }
+  const events = await prisma.calendarEvent.findMany({
+    where: { userId: targetId },
+    orderBy: { startAt: 'asc' },
+    include: { user: { select: { name: true } }, createdBy: { select: { name: true } } },
+  })
+  res.json(events.map(mapEventForClient))
+})
+
+router.post('/events', async (req: Request, res: Response) => {
+  const requesterId = await resolveUserId(req)
+  if (!requesterId) return res.status(401).json({ error: 'Login required' })
+  const parsed = eventSchema.safeParse(req.body)
+  if (!parsed.success) return res.status(400).json(parsed.error.flatten())
+  const data = parsed.data
+  const targetId = data.userId || requesterId
+  if (targetId !== requesterId) {
+    const allowed = await isExecutiveMember(requesterId)
+    if (!allowed) return res.status(403).json({ error: 'Executive access required' })
+  }
+  const startAt = toDateTime(data.date, data.startTime)
+  const endAt = toDateTime(data.date, data.endTime)
+  if (isNaN(startAt.getTime()) || isNaN(endAt.getTime())) {
+    return res.status(400).json({ error: 'Invalid date/time' })
+  }
+  if (endAt <= startAt) {
+    return res.status(400).json({ error: 'End time must be after start time' })
+  }
+  try {
+    const created = await prisma.calendarEvent.create({
+      data: {
+        userId: targetId,
+        createdById: requesterId,
+        title: data.title,
+        description: data.description || '',
+        type: data.type.toUpperCase() as any,
+        startAt,
+        endAt,
+        priority: data.priority.toUpperCase() as any,
+        status: data.status.toUpperCase().replace('-', '_') as any,
+        project: data.project || undefined,
+        meetingLink: data.meetingLink || undefined,
+        platform: data.platform ? data.platform.toUpperCase().replace('-', '_') as any : undefined,
+        attendees: data.attendees || [],
+        isRecurring: !!data.isRecurring,
+        recurrenceType: data.recurrenceType ? data.recurrenceType.toUpperCase() as any : undefined,
+      },
+      include: { user: { select: { name: true } }, createdBy: { select: { name: true } } },
+    })
+
+    if (targetId !== requesterId) {
+      const creator = created.createdBy?.name || 'Executive'
+      try {
+        await createNotifications([{
+          userId: targetId,
+          type: 'CALENDAR_EVENT',
+          title: 'New calendar event',
+          message: `${creator} assigned "${created.title}" on ${created.startAt.toISOString().slice(0, 10)} ${created.startAt.toISOString().slice(11, 16)}.`,
+          targetUrl: '/calendar',
+        }])
+      } catch {}
+    }
+
+    res.status(201).json(mapEventForClient(created))
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Failed to create event' })
+  }
+})
+
+router.patch('/events/:id', async (req: Request, res: Response) => {
+  const requesterId = await resolveUserId(req)
+  if (!requesterId) return res.status(401).json({ error: 'Login required' })
+  const eventId = req.params.id
+  const parsed = eventSchema.partial().safeParse(req.body)
+  if (!parsed.success) return res.status(400).json(parsed.error.flatten())
+  const existing = await prisma.calendarEvent.findUnique({ where: { id: eventId } })
+  if (!existing) return res.status(404).json({ error: 'Not found' })
+  const isExec = await isExecutiveMember(requesterId)
+  if (existing.userId !== requesterId && existing.createdById !== requesterId && !isExec) {
+    return res.status(403).json({ error: 'Not allowed' })
+  }
+
+  const data = parsed.data
+  let startAt = existing.startAt
+  let endAt = existing.endAt
+  if (data.date || data.startTime) {
+    const date = data.date || existing.startAt.toISOString().slice(0, 10)
+    const time = data.startTime || existing.startAt.toISOString().slice(11, 16)
+    startAt = toDateTime(date, time)
+  }
+  if (data.date || data.endTime) {
+    const date = data.date || existing.endAt.toISOString().slice(0, 10)
+    const time = data.endTime || existing.endAt.toISOString().slice(11, 16)
+    endAt = toDateTime(date, time)
+  }
+  if (isNaN(startAt.getTime()) || isNaN(endAt.getTime())) {
+    return res.status(400).json({ error: 'Invalid date/time' })
+  }
+  if (endAt <= startAt) {
+    return res.status(400).json({ error: 'End time must be after start time' })
+  }
+
+  try {
+    const updated = await prisma.calendarEvent.update({
+      where: { id: eventId },
+      data: {
+        title: data.title ?? undefined,
+        description: data.description ?? undefined,
+        type: data.type ? data.type.toUpperCase() as any : undefined,
+        startAt,
+        endAt,
+        priority: data.priority ? data.priority.toUpperCase() as any : undefined,
+        status: data.status ? data.status.toUpperCase().replace('-', '_') as any : undefined,
+        project: data.project ?? undefined,
+        meetingLink: data.meetingLink ?? undefined,
+        platform: data.platform ? data.platform.toUpperCase().replace('-', '_') as any : undefined,
+        attendees: data.attendees ?? undefined,
+        isRecurring: data.isRecurring ?? undefined,
+        recurrenceType: data.recurrenceType ? data.recurrenceType.toUpperCase() as any : undefined,
+      },
+      include: { user: { select: { name: true } }, createdBy: { select: { name: true } } },
+    })
+    res.json(mapEventForClient(updated))
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Failed to update event' })
+  }
+})
+
+router.delete('/events/:id', async (req: Request, res: Response) => {
+  const requesterId = await resolveUserId(req)
+  if (!requesterId) return res.status(401).json({ error: 'Login required' })
+  const eventId = req.params.id
+  const existing = await prisma.calendarEvent.findUnique({ where: { id: eventId } })
+  if (!existing) return res.status(404).json({ error: 'Not found' })
+  const isExec = await isExecutiveMember(requesterId)
+  if (existing.userId !== requesterId && existing.createdById !== requesterId && !isExec) {
+    return res.status(403).json({ error: 'Not allowed' })
+  }
+  await prisma.calendarEvent.delete({ where: { id: eventId } })
+  res.status(204).end()
+})
 
 // List linked calendar accounts for the current user
 router.get('/accounts', async (req: Request, res: Response) => {

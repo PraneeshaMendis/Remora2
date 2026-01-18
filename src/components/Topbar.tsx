@@ -208,7 +208,7 @@ const Topbar: React.FC = () => {
           )}
         </button>
         {notificationsOpen && (
-          <div className="absolute right-0 mt-2 w-80 rounded-2xl border border-gray-200/70 dark:border-white/10 bg-white/95 dark:bg-black/80 shadow-xl backdrop-blur z-50">
+          <div className="absolute right-0 mt-2 w-80 rounded-2xl border border-gray-200/70 dark:border-white/10 bg-white/95 dark:bg-black shadow-xl backdrop-blur z-50">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200/70 dark:border-white/10">
               <div className="text-sm font-semibold text-gray-900 dark:text-white">Notifications</div>
               {unreadCount > 0 && (

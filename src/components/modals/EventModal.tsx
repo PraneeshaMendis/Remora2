@@ -12,6 +12,7 @@ interface CalendarEvent {
   priority: 'high' | 'medium' | 'low'
   status: 'scheduled' | 'in-progress' | 'completed' | 'cancelled'
   assignee?: string
+  assigneeId?: string
   project?: string
   platform?: 'teams' | 'zoom' | 'google-meet' | 'physical'
   meetingLink?: string
@@ -28,6 +29,8 @@ interface EventModalProps {
   event: CalendarEvent | null
   selectedDate: string
   onSave: (event: CalendarEvent) => void
+  assigneeOptions?: Array<{ id: string; name: string }>
+  defaultAssigneeId?: string
 }
 
 const EventModal: React.FC<EventModalProps> = ({
@@ -35,7 +38,9 @@ const EventModal: React.FC<EventModalProps> = ({
   onClose,
   event,
   selectedDate,
-  onSave
+  onSave,
+  assigneeOptions,
+  defaultAssigneeId
 }) => {
   const [formData, setFormData] = useState({
     title: '',
@@ -46,7 +51,7 @@ const EventModal: React.FC<EventModalProps> = ({
     date: selectedDate,
     priority: 'medium' as 'high' | 'medium' | 'low',
     status: 'scheduled' as 'scheduled' | 'in-progress' | 'completed' | 'cancelled',
-    assignee: '',
+    assigneeId: '',
     project: '',
     platform: 'teams' as 'teams' | 'zoom' | 'google-meet' | 'physical',
     meetingLink: '',
@@ -67,15 +72,17 @@ const EventModal: React.FC<EventModalProps> = ({
     'User Authentication'
   ]
 
-  const teamMembers = [
-    'Sarah Johnson',
-    'Mike Chen', 
-    'Emily Davis',
-    'James Wilson',
-    'Lisa Anderson',
-    'Alex Rodriguez',
-    'David Kim'
-  ]
+  const teamMembers = assigneeOptions && assigneeOptions.length > 0
+    ? assigneeOptions
+    : [
+        { id: 'member-1', name: 'Sarah Johnson' },
+        { id: 'member-2', name: 'Mike Chen' },
+        { id: 'member-3', name: 'Emily Davis' },
+        { id: 'member-4', name: 'James Wilson' },
+        { id: 'member-5', name: 'Lisa Anderson' },
+        { id: 'member-6', name: 'Alex Rodriguez' },
+        { id: 'member-7', name: 'David Kim' },
+      ]
 
   useEffect(() => {
     if (event) {
@@ -88,7 +95,7 @@ const EventModal: React.FC<EventModalProps> = ({
         date: event.date,
         priority: event.priority,
         status: event.status,
-        assignee: event.assignee || '',
+        assigneeId: event.assigneeId || defaultAssigneeId || '',
         project: event.project || '',
         platform: event.platform || 'teams',
         meetingLink: event.meetingLink || '',
@@ -106,7 +113,7 @@ const EventModal: React.FC<EventModalProps> = ({
         date: selectedDate,
         priority: 'medium',
         status: 'scheduled',
-        assignee: '',
+        assigneeId: defaultAssigneeId || '',
         project: '',
         platform: 'teams',
         meetingLink: '',
@@ -116,7 +123,7 @@ const EventModal: React.FC<EventModalProps> = ({
       })
     }
     setErrors({})
-  }, [event, selectedDate])
+  }, [event, selectedDate, defaultAssigneeId])
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {}
@@ -162,7 +169,10 @@ const EventModal: React.FC<EventModalProps> = ({
       date: formData.date,
       priority: formData.priority,
       status: formData.status,
-      assignee: formData.assignee || undefined,
+      assigneeId: formData.assigneeId || undefined,
+      assignee: formData.assigneeId
+        ? teamMembers.find(member => member.id === formData.assigneeId)?.name
+        : undefined,
       project: formData.project || undefined,
       platform: (formData.platform === 'teams' || formData.platform === 'zoom' || formData.platform === 'google-meet') ? formData.platform : undefined,
       meetingLink: formData.meetingLink || undefined,
@@ -213,7 +223,7 @@ const EventModal: React.FC<EventModalProps> = ({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           {/* Header */}
@@ -381,13 +391,13 @@ const EventModal: React.FC<EventModalProps> = ({
                   Assignee
                 </label>
                 <select
-                  value={formData.assignee}
-                  onChange={(e) => setFormData(prev => ({ ...prev, assignee: e.target.value }))}
+                  value={formData.assigneeId}
+                  onChange={(e) => setFormData(prev => ({ ...prev, assigneeId: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
                 >
                   <option value="">Select Assignee</option>
                   {teamMembers.map(member => (
-                    <option key={member} value={member}>{member}</option>
+                    <option key={member.id} value={member.id}>{member.name}</option>
                   ))}
                 </select>
               </div>

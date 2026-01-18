@@ -51,6 +51,10 @@ model User {
   calendarAccounts  CalendarAccount[]
   calendarSources   CalendarSource[]
   oauthStates       CalendarOAuthState[]
+  calendarEvents    CalendarEvent[]     @relation("CalendarEventOwner")
+  calendarEventsCreated CalendarEvent[] @relation("CalendarEventCreator")
+  invoicesCreated   Invoice[]           @relation("InvoiceCreatedBy")
+  invoicesApproved  Invoice[]           @relation("InvoiceApprovedBy")
   authTokens        AuthToken[]
   approvalRequests  ApprovalRequest[]
   // Back-relations for audits, impersonation, department leads and approvals
@@ -171,6 +175,66 @@ model CalendarOAuthState {
   expiresAt DateTime?
 
   @@index([userId, provider])
+}
+
+enum CalendarEventType {
+  TASK
+  MEETING
+  REMINDER
+  PERSONAL
+  OUTSOURCED
+}
+
+enum CalendarEventPriority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum CalendarEventStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum CalendarEventPlatform {
+  TEAMS
+  ZOOM
+  GOOGLE_MEET
+  PHYSICAL
+}
+
+enum CalendarEventRecurrence {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+model CalendarEvent {
+  id            String                   @id @default(cuid())
+  user          User                     @relation("CalendarEventOwner", fields: [userId], references: [id])
+  userId        String
+  createdBy     User                     @relation("CalendarEventCreator", fields: [createdById], references: [id])
+  createdById   String
+  title         String
+  description   String?
+  type          CalendarEventType        @default(TASK)
+  startAt       DateTime
+  endAt         DateTime
+  priority      CalendarEventPriority    @default(MEDIUM)
+  status        CalendarEventStatus      @default(SCHEDULED)
+  meetingLink   String?
+  platform      CalendarEventPlatform?
+  project       String?
+  attendees     String[]
+  isRecurring   Boolean                  @default(false)
+  recurrenceType CalendarEventRecurrence?
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+
+  @@index([userId, startAt])
+  @@index([createdById, createdAt])
 }
 
 model Department {
@@ -390,6 +454,8 @@ enum NotificationType {
   COMMENT
   TIME_LOG
   DOCUMENT_SHARED
+  CALENDAR_EVENT
+  INVOICE_APPROVAL
 }
 
 model HistoryEvent {
@@ -457,13 +523,29 @@ enum InvoiceStatus {
   CANCELED
 }
 
+enum InvoiceApprovalStatus {
+  PENDING
+  APPROVED
+  CHANGES_REQUESTED
+  REJECTED
+}
+
 model Invoice {
   id           String        @id @default(cuid())
   invoiceNo    String        @unique
+  createdBy    User?         @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
+  createdById  String?
+  approvedBy   User?         @relation("InvoiceApprovedBy", fields: [approvedById], references: [id])
+  approvedById String?
   project      Project       @relation(fields: [projectId], references: [id])
   projectId    String
   phase        Phase         @relation(fields: [phaseId], references: [id])
   phaseId      String
+  clientCompanyName String?
+  clientAddress   String?
+  clientPhone     String?
+  clientName      String?
+  clientDesignation String?
   issueDate    DateTime
   dueDate      DateTime
   currency     String
@@ -473,6 +555,9 @@ model Invoice {
   collected    Float         @default(0)
   outstanding  Float         @default(0)
   status       InvoiceStatus @default(DRAFT)
+  approvalStatus InvoiceApprovalStatus @default(PENDING)
+  approvalNote String?
+  approvedAt   DateTime?
   pdfKey       String?
   notes        String?
   createdAt    DateTime      @default(now())

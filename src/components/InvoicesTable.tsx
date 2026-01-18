@@ -3,6 +3,8 @@ import { Invoice, InvoiceFilters, PaymentReceipt } from '../types/slips-invoices
 import { slipsInvoicesAPI } from '../services/slipsInvoicesMockAPI'
 import { getProjectsWithPhases } from '../services/projectsAPI'
 import { apiGet } from '../services/api'
+import { useAuth } from '../contexts/AuthContext'
+import { listReviewers } from '../services/usersAPI'
 
 interface InvoicesTableProps {
   invoices: Invoice[]
@@ -92,6 +94,10 @@ const InvoicesTable: React.FC<InvoicesTableProps> = ({
   }
 
   const handleSendInvoice = (invoice: Invoice) => {
+    if (String(invoice.approvalStatus || '').toUpperCase() !== 'APPROVED') {
+      setError('Invoice must be approved by executive before sending.')
+      return
+    }
     setSendingInvoice(invoice)
     setIsSendModalOpen(true)
   }
@@ -169,6 +175,34 @@ const InvoicesTable: React.FC<InvoicesTableProps> = ({
         return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-black/50 dark:text-gray-200`
       default:
         return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-black/50 dark:text-gray-200`
+    }
+  }
+
+  const getApprovalLabel = (status?: string) => {
+    switch (String(status || '').toUpperCase()) {
+      case 'APPROVED':
+        return 'Approved'
+      case 'CHANGES_REQUESTED':
+        return 'Changes requested'
+      case 'REJECTED':
+        return 'Rejected'
+      case 'PENDING':
+      default:
+        return 'Pending'
+    }
+  }
+
+  const getApprovalBadge = (status?: string) => {
+    const base = "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+    switch (String(status || '').toUpperCase()) {
+      case 'APPROVED':
+        return `${base} bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`
+      case 'CHANGES_REQUESTED':
+        return `${base} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`
+      case 'REJECTED':
+        return `${base} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`
+      default:
+        return `${base} bg-gray-100 text-gray-800 dark:bg-black/50 dark:text-gray-200`
     }
   }
 
@@ -320,7 +354,7 @@ const InvoicesTable: React.FC<InvoicesTableProps> = ({
 
       {/* Table */}
       <div className="overflow-x-auto shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
-        <table className="min-w-full divide-y divide-gray-300 dark:divide-white/10" style={{ minWidth: '1250px' }}>
+        <table className="min-w-full divide-y divide-gray-300 dark:divide-white/10" style={{ minWidth: '1400px' }}>
           <thead className="bg-gray-50 dark:bg-black/60">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-32">
@@ -346,6 +380,9 @@ const InvoicesTable: React.FC<InvoicesTableProps> = ({
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-32">
                 Outstanding
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-32">
+                Approval
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-32">
                 Status
@@ -417,6 +454,11 @@ const InvoicesTable: React.FC<InvoicesTableProps> = ({
                   {formatCurrency(invoice.outstanding, invoice.currency)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
+                  <span className={getApprovalBadge(invoice.approvalStatus)}>
+                    {getApprovalLabel(invoice.approvalStatus)}
+                  </span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
                   {invoice.status === 'Draft' ? (
                     <select
                       value={invoice.status}
@@ -437,6 +479,10 @@ const InvoicesTable: React.FC<InvoicesTableProps> = ({
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <div className="flex items-center justify-end space-x-2">
+                    {(() => {
+                      const canSend = String(invoice.approvalStatus || '').toUpperCase() === 'APPROVED'
+                      return (
+                        <>
                     <button
                       onClick={() => handleViewInvoice(invoice)}
                       className="text-primary-600 hover:text-primary-500"
@@ -462,9 +508,9 @@ const InvoicesTable: React.FC<InvoicesTableProps> = ({
                         
                         <button
                           onClick={() => handleSendInvoice(invoice)}
-                          disabled={loading}
+                          disabled={loading || !canSend}
                           className="text-blue-600 hover:text-blue-500 disabled:opacity-50"
-                          title="Send Invoice"
+                          title={canSend ? 'Send Invoice' : 'Awaiting executive approval'}
                         >
                           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -500,15 +546,18 @@ const InvoicesTable: React.FC<InvoicesTableProps> = ({
                     {invoice.status !== 'Draft' && (
                       <button
                         onClick={() => handleSendInvoice(invoice)}
-                        disabled={loading}
+                        disabled={loading || !canSend}
                         className="text-blue-600 hover:text-blue-500 disabled:opacity-50"
-                        title="Send Invoice"
+                        title={canSend ? 'Send Invoice' : 'Awaiting executive approval'}
                       >
                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                         </svg>
                       </button>
                     )}
+                        </>
+                      )
+                    })()}
                   </div>
                 </td>
               </tr>
@@ -582,7 +631,52 @@ const InvoiceDrawer: React.FC<{
   onStatusChange: (invoice: Invoice, newStatus: string) => void
   loading: boolean
 }> = ({ invoice, onClose, onRefresh, onStatusChange, loading }) => {
+  const { user } = useAuth()
+  const isExecutive = String(user?.department || '').trim().toLowerCase() === 'executive department' || String(user?.role || '').trim().toLowerCase() === 'admin'
   const [error, setError] = useState<string | null>(null)
+  const [reviewNote, setReviewNote] = useState('')
+  const [reviewLoading, setReviewLoading] = useState(false)
+  const [executives, setExecutives] = useState<Array<{ id: string; name: string; email: string }>>([])
+  const [selectedExecutiveId, setSelectedExecutiveId] = useState('')
+  const [requestLoading, setRequestLoading] = useState(false)
+  const [requestError, setRequestError] = useState<string | null>(null)
+  const [requestMessage, setRequestMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      try {
+        const list = await listReviewers()
+        const users = Array.isArray(list) ? list : (list?.items || [])
+        const execs = users
+          .filter((u: any) => {
+            const dept = String(u.department || '').trim().toLowerCase()
+            const role = String(u.role || '').trim().toLowerCase()
+            return dept === 'executive department' || role === 'admin'
+          })
+          .map((u: any) => ({
+            id: String(u.id),
+            name: String(u.name || u.email || 'Executive'),
+            email: String(u.email || ''),
+          }))
+        if (active) {
+          setExecutives(execs)
+          setRequestError(null)
+          setRequestMessage(null)
+          if (execs.length === 0) {
+            setSelectedExecutiveId('')
+          } else if (!selectedExecutiveId || !execs.find(exec => exec.id === selectedExecutiveId)) {
+            setSelectedExecutiveId(execs[0].id)
+          }
+        }
+      } catch {
+        if (active) {
+          setExecutives([])
+        }
+      }
+    })()
+    return () => { active = false }
+  }, [invoice.id])
 
   const handleMarkPaid = async () => {
     if (invoice.outstanding > 0) {
@@ -612,6 +706,108 @@ const InvoiceDrawer: React.FC<{
   }
 
   const [showSend, setShowSend] = useState(false)
+  const approvalStatus = String(invoice.approvalStatus || '').toUpperCase()
+  const canSend = approvalStatus === 'APPROVED'
+  const isAlreadyApproved = approvalStatus === 'APPROVED'
+
+  const handleOpenSend = () => {
+    if (!canSend) {
+      setError('Invoice must be approved by executive before sending.')
+      return
+    }
+    setShowSend(true)
+  }
+
+  const handleReview = async (action: 'approve' | 'changes' | 'reject') => {
+    if (action === 'approve' && isAlreadyApproved) {
+      setError('Invoice is already approved.')
+      return
+    }
+
+    try {
+      setReviewLoading(true)
+      const res = await slipsInvoicesAPI.reviewInvoice(invoice.id, action, reviewNote)
+      if (!res.success) throw new Error(res.message || 'Failed to update approval')
+      onRefresh()
+      setReviewNote('')
+      setError(null)
+    } catch (err: any) {
+      setError(err?.message || 'Failed to update approval')
+    } finally {
+      setReviewLoading(false)
+    }
+  }
+
+  const handleRequestApproval = async () => {
+    if (isAlreadyApproved) {
+      setRequestError('Invoice is already approved.')
+      return
+    }
+    if (!selectedExecutiveId) {
+      setRequestError('Select an executive reviewer.')
+      return
+    }
+    try {
+      setRequestLoading(true)
+      setRequestError(null)
+      setRequestMessage(null)
+      const res = await slipsInvoicesAPI.requestInvoiceApproval(invoice.id, selectedExecutiveId)
+      if (!res.success) throw new Error(res.message || 'Failed to request approval')
+      setRequestMessage('Approval request sent.')
+      setError(null)
+    } catch (err: any) {
+      setRequestError(err?.message || 'Failed to request approval')
+    } finally {
+      setRequestLoading(false)
+    }
+  }
+
+  const handleDownloadTemplate = () => {
+    if (!canSend) {
+      setError('Invoice must be approved by executive before downloading.')
+      return
+    }
+    const safe = (value?: string | null) => String(value || '').replace(/[<>]/g, '')
+    const html = `<!doctype html><html><head><meta charset="utf-8"/><title>Invoice ${safe(invoice.invoiceNo)}</title>
+      <style>
+        body { font-family: Arial, sans-serif; background:#0b0b0b; color:#e5e7eb; padding:32px; }
+        .card { background:#111827; border:1px solid #1f2937; border-radius:16px; padding:24px; max-width:820px; margin:0 auto; }
+        h1 { margin:0 0 12px; font-size:26px; }
+        .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+        .label { color:#9ca3af; font-size:12px; text-transform:uppercase; letter-spacing:0.08em; }
+        .value { font-size:14px; color:#f9fafb; }
+        .section { margin-top:20px; padding-top:20px; border-top:1px solid #1f2937; }
+      </style>
+    </head><body>
+      <div class="card">
+        <h1>Invoice ${safe(invoice.invoiceNo)}</h1>
+        <div class="grid">
+          <div><div class="label">Client Company</div><div class="value">${safe(invoice.clientCompanyName)}</div></div>
+          <div><div class="label">Client Name</div><div class="value">${safe(invoice.clientName)} ${safe(invoice.clientDesignation) ? `(${safe(invoice.clientDesignation)})` : ''}</div></div>
+          <div><div class="label">Client Phone</div><div class="value">${safe(invoice.clientPhone)}</div></div>
+          <div><div class="label">Client Address</div><div class="value">${safe(invoice.clientAddress)}</div></div>
+        </div>
+        <div class="section grid">
+          <div><div class="label">Project</div><div class="value">${safe(invoice.projectName)}</div></div>
+          <div><div class="label">Phase</div><div class="value">${safe(invoice.phaseName)}</div></div>
+          <div><div class="label">Issue Date</div><div class="value">${formatDate(invoice.issueDate)}</div></div>
+          <div><div class="label">Due Date</div><div class="value">${formatDate(invoice.dueDate)}</div></div>
+        </div>
+        <div class="section grid">
+          <div><div class="label">Subtotal</div><div class="value">${formatCurrency(invoice.subtotal, invoice.currency)}</div></div>
+          <div><div class="label">Tax</div><div class="value">${formatCurrency(invoice.taxAmount, invoice.currency)}</div></div>
+          <div><div class="label">Total</div><div class="value">${formatCurrency(invoice.total, invoice.currency)}</div></div>
+        </div>
+      </div>
+    </body></html>`
+    const blob = new Blob([html], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${invoice.invoiceNo || 'invoice'}.html`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   const formatCurrency = (amount: number, currency: string = 'USD') => {
     return new Intl.NumberFormat('en-US', {
@@ -649,8 +845,36 @@ const InvoiceDrawer: React.FC<{
     }
   }
 
+  const getApprovalLabel = (status?: string) => {
+    switch (String(status || '').toUpperCase()) {
+      case 'APPROVED':
+        return 'Approved'
+      case 'CHANGES_REQUESTED':
+        return 'Changes requested'
+      case 'REJECTED':
+        return 'Rejected'
+      case 'PENDING':
+      default:
+        return 'Pending'
+    }
+  }
+
+  const getApprovalBadge = (status?: string) => {
+    const base = "inline-flex items-center px-3 py-1 rounded-full text-sm font-medium"
+    switch (String(status || '').toUpperCase()) {
+      case 'APPROVED':
+        return `${base} bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`
+      case 'CHANGES_REQUESTED':
+        return `${base} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`
+      case 'REJECTED':
+        return `${base} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`
+      default:
+        return `${base} bg-gray-100 text-gray-800 dark:bg-black/50 dark:text-gray-200`
+    }
+  }
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
       <div className="bg-white dark:bg-black/60 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="p-6 border-b border-gray-200 dark:border-white/10">
@@ -710,6 +934,37 @@ const InvoiceDrawer: React.FC<{
               <div className="text-sm text-red-700 dark:text-red-300">{error}</div>
             </div>
           )}
+
+          {/* Client Information */}
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
+              Client Information
+            </h3>
+            <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Company</div>
+                  <div className="font-medium text-gray-900 dark:text-white">{invoice.clientCompanyName || '-'}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Client Name</div>
+                  <div className="font-medium text-gray-900 dark:text-white">{invoice.clientName || '-'}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Designation</div>
+                  <div className="font-medium text-gray-900 dark:text-white">{invoice.clientDesignation || '-'}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Phone</div>
+                  <div className="font-medium text-gray-900 dark:text-white">{invoice.clientPhone || '-'}</div>
+                </div>
+                <div className="md:col-span-2">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Address</div>
+                  <div className="font-medium text-gray-900 dark:text-white">{invoice.clientAddress || '-'}</div>
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* Project Information */}
           <div>
@@ -787,6 +1042,113 @@ const InvoiceDrawer: React.FC<{
             </div>
           </div>
 
+          {/* Approval */}
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
+              Executive Approval
+            </h3>
+            <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-4 space-y-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-sm text-gray-600 dark:text-gray-400">Status</span>
+                <span className={getApprovalBadge(invoice.approvalStatus)}>
+                  {getApprovalLabel(invoice.approvalStatus)}
+                </span>
+                {invoice.approvedByName && (
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                    By {invoice.approvedByName}
+                  </span>
+                )}
+              </div>
+              {invoice.approvalNote && (
+                <div className="text-sm text-gray-700 dark:text-gray-300">
+                  <span className="text-gray-500 dark:text-gray-400">Note:</span> {invoice.approvalNote}
+                </div>
+              )}
+              {!isExecutive && (
+                <div className="space-y-3">
+                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Request approval
+                  </div>
+                  {executives.length === 0 ? (
+                    <div className="text-sm text-gray-500 dark:text-gray-400">
+                      No executive reviewers available.
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <select
+                        value={selectedExecutiveId}
+                        onChange={(e) => setSelectedExecutiveId(e.target.value)}
+                        className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
+                      >
+                        <option value="">Select executive</option>
+                        {executives.map(exec => (
+                          <option key={exec.id} value={exec.id}>
+                            {exec.name}{exec.email ? ` - ${exec.email}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={handleRequestApproval}
+                        disabled={requestLoading || !selectedExecutiveId || isAlreadyApproved}
+                        className="btn-primary"
+                      >
+                        {requestLoading ? 'Sending...' : 'Send for approval'}
+                      </button>
+                    </div>
+                  )}
+                  {requestError && (
+                    <div className="text-sm text-red-600 dark:text-red-400">
+                      {requestError}
+                    </div>
+                  )}
+                  {requestMessage && (
+                    <div className="text-sm text-green-600 dark:text-green-400">
+                      {requestMessage}
+                    </div>
+                  )}
+                </div>
+              )}
+              {isExecutive && (
+                <div className="space-y-3">
+                  <textarea
+                    value={reviewNote}
+                    onChange={(e) => setReviewNote(e.target.value)}
+                    rows={3}
+                    className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
+                    placeholder="Optional note for approval decision..."
+                  />
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleReview('changes')}
+                      disabled={reviewLoading}
+                      className="btn-secondary"
+                    >
+                      Request Changes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleReview('reject')}
+                      disabled={reviewLoading}
+                      className="btn-danger"
+                    >
+                      Reject
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleReview('approve')}
+                      disabled={reviewLoading || isAlreadyApproved}
+                      className="btn-primary"
+                    >
+                      Approve
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Notes */}
           {invoice.notes && (
             <div>
@@ -809,6 +1171,15 @@ const InvoiceDrawer: React.FC<{
             >
               Close
             </button>
+
+            <button
+              onClick={handleDownloadTemplate}
+              disabled={loading || !canSend}
+              className="btn-secondary disabled:opacity-60"
+              title={canSend ? 'Download invoice template' : 'Awaiting executive approval'}
+            >
+              Download Template
+            </button>
             
             {invoice.outstanding === 0 && invoice.status !== 'Paid' && (
               <button
@@ -821,8 +1192,8 @@ const InvoiceDrawer: React.FC<{
             )}
             
             <button
-              onClick={() => setShowSend(true)}
-              disabled={loading}
+              onClick={handleOpenSend}
+              disabled={loading || !canSend}
               className="btn-primary"
             >
               {loading ? 'Sending...' : 'Send Invoice'}
@@ -852,6 +1223,11 @@ const CreateInvoiceModal: React.FC<{
   const [formData, setFormData] = useState({
     projectId: '',
     phaseId: '',
+    clientCompanyName: '',
+    clientAddress: '',
+    clientPhone: '',
+    clientName: '',
+    clientDesignation: '',
     issueDate: new Date().toISOString().split('T')[0],
     dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 14 days from now
     currency: 'USD',
@@ -923,6 +1299,11 @@ const CreateInvoiceModal: React.FC<{
         phaseId: formData.phaseId,
         projectName: selectedProject?.name || '',
         phaseName: selectedPhase?.name || '',
+        clientCompanyName: formData.clientCompanyName || '',
+        clientAddress: formData.clientAddress || '',
+        clientPhone: formData.clientPhone || '',
+        clientName: formData.clientName || '',
+        clientDesignation: formData.clientDesignation || '',
         issueDate: formData.issueDate,
         dueDate: formData.dueDate,
         currency: formData.currency,
@@ -932,6 +1313,7 @@ const CreateInvoiceModal: React.FC<{
         collected: 0,
         outstanding: formData.total,
         status: 'Draft',
+        approvalStatus: 'PENDING',
         notes: formData.notes,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -946,16 +1328,16 @@ const CreateInvoiceModal: React.FC<{
       
       onRefresh()
       onClose()
-    } catch (err) {
-      setError('Failed to create invoice')
+    } catch (err: any) {
+      setError(err?.message || 'Failed to create invoice')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-black/60 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+      <div className="bg-white dark:bg-black rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="p-6 border-b border-gray-200 dark:border-white/10">
           <div className="flex items-center justify-between">
@@ -1032,6 +1414,70 @@ const CreateInvoiceModal: React.FC<{
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Client Details */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Client Company
+              </label>
+              <input
+                type="text"
+                value={formData.clientCompanyName}
+                onChange={(e) => handleInputChange('clientCompanyName', e.target.value)}
+                className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
+                placeholder="Company name"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Client Name
+              </label>
+              <input
+                type="text"
+                value={formData.clientName}
+                onChange={(e) => handleInputChange('clientName', e.target.value)}
+                className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
+                placeholder="Full name"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Designation
+              </label>
+              <input
+                type="text"
+                value={formData.clientDesignation}
+                onChange={(e) => handleInputChange('clientDesignation', e.target.value)}
+                className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
+                placeholder="Client designation"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Phone Number
+              </label>
+              <input
+                type="text"
+                value={formData.clientPhone}
+                onChange={(e) => handleInputChange('clientPhone', e.target.value)}
+                className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
+                placeholder="+94 77 123 4567"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Client Address
+            </label>
+            <textarea
+              value={formData.clientAddress}
+              onChange={(e) => handleInputChange('clientAddress', e.target.value)}
+              rows={2}
+              className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
+              placeholder="Address"
+            />
           </div>
 
           {/* Dates */}
@@ -1185,6 +1631,11 @@ const EditInvoiceModal: React.FC<{
   const [formData, setFormData] = useState({
     projectId: invoice.projectId,
     phaseId: invoice.phaseId,
+    clientCompanyName: invoice.clientCompanyName || '',
+    clientAddress: invoice.clientAddress || '',
+    clientPhone: invoice.clientPhone || '',
+    clientName: invoice.clientName || '',
+    clientDesignation: invoice.clientDesignation || '',
     issueDate: invoice.issueDate,
     dueDate: invoice.dueDate,
     currency: invoice.currency,
@@ -1252,6 +1703,11 @@ const EditInvoiceModal: React.FC<{
         phaseId: formData.phaseId,
         projectName: selectedProject?.name || invoice.projectName,
         phaseName: selectedPhase?.name || invoice.phaseName,
+        clientCompanyName: formData.clientCompanyName || '',
+        clientAddress: formData.clientAddress || '',
+        clientPhone: formData.clientPhone || '',
+        clientName: formData.clientName || '',
+        clientDesignation: formData.clientDesignation || '',
         issueDate: formData.issueDate,
         dueDate: formData.dueDate,
         currency: formData.currency,
@@ -1272,15 +1728,15 @@ const EditInvoiceModal: React.FC<{
       
       onRefresh()
       onClose()
-    } catch (err) {
-      setError('Failed to update invoice')
+    } catch (err: any) {
+      setError(err?.message || 'Failed to update invoice')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
       <div className="bg-white dark:bg-black/60 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="p-6 border-b border-gray-200 dark:border-white/10">
@@ -1506,7 +1962,7 @@ const CommentModal: React.FC<{
   onClose: () => void
 }> = ({ comment, onClose }) => {
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
       <div className="bg-white dark:bg-black/60 rounded-2xl w-full max-w-md">
         {/* Header */}
         <div className="p-6 border-b border-gray-200 dark:border-white/10">
@@ -1595,7 +2051,7 @@ const SendInvoiceModal: React.FC<{
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
       <div className="bg-white dark:bg-black/60 rounded-2xl w-full max-w-md overflow-hidden">
         <div className="p-5 border-b border-gray-200 dark:border-white/10 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Send Invoice</h3>

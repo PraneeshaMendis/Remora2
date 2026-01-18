@@ -474,7 +474,7 @@ const Users: React.FC = () => {
 
       {/* Invite User Modal (replacing Add User functionality) */}
       {isAddUserOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 backdrop-blur-sm">
           <div className="modal-overlay" onClick={() => setIsAddUserOpen(false)}></div>
           <div className="modal-panel max-w-2xl">
             <div className="modal-header">
@@ -590,7 +590,7 @@ const Users: React.FC = () => {
 
       {/* Edit User Modal */}
       {isEditUserOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 backdrop-blur-sm">
           <div className="modal-overlay" onClick={() => setIsEditUserOpen(false)}></div>
           <div className="modal-panel max-w-2xl">
             <div className="modal-header">
@@ -709,7 +709,7 @@ const Users: React.FC = () => {
 
       {/* Manage Departments Modal */}
       {isManageDepartmentsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 backdrop-blur-sm">
           <div className="modal-overlay" onClick={() => setIsManageDepartmentsOpen(false)}></div>
           <div className="modal-panel max-w-xl">
             <div className="modal-header">
@@ -761,7 +761,7 @@ const Users: React.FC = () => {
 
       {/* Manage Roles Modal */}
       {isManageRolesOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 backdrop-blur-sm">
           <div className="modal-overlay" onClick={() => setIsManageRolesOpen(false)}></div>
           <div className="modal-panel max-w-xl">
             <div className="modal-header">

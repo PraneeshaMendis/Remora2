@@ -35,6 +35,15 @@ class SlipsInvoicesMockAPI {
     return new Promise(resolve => setTimeout(resolve, ms))
   }
 
+  private authHeaders(): Record<string, string> {
+    const token = localStorage.getItem('authToken') || ''
+    const uid = localStorage.getItem('userId') || ''
+    return {
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(!token && uid ? { 'x-user-id': uid } : {}),
+    }
+  }
+
   private initializeMockData() {
     // Initialize with fixtures that simulate the 5 exception cases
     this.invoices = [
@@ -400,7 +409,7 @@ class SlipsInvoicesMockAPI {
   async getCashSummary(_week: string): Promise<ApiResponse<CashSummary>> {
     // Real data: load from backend endpoints
     try {
-      const invRes = await fetch(`${API_BASE}/invoices`, { headers: { 'content-type': 'application/json' } })
+      const invRes = await fetch(`${API_BASE}/invoices`, { headers: { 'content-type': 'application/json', ...this.authHeaders() } })
       const invoices: Invoice[] = invRes.ok ? await invRes.json() : []
       // Use DB-backed endpoints only to avoid slow Gmail scans on page load
       const rcRes = await fetch(`${API_BASE}/api/receipts`, { headers: { 'x-user-id': localStorage.getItem('userId') || '' } })
@@ -478,7 +487,7 @@ class SlipsInvoicesMockAPI {
   // Invoices API
   async getInvoices(filters: InvoiceFilters = {}): Promise<ApiResponse<PaginatedResponse<Invoice>>> {
     try {
-      const res = await fetch(`${API_BASE}/invoices`, { headers: { 'content-type': 'application/json' } })
+      const res = await fetch(`${API_BASE}/invoices`, { headers: { 'content-type': 'application/json', ...this.authHeaders() } })
       if (!res.ok) throw new Error(await res.text())
       const list: any[] = await res.json()
       let data = list as Invoice[]
@@ -508,7 +517,7 @@ class SlipsInvoicesMockAPI {
 
   async markInvoicePaid(request: MarkPaidRequest): Promise<ApiResponse<Invoice>> {
     try {
-      const res = await fetch(`${API_BASE}/invoices/${request.invoiceId}/mark-paid`, { method: 'POST' })
+      const res = await fetch(`${API_BASE}/invoices/${request.invoiceId}/mark-paid`, { method: 'POST', headers: { ...this.authHeaders() } })
       if (!res.ok) throw new Error(await res.text())
       return { success: true, data: await res.json() }
     } catch (e: any) {
@@ -521,7 +530,7 @@ class SlipsInvoicesMockAPI {
     let inv = this.invoices.find(i => i.id === invoiceId)
     if (!inv) {
       try {
-        const res = await fetch(`${API_BASE}/invoices`, { headers: { 'content-type': 'application/json' } })
+        const res = await fetch(`${API_BASE}/invoices`, { headers: { 'content-type': 'application/json', ...this.authHeaders() } })
         if (res.ok) {
           const list: any[] = await res.json()
           inv = list.find((i: any) => i.id === invoiceId)
@@ -529,6 +538,9 @@ class SlipsInvoicesMockAPI {
       } catch {}
     }
     if (!inv) return { success: false, message: 'Invoice not found', data: { success: false } }
+    if (String(inv.approvalStatus || '').toUpperCase() !== 'APPROVED') {
+      return { success: false, message: 'Invoice must be approved by executive before sending.', data: { success: false } }
+    }
     // Attempt to send via backend Gmail integration and surface errors
     try {
       // Recipient resolution: use provided email or infer from project
@@ -545,7 +557,7 @@ class SlipsInvoicesMockAPI {
       }
       const subject = `Invoice ${inv.invoiceNo} – ${inv.projectName} / ${inv.phaseName}`
       const text = `Dear Client,\n\nPlease find your invoice ${inv.invoiceNo} for the phase "${inv.phaseName}" under project "${inv.projectName}".\nTotal due: ${inv.currency} ${inv.total}.\n\nPaymentID: ${inv.invoiceNo}\n\nPlease reply to this email with the payment slip once paid.\n\nThank you.\n`
-      const r = await fetch(`${API_BASE}/api/gmail/send`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-user-id': localStorage.getItem('userId') || '' }, body: JSON.stringify({ to, subject, text, template: 'invoice', invoice: { invoiceNo: inv.invoiceNo, projectName: inv.projectName, phaseName: inv.phaseName, clientName: '', issueDate: inv.issueDate, dueDate: inv.dueDate, currency: inv.currency, total: inv.total, description: 'Project work' } }) })
+      const r = await fetch(`${API_BASE}/api/gmail/send`, { method: 'POST', headers: { 'content-type': 'application/json', ...this.authHeaders() }, body: JSON.stringify({ to, subject, text, template: 'invoice', invoice: { invoiceNo: inv.invoiceNo, projectName: inv.projectName, phaseName: inv.phaseName, clientName: inv.clientName || '', clientCompanyName: inv.clientCompanyName || '', clientAddress: inv.clientAddress || '', clientPhone: inv.clientPhone || '', clientDesignation: inv.clientDesignation || '', issueDate: inv.issueDate, dueDate: inv.dueDate, currency: inv.currency, total: inv.total, description: 'Project work' } }) })
       if (!r.ok) {
         let msg = ''
         try { msg = await r.text() } catch {}
@@ -554,6 +566,34 @@ class SlipsInvoicesMockAPI {
       }
     } catch { /* ignore */ }
     return { data: { success: true }, success: true }
+  }
+
+  async requestInvoiceApproval(invoiceId: string, reviewerId: string): Promise<ApiResponse<{ success: boolean }>> {
+    try {
+      const res = await fetch(`${API_BASE}/invoices/${invoiceId}/request-approval`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...this.authHeaders() },
+        body: JSON.stringify({ reviewerId }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      return { success: true, data: await res.json() }
+    } catch (e: any) {
+      return { success: false, message: e?.message || 'Failed to request approval', data: { success: false } }
+    }
+  }
+
+  async reviewInvoice(invoiceId: string, action: 'approve' | 'changes' | 'reject', note?: string): Promise<ApiResponse<Invoice>> {
+    try {
+      const res = await fetch(`${API_BASE}/invoices/${invoiceId}/review`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...this.authHeaders() },
+        body: JSON.stringify({ action, note }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      return { success: true, data: await res.json() }
+    } catch (e: any) {
+      return { success: false, message: e?.message || 'Failed to review invoice', data: {} as any }
+    }
   }
 
   async ingestBankEmailsFromGmail(): Promise<ApiResponse<{ count: number }>> {
@@ -610,7 +650,7 @@ class SlipsInvoicesMockAPI {
       // Ensure invoices list is populated (in case backend is the source of truth)
       try {
         if (this.invoices.length === 0) {
-          const invRes = await fetch(`${API_BASE}/invoices`, { headers: { 'content-type': 'application/json' } })
+          const invRes = await fetch(`${API_BASE}/invoices`, { headers: { 'content-type': 'application/json', ...this.authHeaders() } })
           if (invRes.ok) {
             const data = await invRes.json()
             if (Array.isArray(data)) this.invoices = data as any
@@ -1149,10 +1189,15 @@ class SlipsInvoicesMockAPI {
 
   async createInvoice(invoice: Invoice): Promise<ApiResponse<Invoice>> {
     try {
-      const res = await fetch(`${API_BASE}/invoices`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
+      const res = await fetch(`${API_BASE}/invoices`, { method: 'POST', headers: { 'content-type': 'application/json', ...this.authHeaders() }, body: JSON.stringify({
         invoiceNo: invoice.invoiceNo,
         projectId: invoice.projectId,
         phaseId: invoice.phaseId,
+        clientCompanyName: invoice.clientCompanyName || '',
+        clientAddress: invoice.clientAddress || '',
+        clientPhone: invoice.clientPhone || '',
+        clientName: invoice.clientName || '',
+        clientDesignation: invoice.clientDesignation || '',
         issueDate: invoice.issueDate,
         dueDate: invoice.dueDate,
         currency: invoice.currency,
@@ -1161,7 +1206,15 @@ class SlipsInvoicesMockAPI {
         total: invoice.total,
         notes: invoice.notes || '',
       }) })
-      if (!res.ok) throw new Error(await res.text())
+      if (!res.ok) {
+        const raw = await res.text()
+        try {
+          const parsed = JSON.parse(raw)
+          throw new Error(parsed?.error || raw)
+        } catch {
+          throw new Error(raw)
+        }
+      }
       return { success: true, data: await res.json() }
     } catch (e: any) {
       return { success: false, message: e?.message || 'Failed to create invoice', data: {} as any }
@@ -1170,9 +1223,14 @@ class SlipsInvoicesMockAPI {
 
   async updateInvoice(invoiceId: string, updatedInvoice: Invoice): Promise<ApiResponse<Invoice>> {
     try {
-      const res = await fetch(`${API_BASE}/invoices/${invoiceId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
+      const res = await fetch(`${API_BASE}/invoices/${invoiceId}`, { method: 'PATCH', headers: { 'content-type': 'application/json', ...this.authHeaders() }, body: JSON.stringify({
         projectId: updatedInvoice.projectId,
         phaseId: updatedInvoice.phaseId,
+        clientCompanyName: updatedInvoice.clientCompanyName || '',
+        clientAddress: updatedInvoice.clientAddress || '',
+        clientPhone: updatedInvoice.clientPhone || '',
+        clientName: updatedInvoice.clientName || '',
+        clientDesignation: updatedInvoice.clientDesignation || '',
         issueDate: updatedInvoice.issueDate,
         dueDate: updatedInvoice.dueDate,
         currency: updatedInvoice.currency,
@@ -1181,7 +1239,15 @@ class SlipsInvoicesMockAPI {
         total: updatedInvoice.total,
         notes: updatedInvoice.notes || '',
       }) })
-      if (!res.ok) throw new Error(await res.text())
+      if (!res.ok) {
+        const raw = await res.text()
+        try {
+          const parsed = JSON.parse(raw)
+          throw new Error(parsed?.error || raw)
+        } catch {
+          throw new Error(raw)
+        }
+      }
       return { success: true, data: await res.json() }
     } catch (e: any) {
       return { success: false, message: e?.message || 'Failed to update invoice', data: {} as any }
@@ -1190,7 +1256,7 @@ class SlipsInvoicesMockAPI {
 
   async deleteInvoice(invoiceId: string): Promise<ApiResponse<void>> {
     try {
-      const res = await fetch(`${API_BASE}/invoices/${invoiceId}`, { method: 'DELETE' })
+      const res = await fetch(`${API_BASE}/invoices/${invoiceId}`, { method: 'DELETE', headers: { ...this.authHeaders() } })
       if (!res.ok && res.status !== 204) throw new Error(await res.text())
       return { success: true, data: undefined }
     } catch (e: any) {

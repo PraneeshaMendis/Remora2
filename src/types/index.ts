@@ -177,7 +177,7 @@ export interface TimeLog {
 
 export interface NotificationItem {
   id: string
-  type: 'PROJECT_ASSIGNMENT' | 'TASK_ASSIGNMENT' | 'COMMENT' | 'TIME_LOG' | 'DOCUMENT_SHARED'
+  type: 'PROJECT_ASSIGNMENT' | 'TASK_ASSIGNMENT' | 'COMMENT' | 'TIME_LOG' | 'DOCUMENT_SHARED' | 'CALENDAR_EVENT' | 'INVOICE_APPROVAL'
   title: string
   message: string
   targetUrl?: string | null
