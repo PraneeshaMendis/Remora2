@@ -4,10 +4,12 @@ import { inviteUser } from '../services/adminAPI.ts'
 import { listDepartments, createDepartment as apiCreateDepartment, deleteDepartment as apiDeleteDepartment } from '../services/departmentsAPI.ts'
 import { listRoles, createRole as apiCreateRole, deleteRole as apiDeleteRole } from '../services/rolesAPI.ts'
 import { startImpersonation, stopImpersonation, getImpersonationStatus, purgeNonAdminUsers } from '../services/adminAPI'
+import { useAuth } from '../contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Plus, Building2, Shield, Trash2, LogOut } from 'lucide-react'
 
 const Users: React.FC = () => {
+  const { user } = useAuth()
   const [searchTerm, setSearchTerm] = useState('')
   const [departmentFilter, setDepartmentFilter] = useState('all')
   const [roleFilter, setRoleFilter] = useState('all')
@@ -22,6 +24,15 @@ const Users: React.FC = () => {
   })
   const [isManageDepartmentsOpen, setIsManageDepartmentsOpen] = useState(false)
   const [newDepartmentName, setNewDepartmentName] = useState('')
+  const isAdmin = String(user?.role || '').toLowerCase() === 'admin' || !!user?.isSuperAdmin
+  const permanentDepartments = new Set([
+    'executive department',
+    'grc department',
+    'tech department',
+    'business operations',
+    'sales & marketing',
+    'unassigned',
+  ])
   const handleAddDepartment = async () => {
     const trimmed = newDepartmentName.trim()
     if (!trimmed) return
@@ -48,6 +59,14 @@ const Users: React.FC = () => {
   const handleDeleteDepartment = async (name: string) => {
     try {
       if (!name) return
+      if (!isAdmin) {
+        alert('Only admin can remove departments.')
+        return
+      }
+      if (permanentDepartments.has(String(name).trim().toLowerCase())) {
+        alert('Permanent departments cannot be removed.')
+        return
+      }
       const id = departmentIdByName[name]
       if (!id) {
         alert('Could not resolve department id')
@@ -739,12 +758,29 @@ const Users: React.FC = () => {
               <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
                 {departmentList.map((dept) => (
                   <div key={dept.id} className="flex items-center justify-between rounded-2xl bg-gray-50 dark:bg-gray-800 px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                    <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{dept.name}</span>
-                    <button className="text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded-full p-2" onClick={() => handleDeleteDepartment(dept.name)} aria-label={`Delete ${dept.name}`}>
-                      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{dept.name}</span>
+                      {permanentDepartments.has(String(dept.name || '').trim().toLowerCase()) && (
+                        <span className="text-[10px] uppercase tracking-wide rounded-full border border-gray-200 dark:border-white/10 px-2 py-0.5 text-gray-500 dark:text-gray-400">
+                          Permanent
+                        </span>
+                      )}
+                    </div>
+                    {isAdmin && !permanentDepartments.has(String(dept.name || '').trim().toLowerCase()) ? (
+                      <button
+                        className="text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded-full p-2"
+                        onClick={() => handleDeleteDepartment(dept.name)}
+                        aria-label={`Delete ${dept.name}`}
+                      >
+                        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    ) : (
+                      <span className="text-xs text-gray-400 dark:text-gray-500">
+                        {isAdmin ? 'Locked' : 'Admin only'}
+                      </span>
+                    )}
                   </div>
                 ))}
                 {departmentList.length === 0 && (

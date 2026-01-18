@@ -280,12 +280,20 @@ const DirectorDashboard: React.FC = () => {
     )
   }
 
+  const cardBase = 'rounded-3xl border border-gray-200 dark:border-white/10 bg-white dark:bg-black/60 dark:bg-gradient-to-b dark:from-white/[0.06] dark:to-white/[0.02] shadow-[0_20px_60px_rgba(0,0,0,0.45)]'
+  const kpiIconStyles = [
+    { icon: 'layers', tone: 'text-sky-400', ring: 'bg-sky-500/15 border-sky-500/30' },
+    { icon: 'refresh', tone: 'text-orange-400', ring: 'bg-orange-500/15 border-orange-500/30' },
+    { icon: 'alert', tone: 'text-rose-400', ring: 'bg-rose-500/15 border-rose-500/30' },
+    { icon: 'pulse', tone: 'text-emerald-400', ring: 'bg-emerald-500/15 border-emerald-500/30' },
+  ]
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header */}
-      <div>
+      <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Director Dashboard</h1>
-        <p className="mt-2 text-gray-600 dark:text-gray-400">
+        <p className="text-gray-600 dark:text-gray-400">
           Executive overview of project performance and team productivity
         </p>
       </div>
@@ -293,28 +301,37 @@ const DirectorDashboard: React.FC = () => {
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {kpis.map((kpi, index) => (
-          <div key={index} className="card dark:bg-black/60 dark:border-white/10">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">{kpi.label}</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{kpi.value}</p>
+          <div key={index} className={`${cardBase} p-6`}>
+            <div className="flex items-start justify-between">
+              <div className={`h-12 w-12 rounded-2xl border ${kpiIconStyles[index]?.ring || 'border-gray-200 dark:border-white/10'} flex items-center justify-center`}>
+                <svg className={`h-6 w-6 ${kpiIconStyles[index]?.tone || 'text-white'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                  {kpiIconStyles[index]?.icon === 'layers' && (
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l8 4-8 4-8-4 8-4Zm0 8l8 4-8 4-8-4 8-4Z" />
+                  )}
+                  {kpiIconStyles[index]?.icon === 'refresh' && (
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 12a8 8 0 0 1 13.7-5.7M20 12a8 8 0 0 1-13.7 5.7M4 7v4h4M20 17v-4h-4" />
+                  )}
+                  {kpiIconStyles[index]?.icon === 'alert' && (
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v5m0 4h.01M5.4 19h13.2a1 1 0 0 0 .9-1.4l-6.6-12a1 1 0 0 0-1.8 0l-6.6 12a1 1 0 0 0 .9 1.4Z" />
+                  )}
+                  {kpiIconStyles[index]?.icon === 'pulse' && (
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 12h4l2.5-5 4 10 2.5-5H21" />
+                  )}
+                </svg>
               </div>
               {kpi.trend && (
-                <div className={`flex items-center ${
-                  kpi.trend === 'up' ? 'text-green-600 dark:text-green-400' : 
-                  kpi.trend === 'down' ? 'text-red-600 dark:text-red-400' : 
-                  'text-gray-600 dark:text-gray-400'
+                <div className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                  kpi.trend === 'up' ? 'bg-emerald-500/15 text-emerald-400' :
+                  kpi.trend === 'down' ? 'bg-rose-500/15 text-rose-400' :
+                  'bg-white/10 text-gray-300'
                 }`}>
-                  <svg className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    {kpi.trend === 'up' ? (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 17l9.2-9.2M17 17V7H7" />
-                    ) : (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 7l-9.2 9.2M7 7v10h10" />
-                    )}
-                  </svg>
-                  {kpi.change && Math.abs(kpi.change)}%
+                  {kpi.trend === 'up' ? '+' : ''}{kpi.change ? Math.abs(kpi.change) : 0}%
                 </div>
               )}
+            </div>
+            <div className="mt-6">
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{kpi.label}</p>
+              <p className="mt-2 text-3xl font-semibold text-gray-900 dark:text-white">{kpi.value}</p>
             </div>
           </div>
         ))}
@@ -323,82 +340,83 @@ const DirectorDashboard: React.FC = () => {
       {/* Charts and Projects Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Status Distribution Chart */}
-        <div className="card dark:bg-black/60 dark:border-white/10">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Project Status Distribution</h3>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600 dark:text-gray-400">In Progress</span>
-              <div className="flex items-center">
-                <div className="w-32 bg-gray-200 dark:bg-black/50 rounded-full h-2 mr-3">
-                  <div className="bg-blue-600 h-2 rounded-full" style={{ width: '60%' }}></div>
-                </div>
-                <span className="text-sm font-medium text-gray-900 dark:text-white">60%</span>
+        <div className={`${cardBase} p-6`}>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 uppercase tracking-wide text-sm">
+            Project Status Distribution
+          </h3>
+          <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-center">
+            <div
+              className="relative h-40 w-40 rounded-full"
+              style={{ background: 'conic-gradient(#3b82f6 0 60%, #f97316 60% 85%, #22c55e 85% 100%)' }}
+            >
+              <div className="absolute inset-4 rounded-full bg-white dark:bg-black/80 border border-gray-200 dark:border-white/10 flex flex-col items-center justify-center">
+                <div className="text-2xl font-semibold text-gray-900 dark:text-white">5</div>
+                <div className="text-xs uppercase tracking-widest text-gray-400">Total</div>
               </div>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600 dark:text-gray-400">In Review</span>
-              <div className="flex items-center">
-                <div className="w-32 bg-gray-200 dark:bg-black/50 rounded-full h-2 mr-3">
-                  <div className="bg-yellow-600 h-2 rounded-full" style={{ width: '25%' }}></div>
-                </div>
-                <span className="text-sm font-medium text-gray-900 dark:text-white">25%</span>
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center gap-3">
+                <span className="h-3 w-3 rounded-full bg-blue-500" />
+                <span className="text-gray-400">In Progress</span>
+                <span className="ml-auto text-gray-900 dark:text-white font-semibold">60%</span>
               </div>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600 dark:text-gray-400">Completed</span>
-              <div className="flex items-center">
-                <div className="w-32 bg-gray-200 dark:bg-black/50 rounded-full h-2 mr-3">
-                  <div className="bg-green-600 h-2 rounded-full" style={{ width: '15%' }}></div>
-                </div>
-                <span className="text-sm font-medium text-gray-900 dark:text-white">15%</span>
+              <div className="flex items-center gap-3">
+                <span className="h-3 w-3 rounded-full bg-orange-500" />
+                <span className="text-gray-400">In Review</span>
+                <span className="ml-auto text-gray-900 dark:text-white font-semibold">25%</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="h-3 w-3 rounded-full bg-emerald-500" />
+                <span className="text-gray-400">Completed</span>
+                <span className="ml-auto text-gray-900 dark:text-white font-semibold">15%</span>
               </div>
             </div>
           </div>
         </div>
 
         {/* Progress Over Time Chart */}
-        <div className="card dark:bg-black/60 dark:border-white/10">
+        <div className={`${cardBase} p-6`}>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Progress Over Time</h3>
-          <div className="h-32 flex items-end space-x-2">
+          <div className="h-32 flex items-end gap-2">
             {[20, 35, 45, 60, 75, 80, 85].map((height, index) => (
-              <div key={index} className="flex-1 bg-primary-600 rounded-t" style={{ height: `${height}%` }}></div>
+              <div key={index} className="flex-1 rounded-t-2xl bg-gradient-to-t from-blue-600 to-sky-400/70" style={{ height: `${height}%` }} />
             ))}
           </div>
-          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 text-center">
+          <div className="mt-3 text-xs text-gray-500 dark:text-gray-400 text-center">
             Last 7 days
           </div>
         </div>
       </div>
 
       {/* Projects Grid */}
-      <div className="card dark:bg-black/60 dark:border-white/10">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">All Projects</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className={`${cardBase} p-6`}>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">All Projects</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {displayProjects.map((project) => (
             <div 
               key={project.id} 
-              className="border border-gray-200 dark:border-white/10 rounded-xl p-4 hover:shadow-md transition-shadow duration-200 cursor-pointer"
+              className="rounded-3xl border border-gray-200 dark:border-white/10 bg-white dark:bg-black/50 p-5 hover:border-gray-300 dark:hover:border-white/20 hover:shadow-[0_12px_40px_rgba(0,0,0,0.35)] transition duration-200 cursor-pointer"
               onClick={() => {
                 setSelectedProject(project)
                 setIsProjectModalOpen(true)
               }}
             >
-              <div className="flex items-start justify-between mb-2">
-                <h4 className="font-medium text-gray-900 dark:text-white">{project.name}</h4>
-                <span className={`text-xs ${getPriorityColor(project.priority)}`}>
+              <div className="flex items-start justify-between mb-4">
+                <h4 className="text-lg font-semibold text-gray-900 dark:text-white">{project.name}</h4>
+                <span className={`text-xs font-semibold px-3 py-1 rounded-full border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/40 ${getPriorityColor(project.priority)}`}>
                   {project.priority.toUpperCase()}
                 </span>
               </div>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">Owner: {project.owner}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Owner: {project.owner}</p>
               
               <div className="mb-3">
                 <div className="flex items-center justify-between text-sm mb-1">
                   <span className="text-gray-600 dark:text-gray-400">Progress</span>
                   <span className="font-medium text-gray-900 dark:text-white">{project.progress}%</span>
                 </div>
-                <div className="w-full bg-gray-200 dark:bg-black/50 rounded-full h-2">
+                <div className="w-full bg-gray-200 dark:bg-black/40 rounded-full h-2">
                   <div 
-                    className="bg-primary-600 h-2 rounded-full transition-all duration-300" 
+                    className="bg-blue-500 h-2 rounded-full transition-all duration-300" 
                     style={{ width: `${project.progress}%` }}
                   ></div>
                 </div>
@@ -406,14 +424,14 @@ const DirectorDashboard: React.FC = () => {
 
               {/* Time Tracking Information */}
               {project.allocatedHours > 0 && (
-                <div className="mb-3">
+                <div className="mb-4">
                   <div className="flex items-center justify-between text-sm mb-1">
                     <span className="text-gray-600 dark:text-gray-400">Time Allocation</span>
                     <span className="font-medium text-gray-900 dark:text-white">
                       {Math.round((project.loggedHours / project.allocatedHours) * 100)}%
                     </span>
                   </div>
-                  <div className="w-full bg-gray-200 dark:bg-black/50 rounded-full h-2">
+                  <div className="w-full bg-gray-200 dark:bg-black/40 rounded-full h-2">
                     <div 
                       className={`h-2 rounded-full transition-all duration-300 ${
                         (project.loggedHours / project.allocatedHours) >= 1 ? 'bg-red-500' :
@@ -430,20 +448,20 @@ const DirectorDashboard: React.FC = () => {
               )}
 
               <div className="flex items-center justify-between">
-                <span className={`badge ${getStatusColor(project.status)}`}>
+                <span className={`badge ${getStatusColor(project.status)} px-3 py-1 rounded-full text-xs`}>
                   {project.status.replace('-', ' ').toUpperCase()}
                 </span>
                 <div className="flex -space-x-2">
                   {project.team.slice(0, 3).map((memberId, index) => {
                     const member = teamMembers.find(m => m.id === memberId)
                     return (
-                      <div key={index} className="h-6 w-6 rounded-full bg-primary-600 flex items-center justify-center text-xs text-white border-2 border-white dark:border-white/10">
+                      <div key={index} className="h-7 w-7 rounded-full bg-gray-200 dark:bg-white/10 flex items-center justify-center text-xs text-gray-700 dark:text-white border border-gray-200 dark:border-white/10">
                         {member ? member.name.charAt(0) : memberId.charAt(0)}
                       </div>
                     )
                   })}
                   {project.team.length > 3 && (
-                    <div className="h-6 w-6 rounded-full bg-gray-300 dark:bg-black/40 flex items-center justify-center text-xs text-gray-600 dark:text-gray-300 border-2 border-white dark:border-white/10">
+                    <div className="h-7 w-7 rounded-full bg-gray-200 dark:bg-white/10 flex items-center justify-center text-xs text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-white/10">
                       +{project.team.length - 3}
                     </div>
                   )}
@@ -457,18 +475,21 @@ const DirectorDashboard: React.FC = () => {
       {/* Activity Feed and Deadlines */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Activity Feed */}
-        <div className="card dark:bg-black/60 dark:border-white/10">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Recent Activity</h3>
-          <div className="space-y-4">
-            {recentActivity.map((activity) => (
-              <div key={activity.id} className="flex items-start space-x-3">
-                <div className="flex-shrink-0">
-                  <div className="h-8 w-8 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center">
-                    <span className="text-sm">📝</span>
-                  </div>
+        <div className={`${cardBase} p-6`}>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Recent Activity</h3>
+          <div className="relative space-y-6">
+            <div className="absolute left-4 top-2 bottom-2 w-px bg-gray-200 dark:bg-white/10" />
+            {recentActivity.map((activity, idx) => (
+              <div key={activity.id} className="flex items-start gap-4">
+                <div className={`h-10 w-10 rounded-full border border-gray-200 dark:border-white/10 flex items-center justify-center ${
+                  idx === 0 ? 'bg-emerald-500/15 text-emerald-400' :
+                  idx === 1 ? 'bg-sky-500/15 text-sky-400' :
+                  'bg-violet-500/15 text-violet-400'
+                }`}>
+                  <span className="text-sm font-semibold">{activity.title.charAt(0)}</span>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">{activity.title}</p>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">{activity.title}</p>
                   <p className="text-sm text-gray-600 dark:text-gray-400">{activity.description}</p>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{activity.timestamp}</p>
                 </div>
@@ -478,18 +499,18 @@ const DirectorDashboard: React.FC = () => {
         </div>
 
         {/* Upcoming Deadlines */}
-        <div className="card dark:bg-black/60 dark:border-white/10">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Upcoming Deadlines</h3>
-          <div className="space-y-3">
+        <div className={`${cardBase} p-6`}>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Upcoming Deadlines</h3>
+          <div className="space-y-4">
             {upcomingDeadlines.map((deadline, index) => (
-              <div key={index} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-black/50 rounded-xl">
+              <div key={index} className="flex items-center justify-between rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-black/50 p-4">
                 <div>
                   <p className="text-sm font-medium text-gray-900 dark:text-white">{deadline.task}</p>
                   <p className="text-xs text-gray-600 dark:text-gray-400">{deadline.project}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-medium text-gray-900 dark:text-white">{deadline.dueDate}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Due</p>
+                  <p className="text-xs font-semibold text-rose-400">DUE</p>
                 </div>
               </div>
             ))}

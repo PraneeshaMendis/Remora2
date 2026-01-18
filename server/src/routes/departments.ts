@@ -1,8 +1,19 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../prisma.ts'
+import { requireSuperAdmin } from '../middleware/super-admin.ts'
 
 const router = Router()
+const PERMANENT_DEPARTMENTS = new Set([
+  'executive department',
+  'grc department',
+  'tech department',
+  'business operations',
+  'sales & marketing',
+  'unassigned',
+])
+
+const isPermanentDepartment = (name: string) => PERMANENT_DEPARTMENTS.has(String(name || '').trim().toLowerCase())
 
 router.get('/', async (_req, res) => {
   const items = await prisma.department.findMany({ orderBy: { name: 'asc' } })
@@ -60,10 +71,15 @@ router.patch('/:id/settings', async (req, res) => {
   }
 })
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireSuperAdmin, async (req, res) => {
   const id = req.params.id
   const force = String(req.query.force || '').toLowerCase() === 'true'
   const toDeptId = (req.query.toDeptId as string) || ''
+  const dept = await prisma.department.findUnique({ where: { id } })
+  if (!dept) return res.status(404).json({ error: 'Not found' })
+  if (isPermanentDepartment(dept.name)) {
+    return res.status(403).json({ error: 'Permanent departments cannot be removed' })
+  }
   const count = await prisma.user.count({ where: { departmentId: id } })
   if (count > 0 && !force) {
     return res.status(409).json({ error: 'Users reference this department' })
