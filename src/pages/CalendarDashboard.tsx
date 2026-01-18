@@ -5,7 +5,6 @@ import {
   Users, 
   Plus, 
   LayoutGrid,
-  Search,
   Globe2,
   SlidersHorizontal,
   RefreshCw,
@@ -668,7 +667,6 @@ const CalendarDashboard: React.FC = () => {
 
   const canAddEvent = !(isExecutive && calendarScope === 'team' && !selectedUserId)
   const addEventLabel = isExecutive && calendarScope === 'team' ? 'Assign Event' : 'Add Event'
-  const userInitial = String(user?.name || user?.email || 'U').trim().charAt(0).toUpperCase()
 
   // --- Calendar sync helpers ---
   const parseICalDate = (val: string): { date: string; time: string } => {
@@ -1016,24 +1014,9 @@ const CalendarDashboard: React.FC = () => {
             </div>
 
             <div className="flex items-center justify-end gap-3">
-              <div className="hidden md:flex items-center gap-2 rounded-full border border-gray-200/70 dark:border-white/10 bg-gray-100 dark:bg-black/40 px-3 py-2">
-                <Search className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search"
-                  aria-label="Search calendars"
-                  className="w-28 bg-transparent text-sm text-gray-700 dark:text-gray-200 placeholder:text-gray-400 focus:outline-none"
-                />
-                <span className="text-[11px] px-2 py-0.5 rounded-full border border-gray-200/70 dark:border-white/10 bg-white/70 dark:bg-black/60 text-gray-500 dark:text-gray-400">
-                  Cmd + K
-                </span>
-              </div>
               {isSyncing && (
                 <span className="hidden sm:inline text-xs text-gray-500 dark:text-gray-400">Syncing...</span>
               )}
-              <div className="h-10 w-10 rounded-full bg-gray-100 dark:bg-black/40 border border-gray-200/70 dark:border-white/10 flex items-center justify-center text-sm font-semibold text-gray-700 dark:text-gray-200">
-                {userInitial}
-              </div>
             </div>
           </div>
 

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '../prisma.ts'
 import { authRequired } from '../middleware/auth-required.ts'
 import { createNotifications } from '../utils/notifications.ts'
+import { renderInvoiceEmailHtml } from '../utils/invoice-template.ts'
 
 const db: any = prisma
 const router = Router()
@@ -81,6 +82,7 @@ const createSchema = z.object({
   invoiceNo: z.string(),
   projectId: z.string(),
   phaseId: z.string(),
+  reviewerId: z.string().optional(),
   clientCompanyName: z.string().optional(),
   clientAddress: z.string().optional(),
   clientPhone: z.string().optional(),
@@ -101,6 +103,16 @@ router.post('/', authRequired, async (req: Request, res: Response) => {
   if (!parsed.success) return res.status(400).json(parsed.error.flatten())
   const data = parsed.data
   try {
+    const existingForPhase = await db.invoice.findFirst({ where: { projectId: data.projectId, phaseId: data.phaseId } })
+    if (existingForPhase) {
+      return res.status(409).json({ error: 'An invoice already exists for this phase.' })
+    }
+    if (data.reviewerId) {
+      const reviewerIsExec = await isExecutiveMember(data.reviewerId)
+      if (!reviewerIsExec) {
+        return res.status(400).json({ error: 'Reviewer must be in executive department' })
+      }
+    }
     const created = await db.invoice.create({
       data: {
         invoiceNo: data.invoiceNo,
@@ -127,15 +139,25 @@ router.post('/', authRequired, async (req: Request, res: Response) => {
       include: { project: true, phase: true, createdBy: true, approvedBy: true },
     })
     try {
-      const execs = await getExecutiveRecipients()
-      if (execs.length) {
-        await createNotifications(execs.map(e => ({
-          userId: e.id,
+      if (data.reviewerId) {
+        await createNotifications([{
+          userId: data.reviewerId,
           type: 'INVOICE_APPROVAL',
           title: 'Invoice approval required',
           message: `Invoice ${created.invoiceNo} is awaiting approval.`,
           targetUrl: '/slips-invoices',
-        })))
+        }])
+      } else {
+        const execs = await getExecutiveRecipients()
+        if (execs.length) {
+          await createNotifications(execs.map(e => ({
+            userId: e.id,
+            type: 'INVOICE_APPROVAL',
+            title: 'Invoice approval required',
+            message: `Invoice ${created.invoiceNo} is awaiting approval.`,
+            targetUrl: '/slips-invoices',
+          })))
+        }
       }
     } catch {}
     res.status(201).json(mapInvoice(created))
@@ -206,6 +228,19 @@ router.post('/:id/mark-paid', authRequired, async (req: Request, res: Response) 
   } catch (e: any) {
     res.status(400).json({ error: e?.message || 'Failed to mark invoice paid' })
   }
+})
+
+router.get('/:id/template', authRequired, async (req: Request, res: Response) => {
+  const id = req.params.id
+  const inv = await db.invoice.findUnique({
+    where: { id },
+    include: { project: true, phase: true, createdBy: true, approvedBy: true },
+  })
+  if (!inv) return res.status(404).json({ error: 'Not found' })
+  const mapped = mapInvoice(inv)
+  const html = renderInvoiceEmailHtml({ ...mapped, description: 'Project work' })
+  res.setHeader('Content-Type', 'text/html; charset=utf-8')
+  res.send(html)
 })
 
 const reviewSchema = z.object({

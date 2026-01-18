@@ -44,6 +44,26 @@ class SlipsInvoicesMockAPI {
     }
   }
 
+  private async refreshAuthToken(): Promise<void> {
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/refresh`, { method: 'POST', credentials: 'include' })
+      if (!res.ok) return
+      const data = await res.json().catch(() => null)
+      if (data?.token) localStorage.setItem('authToken', data.token)
+    } catch {}
+  }
+
+  private async fetchWithAuth(url: string, init: RequestInit = {}, retry = true): Promise<Response> {
+    const headers = { ...(init.headers || {}), ...this.authHeaders() }
+    const res = await fetch(url, { ...init, headers, credentials: 'include' })
+    if (res.status === 401 && retry) {
+      await this.refreshAuthToken()
+      const retryHeaders = { ...(init.headers || {}), ...this.authHeaders() }
+      return fetch(url, { ...init, headers: retryHeaders, credentials: 'include' })
+    }
+    return res
+  }
+
   private initializeMockData() {
     // Initialize with fixtures that simulate the 5 exception cases
     this.invoices = [
@@ -409,7 +429,7 @@ class SlipsInvoicesMockAPI {
   async getCashSummary(_week: string): Promise<ApiResponse<CashSummary>> {
     // Real data: load from backend endpoints
     try {
-      const invRes = await fetch(`${API_BASE}/invoices`, { headers: { 'content-type': 'application/json', ...this.authHeaders() } })
+      const invRes = await this.fetchWithAuth(`${API_BASE}/invoices`, { headers: { 'content-type': 'application/json' } })
       const invoices: Invoice[] = invRes.ok ? await invRes.json() : []
       // Use DB-backed endpoints only to avoid slow Gmail scans on page load
       const rcRes = await fetch(`${API_BASE}/api/receipts`, { headers: { 'x-user-id': localStorage.getItem('userId') || '' } })
@@ -487,7 +507,7 @@ class SlipsInvoicesMockAPI {
   // Invoices API
   async getInvoices(filters: InvoiceFilters = {}): Promise<ApiResponse<PaginatedResponse<Invoice>>> {
     try {
-      const res = await fetch(`${API_BASE}/invoices`, { headers: { 'content-type': 'application/json', ...this.authHeaders() } })
+      const res = await this.fetchWithAuth(`${API_BASE}/invoices`, { headers: { 'content-type': 'application/json' } })
       if (!res.ok) throw new Error(await res.text())
       const list: any[] = await res.json()
       let data = list as Invoice[]
@@ -517,7 +537,7 @@ class SlipsInvoicesMockAPI {
 
   async markInvoicePaid(request: MarkPaidRequest): Promise<ApiResponse<Invoice>> {
     try {
-      const res = await fetch(`${API_BASE}/invoices/${request.invoiceId}/mark-paid`, { method: 'POST', headers: { ...this.authHeaders() } })
+      const res = await this.fetchWithAuth(`${API_BASE}/invoices/${request.invoiceId}/mark-paid`, { method: 'POST' })
       if (!res.ok) throw new Error(await res.text())
       return { success: true, data: await res.json() }
     } catch (e: any) {
@@ -530,7 +550,7 @@ class SlipsInvoicesMockAPI {
     let inv = this.invoices.find(i => i.id === invoiceId)
     if (!inv) {
       try {
-        const res = await fetch(`${API_BASE}/invoices`, { headers: { 'content-type': 'application/json', ...this.authHeaders() } })
+        const res = await this.fetchWithAuth(`${API_BASE}/invoices`, { headers: { 'content-type': 'application/json' } })
         if (res.ok) {
           const list: any[] = await res.json()
           inv = list.find((i: any) => i.id === invoiceId)
@@ -570,9 +590,9 @@ class SlipsInvoicesMockAPI {
 
   async requestInvoiceApproval(invoiceId: string, reviewerId: string): Promise<ApiResponse<{ success: boolean }>> {
     try {
-      const res = await fetch(`${API_BASE}/invoices/${invoiceId}/request-approval`, {
+      const res = await this.fetchWithAuth(`${API_BASE}/invoices/${invoiceId}/request-approval`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', ...this.authHeaders() },
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ reviewerId }),
       })
       if (!res.ok) throw new Error(await res.text())
@@ -584,15 +604,26 @@ class SlipsInvoicesMockAPI {
 
   async reviewInvoice(invoiceId: string, action: 'approve' | 'changes' | 'reject', note?: string): Promise<ApiResponse<Invoice>> {
     try {
-      const res = await fetch(`${API_BASE}/invoices/${invoiceId}/review`, {
+      const res = await this.fetchWithAuth(`${API_BASE}/invoices/${invoiceId}/review`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', ...this.authHeaders() },
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ action, note }),
       })
       if (!res.ok) throw new Error(await res.text())
       return { success: true, data: await res.json() }
     } catch (e: any) {
       return { success: false, message: e?.message || 'Failed to review invoice', data: {} as any }
+    }
+  }
+
+  async getInvoiceTemplate(invoiceId: string): Promise<ApiResponse<{ html: string }>> {
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/invoices/${invoiceId}/template`)
+      if (!res.ok) throw new Error(await res.text())
+      const html = await res.text()
+      return { success: true, data: { html } }
+    } catch (e: any) {
+      return { success: false, message: e?.message || 'Failed to download invoice template', data: { html: '' } }
     }
   }
 
@@ -650,7 +681,7 @@ class SlipsInvoicesMockAPI {
       // Ensure invoices list is populated (in case backend is the source of truth)
       try {
         if (this.invoices.length === 0) {
-          const invRes = await fetch(`${API_BASE}/invoices`, { headers: { 'content-type': 'application/json', ...this.authHeaders() } })
+          const invRes = await this.fetchWithAuth(`${API_BASE}/invoices`, { headers: { 'content-type': 'application/json' } })
           if (invRes.ok) {
             const data = await invRes.json()
             if (Array.isArray(data)) this.invoices = data as any
@@ -1187,12 +1218,13 @@ class SlipsInvoicesMockAPI {
   }
 
 
-  async createInvoice(invoice: Invoice): Promise<ApiResponse<Invoice>> {
+  async createInvoice(invoice: Invoice, reviewerId?: string): Promise<ApiResponse<Invoice>> {
     try {
-      const res = await fetch(`${API_BASE}/invoices`, { method: 'POST', headers: { 'content-type': 'application/json', ...this.authHeaders() }, body: JSON.stringify({
+      const res = await this.fetchWithAuth(`${API_BASE}/invoices`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
         invoiceNo: invoice.invoiceNo,
         projectId: invoice.projectId,
         phaseId: invoice.phaseId,
+        reviewerId: reviewerId || undefined,
         clientCompanyName: invoice.clientCompanyName || '',
         clientAddress: invoice.clientAddress || '',
         clientPhone: invoice.clientPhone || '',
@@ -1223,7 +1255,7 @@ class SlipsInvoicesMockAPI {
 
   async updateInvoice(invoiceId: string, updatedInvoice: Invoice): Promise<ApiResponse<Invoice>> {
     try {
-      const res = await fetch(`${API_BASE}/invoices/${invoiceId}`, { method: 'PATCH', headers: { 'content-type': 'application/json', ...this.authHeaders() }, body: JSON.stringify({
+      const res = await this.fetchWithAuth(`${API_BASE}/invoices/${invoiceId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
         projectId: updatedInvoice.projectId,
         phaseId: updatedInvoice.phaseId,
         clientCompanyName: updatedInvoice.clientCompanyName || '',
@@ -1256,7 +1288,7 @@ class SlipsInvoicesMockAPI {
 
   async deleteInvoice(invoiceId: string): Promise<ApiResponse<void>> {
     try {
-      const res = await fetch(`${API_BASE}/invoices/${invoiceId}`, { method: 'DELETE', headers: { ...this.authHeaders() } })
+      const res = await this.fetchWithAuth(`${API_BASE}/invoices/${invoiceId}`, { method: 'DELETE' })
       if (!res.ok && res.status !== 204) throw new Error(await res.text())
       return { success: true, data: undefined }
     } catch (e: any) {

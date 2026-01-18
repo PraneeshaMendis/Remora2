@@ -762,51 +762,26 @@ const InvoiceDrawer: React.FC<{
     }
   }
 
-  const handleDownloadTemplate = () => {
+  const handleDownloadTemplate = async () => {
     if (!canSend) {
       setError('Invoice must be approved by executive before downloading.')
       return
     }
-    const safe = (value?: string | null) => String(value || '').replace(/[<>]/g, '')
-    const html = `<!doctype html><html><head><meta charset="utf-8"/><title>Invoice ${safe(invoice.invoiceNo)}</title>
-      <style>
-        body { font-family: Arial, sans-serif; background:#0b0b0b; color:#e5e7eb; padding:32px; }
-        .card { background:#111827; border:1px solid #1f2937; border-radius:16px; padding:24px; max-width:820px; margin:0 auto; }
-        h1 { margin:0 0 12px; font-size:26px; }
-        .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-        .label { color:#9ca3af; font-size:12px; text-transform:uppercase; letter-spacing:0.08em; }
-        .value { font-size:14px; color:#f9fafb; }
-        .section { margin-top:20px; padding-top:20px; border-top:1px solid #1f2937; }
-      </style>
-    </head><body>
-      <div class="card">
-        <h1>Invoice ${safe(invoice.invoiceNo)}</h1>
-        <div class="grid">
-          <div><div class="label">Client Company</div><div class="value">${safe(invoice.clientCompanyName)}</div></div>
-          <div><div class="label">Client Name</div><div class="value">${safe(invoice.clientName)} ${safe(invoice.clientDesignation) ? `(${safe(invoice.clientDesignation)})` : ''}</div></div>
-          <div><div class="label">Client Phone</div><div class="value">${safe(invoice.clientPhone)}</div></div>
-          <div><div class="label">Client Address</div><div class="value">${safe(invoice.clientAddress)}</div></div>
-        </div>
-        <div class="section grid">
-          <div><div class="label">Project</div><div class="value">${safe(invoice.projectName)}</div></div>
-          <div><div class="label">Phase</div><div class="value">${safe(invoice.phaseName)}</div></div>
-          <div><div class="label">Issue Date</div><div class="value">${formatDate(invoice.issueDate)}</div></div>
-          <div><div class="label">Due Date</div><div class="value">${formatDate(invoice.dueDate)}</div></div>
-        </div>
-        <div class="section grid">
-          <div><div class="label">Subtotal</div><div class="value">${formatCurrency(invoice.subtotal, invoice.currency)}</div></div>
-          <div><div class="label">Tax</div><div class="value">${formatCurrency(invoice.taxAmount, invoice.currency)}</div></div>
-          <div><div class="label">Total</div><div class="value">${formatCurrency(invoice.total, invoice.currency)}</div></div>
-        </div>
-      </div>
-    </body></html>`
-    const blob = new Blob([html], { type: 'text/html' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${invoice.invoiceNo || 'invoice'}.html`
-    a.click()
-    URL.revokeObjectURL(url)
+    try {
+      const res = await slipsInvoicesAPI.getInvoiceTemplate(invoice.id)
+      if (!res.success || !res.data?.html) {
+        throw new Error(res.message || 'Failed to download invoice template')
+      }
+      const blob = new Blob([res.data.html], { type: 'text/html' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${invoice.invoiceNo || 'invoice'}.html`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err: any) {
+      setError(err?.message || 'Failed to download invoice template')
+    }
   }
 
   const formatCurrency = (amount: number, currency: string = 'USD') => {
@@ -1220,6 +1195,8 @@ const CreateInvoiceModal: React.FC<{
 }> = ({ onClose, onRefresh }) => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [phaseInvoices, setPhaseInvoices] = useState<Record<string, Invoice>>({})
+  const [checkingExisting, setCheckingExisting] = useState(false)
   const [formData, setFormData] = useState({
     projectId: '',
     phaseId: '',
@@ -1237,6 +1214,8 @@ const CreateInvoiceModal: React.FC<{
     total: 0,
     notes: ''
   })
+  const [executives, setExecutives] = useState<Array<{ id: string; name: string; email: string }>>([])
+  const [selectedExecutiveId, setSelectedExecutiveId] = useState('')
 
   const [projects, setProjects] = React.useState<Array<{ id: string; name: string; phases: Array<{ id: string; name: string; completed?: boolean; allocatedHours?: number }> }>>([])
   React.useEffect(() => {
@@ -1255,8 +1234,75 @@ const CreateInvoiceModal: React.FC<{
     })()
   }, [])
 
+  React.useEffect(() => {
+    let active = true
+    ;(async () => {
+      try {
+        const list = await listReviewers()
+        const users = Array.isArray(list) ? list : (list?.items || [])
+        const execs = users
+          .filter((u: any) => {
+            const dept = String(u.department || '').trim().toLowerCase()
+            const role = String(u.role || '').trim().toLowerCase()
+            return dept === 'executive department' || role === 'admin'
+          })
+          .map((u: any) => ({
+            id: String(u.id),
+            name: String(u.name || u.email || 'Executive'),
+            email: String(u.email || ''),
+          }))
+        if (active) {
+          setExecutives(execs)
+          setSelectedExecutiveId((prev) => {
+            if (!execs.length) return ''
+            if (prev && execs.find(exec => exec.id === prev)) return prev
+            return execs[0].id
+          })
+        }
+      } catch {
+        if (active) setExecutives([])
+      }
+    })()
+    return () => { active = false }
+  }, [])
+
   const selectedProject = projects.find(p => p.id === formData.projectId)
   const selectedPhase = selectedProject?.phases.find(p => p.id === formData.phaseId)
+
+  React.useEffect(() => {
+    let active = true
+    if (!formData.projectId) {
+      setPhaseInvoices({})
+      setCheckingExisting(false)
+      return () => { active = false }
+    }
+
+    setCheckingExisting(true)
+    ;(async () => {
+      try {
+        const existing = await slipsInvoicesAPI.getInvoices({ projectId: formData.projectId })
+        if (!active) return
+        const list = existing.success ? (existing.data?.data || []) : []
+        const map: Record<string, Invoice> = {}
+        list.forEach(inv => {
+          if (inv.phaseId) map[inv.phaseId] = inv
+        })
+        setPhaseInvoices(map)
+      } catch {
+        if (active) setPhaseInvoices({})
+      } finally {
+        if (active) setCheckingExisting(false)
+      }
+    })()
+
+    return () => { active = false }
+  }, [formData.projectId])
+
+  React.useEffect(() => {
+    if (formData.phaseId && phaseInvoices[formData.phaseId]) {
+      setFormData(prev => ({ ...prev, phaseId: '' }))
+    }
+  }, [formData.phaseId, phaseInvoices])
 
   const handleInputChange = (field: string, value: any) => {
     setFormData(prev => {
@@ -1284,10 +1330,19 @@ const CreateInvoiceModal: React.FC<{
       setError('Please select both project and phase')
       return
     }
+    if (executives.length > 0 && !selectedExecutiveId) {
+      setError('Select an executive reviewer.')
+      return
+    }
 
     try {
       setLoading(true)
       setError(null)
+
+      if (phaseInvoices[formData.phaseId]) {
+        setError('An invoice already exists for this phase.')
+        return
+      }
 
       // Generate invoice number
       const invoiceNo = `INV-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`
@@ -1320,7 +1375,7 @@ const CreateInvoiceModal: React.FC<{
       }
 
       // Call the API to create the invoice
-      const response = await slipsInvoicesAPI.createInvoice(newInvoice)
+      const response = await slipsInvoicesAPI.createInvoice(newInvoice, selectedExecutiveId || undefined)
       
       if (!response.success) {
         throw new Error(response.message || 'Failed to create invoice')
@@ -1363,7 +1418,6 @@ const CreateInvoiceModal: React.FC<{
               <div className="text-sm text-red-700 dark:text-red-300">{error}</div>
             </div>
           )}
-
           {/* Project and Phase Selection */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -1400,11 +1454,15 @@ const CreateInvoiceModal: React.FC<{
                 disabled={!formData.projectId}
               >
                 <option value="">Select Phase</option>
-                {selectedProject?.phases.map(phase => (
-                  <option key={phase.id} value={phase.id}>
-                    {phase.name} {phase.completed ? '✓' : '⏳'} ({phase.allocatedHours}h)
-                  </option>
-                ))}
+                {selectedProject?.phases.map(phase => {
+                  const existing = phaseInvoices[phase.id]
+                  return (
+                    <option key={phase.id} value={phase.id} disabled={!!existing}>
+                      {phase.name} {phase.completed ? '✓' : '⏳'} ({phase.allocatedHours}h)
+                      {existing ? ` • Invoiced (${existing.invoiceNo})` : ''}
+                    </option>
+                  )
+                })}
               </select>
               {selectedPhase && (
                 <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -1414,6 +1472,37 @@ const CreateInvoiceModal: React.FC<{
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Executive Approval */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Executive Reviewer
+            </label>
+            {executives.length === 0 ? (
+              <div className="text-sm text-gray-500 dark:text-gray-400">
+                No executive reviewers available.
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <select
+                  value={selectedExecutiveId}
+                  onChange={(e) => setSelectedExecutiveId(e.target.value)}
+                  className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
+                  required
+                >
+                  <option value="">Select executive</option>
+                  {executives.map(exec => (
+                    <option key={exec.id} value={exec.id}>
+                      {exec.name}{exec.email ? ` - ${exec.email}` : ''}
+                    </option>
+                  ))}
+                </select>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  Approval request will be sent to the selected executive.
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Client Details */}
@@ -1608,7 +1697,7 @@ const CreateInvoiceModal: React.FC<{
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || checkingExisting || !!phaseInvoices[formData.phaseId]}
               className="btn-primary"
             >
               {loading ? 'Creating...' : 'Create Invoice'}

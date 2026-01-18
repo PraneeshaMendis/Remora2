@@ -96,12 +96,14 @@ router.post('/login', loginRateLimiter(), async (req, res) => {
   }
 
   const token = sign(user.id)
+  const { raw: refreshToken, expiresAt } = await createToken(user.id, 'REFRESH', 30 * 24 * 3600)
   // In dev, also drop an xuid cookie to resist any local token decode hiccups
   const isProd = (process.env.NODE_ENV || '').toLowerCase() === 'production'
   const allowDevHeaders = (process.env.ALLOW_DEV_HEADERS || '').toLowerCase() === 'true'
   if (allowDevHeaders) {
     res.cookie('xuid', user.id, { httpOnly: true, sameSite: 'lax', secure: isProd })
   }
+  res.cookie('rt', refreshToken, { httpOnly: true, secure: isProd, sameSite: 'lax', expires: expiresAt })
   return res.json({ token, user: { id: user.id, name: user.name, email: user.email } })
 })
 

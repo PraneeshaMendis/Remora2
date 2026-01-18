@@ -12,7 +12,7 @@ async function hasSystemSettingTable(): Promise<boolean> {
     return settingsTableExists
   }
   try {
-    const rows = await prisma.$queryRaw<{ table_name: string | null }[]>`SELECT to_regclass('public."SystemSetting"') AS table_name`
+    const rows = await prisma.$queryRaw<{ table_name: string | null }[]>`SELECT to_regclass('public."SystemSetting"')::text AS table_name`
     settingsTableExists = !!rows?.[0]?.table_name
   } catch {
     settingsTableExists = false
