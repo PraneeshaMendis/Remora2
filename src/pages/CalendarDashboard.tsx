@@ -81,209 +81,6 @@ const formatDateString = (date: Date): string => {
   return `${year}-${month}-${day}`
 }
 
-// Mock Data
-const mockEvents: CalendarEvent[] = [
-  // Today's events for testing
-  {
-    id: 'today-1',
-    title: 'Daily Standup',
-    description: 'Product team daily standup meeting',
-    type: 'meeting',
-    startTime: '10:00',
-    endTime: '10:15',
-    date: formatDateString(new Date()),
-    priority: 'high',
-    status: 'scheduled',
-    assignee: 'Sarah Johnson',
-    project: 'Mobile App Redesign',
-    platform: 'teams',
-    meetingLink: 'https://teams.microsoft.com/l/meetup-join/daily-standup-123',
-    attendees: ['Emma Wilson', 'John Doe', 'Sarah Johnson'],
-    createdBy: 'Sarah Johnson',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'today-2',
-    title: 'Client Zoom Meeting',
-    description: 'Discuss project requirements with client',
-    type: 'meeting',
-    startTime: '14:00',
-    endTime: '15:00',
-    date: formatDateString(new Date()),
-    priority: 'high',
-    status: 'scheduled',
-    assignee: 'Sarah Johnson',
-    project: 'Mobile App Redesign',
-    platform: 'zoom',
-    meetingLink: 'https://zoom.us/j/client-meeting-456',
-    attendees: ['Client Team'],
-    createdBy: 'Sarah Johnson',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'today-3',
-    title: 'Submit Invoice Report',
-    description: 'Complete and submit monthly invoice report',
-    type: 'task',
-    startTime: '09:00',
-    endTime: '10:00',
-    date: formatDateString(new Date()),
-    priority: 'high',
-    status: 'scheduled',
-    assignee: 'Sarah Johnson',
-    project: 'Administrative',
-    createdBy: 'Sarah Johnson',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: '1',
-    title: 'Daily Standup Meeting',
-    description: 'Team sync meeting to discuss progress and blockers',
-    type: 'meeting',
-    startTime: '09:00',
-    endTime: '09:30',
-    date: '2025-01-15',
-    priority: 'high',
-    status: 'scheduled',
-    assignee: 'Sarah Johnson',
-    project: 'Mobile App Redesign',
-    platform: 'teams',
-    meetingLink: 'https://teams.microsoft.com/l/meetup-join/...',
-    attendees: ['Sarah Johnson', 'Mike Chen', 'Emily Davis'],
-    createdBy: 'Sarah Johnson',
-    createdAt: '2025-01-10T10:00:00Z'
-  },
-  {
-    id: '2',
-    title: 'Review Client Proposal',
-    description: 'Review and provide feedback on client proposal draft',
-    type: 'task',
-    startTime: '10:00',
-    endTime: '11:30',
-    date: '2025-01-15',
-    priority: 'high',
-    status: 'in-progress',
-    assignee: 'Sarah Johnson',
-    project: 'Mobile App Redesign',
-    createdBy: 'Mike Chen',
-    createdAt: '2025-01-12T14:00:00Z'
-  },
-  {
-    id: '3',
-    title: 'Client Presentation',
-    description: 'Present design mockups to client',
-    type: 'meeting',
-    startTime: '14:00',
-    endTime: '15:00',
-    date: '2025-01-15',
-    priority: 'high',
-    status: 'scheduled',
-    assignee: 'Sarah Johnson',
-    project: 'Mobile App Redesign',
-    platform: 'zoom',
-    meetingLink: 'https://zoom.us/j/123456789',
-    attendees: ['Sarah Johnson', 'Client Team'],
-    createdBy: 'Sarah Johnson',
-    createdAt: '2025-01-08T09:00:00Z'
-  },
-  {
-    id: '4',
-    title: 'Team Lunch',
-    description: 'Monthly team building lunch',
-    type: 'personal',
-    startTime: '12:00',
-    endTime: '13:00',
-    date: '2025-01-15',
-    priority: 'low',
-    status: 'scheduled',
-    assignee: 'Sarah Johnson',
-    createdBy: 'Sarah Johnson',
-    createdAt: '2025-01-05T16:00:00Z'
-  },
-  {
-    id: '5',
-    title: 'Code Review Session',
-    description: 'Review backend API implementation',
-    type: 'task',
-    startTime: '15:30',
-    endTime: '17:00',
-    date: '2025-01-16',
-    priority: 'medium',
-    status: 'scheduled',
-    assignee: 'Sarah Johnson',
-    project: 'Backend API Development',
-    createdBy: 'Mike Chen',
-    createdAt: '2025-01-13T11:00:00Z'
-  },
-  {
-    id: '6',
-    title: 'Design System Review',
-    description: 'Review component library updates',
-    type: 'meeting',
-    startTime: '10:00',
-    endTime: '11:00',
-    date: '2025-01-16',
-    priority: 'medium',
-    status: 'scheduled',
-    assignee: 'Sarah Johnson',
-    project: 'Design System',
-    platform: 'teams',
-    meetingLink: 'https://teams.microsoft.com/l/meetup-join/...',
-    attendees: ['Sarah Johnson', 'Alex Rodriguez'],
-    createdBy: 'Alex Rodriguez',
-    createdAt: '2025-01-11T15:30:00Z'
-  },
-  {
-    id: '7',
-    title: 'Follow up with vendor',
-    description: 'Check on outsourced design work progress',
-    type: 'outsourced',
-    startTime: '16:00',
-    endTime: '16:30',
-    date: '2025-01-17',
-    priority: 'medium',
-    status: 'scheduled',
-    assignee: 'Sarah Johnson',
-    project: 'Design System',
-    createdBy: 'Sarah Johnson',
-    createdAt: '2025-01-14T10:00:00Z'
-  },
-  // Sample events for October 12th to test the fix
-  {
-    id: 'oct-12-1',
-    title: 'October 12th Meeting',
-    description: 'This event should stay on October 12th',
-    type: 'meeting',
-    startTime: '10:00',
-    endTime: '11:00',
-    date: '2024-10-12',
-    priority: 'high',
-    status: 'scheduled',
-    assignee: 'Sarah Johnson',
-    project: 'Test Project',
-    platform: 'teams',
-    meetingLink: 'https://teams.microsoft.com/l/meetup-join/oct-12-test',
-    attendees: ['Sarah Johnson', 'Test Team'],
-    createdBy: 'Sarah Johnson',
-    createdAt: '2024-10-10T10:00:00Z'
-  },
-  {
-    id: 'oct-12-2',
-    title: 'October 12th Task',
-    description: 'This task should also stay on October 12th',
-    type: 'task',
-    startTime: '14:00',
-    endTime: '15:00',
-    date: '2024-10-12',
-    priority: 'medium',
-    status: 'scheduled',
-    assignee: 'Sarah Johnson',
-    project: 'Test Project',
-    createdBy: 'Sarah Johnson',
-    createdAt: '2024-10-10T10:00:00Z'
-  }
-]
-
 const CalendarDashboard: React.FC = () => {
   const { user } = useAuth()
   const isExecutive = String(user?.department || '').trim().toLowerCase() === 'executive department' || String(user?.role || '').trim().toLowerCase() === 'admin'
@@ -1684,7 +1481,7 @@ const CalendarDashboard: React.FC = () => {
                       onClick={() => handleEditEvent(event)}
                     >
                       <div className="flex items-start justify-between">
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           <div className="flex items-center space-x-3 mb-2">
                             <span className={`px-3 py-1.5 text-sm rounded-full border shadow-sm ${getEventTypeColor(event.type)}`}>
                               {event.type}
@@ -1702,7 +1499,7 @@ const CalendarDashboard: React.FC = () => {
                             </span>
                           </div>
                           <h4 className="font-semibold text-gray-900 dark:text-white text-lg mb-1">{event.title}</h4>
-                          <p className="text-gray-600 dark:text-gray-400 mb-2">{event.description}</p>
+                          <p className="text-gray-600 dark:text-gray-400 mb-2 break-words whitespace-pre-wrap">{event.description}</p>
                           {event.project && (
                             <div className="flex items-center space-x-1 text-sm text-gray-500 dark:text-gray-400">
                               <Users className="h-4 w-4" />
@@ -1772,7 +1569,7 @@ const CalendarDashboard: React.FC = () => {
                       onClick={() => handleEditEvent(event)}
                     >
                       <div className="flex items-start justify-between">
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           <div className="flex items-center space-x-3 mb-2">
                             <span className={`px-3 py-1.5 text-sm rounded-full border shadow-sm ${getEventTypeColor(event.type)}`}>
                               {event.type}
@@ -1790,7 +1587,7 @@ const CalendarDashboard: React.FC = () => {
                             </span>
                           </div>
                           <h4 className="font-semibold text-gray-900 dark:text-white text-lg mb-1">{event.title}</h4>
-                          <p className="text-gray-600 dark:text-gray-400 mb-2">{event.description}</p>
+                          <p className="text-gray-600 dark:text-gray-400 mb-2 break-words whitespace-pre-wrap">{event.description}</p>
                           {event.project && (
                             <div className="flex items-center space-x-1 text-sm text-gray-500 dark:text-gray-400">
                               <Users className="h-4 w-4" />
@@ -1910,7 +1707,7 @@ const CalendarDashboard: React.FC = () => {
                         
                         {/* Event Description */}
                         {event.description && (
-                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-2 break-words whitespace-pre-wrap">
                             {event.description}
                           </p>
                         )}

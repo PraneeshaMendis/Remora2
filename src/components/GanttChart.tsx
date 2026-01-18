@@ -230,9 +230,9 @@ const GanttChart: React.FC<GanttChartProps> = ({
   }, [phases, expandedPhases])
 
   return (
-    <div className="w-full bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-xl">
+    <div className="w-full bg-white dark:bg-black/60 rounded-xl border border-gray-200 dark:border-white/10 overflow-hidden shadow-xl">
       {/* Header */}
-      <div className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 p-4">
+      <div className="bg-gray-50 dark:bg-black/50 border-b border-gray-200 dark:border-white/10 p-4">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Project Timeline</h3>
@@ -240,13 +240,13 @@ const GanttChart: React.FC<GanttChartProps> = ({
           </div>
           
           {/* View Toggle */}
-          <div className="flex items-center bg-white dark:bg-gray-800 rounded-lg p-1 border border-gray-200 dark:border-gray-600">
+          <div className="flex items-center bg-white dark:bg-black/60 rounded-lg p-1 border border-gray-200 dark:border-white/10">
             <button
               onClick={() => setViewMode('daily')}
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                 viewMode === 'daily'
                   ? 'bg-blue-500 text-white shadow-sm'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                  : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
               }`}
             >
               Daily
@@ -256,7 +256,7 @@ const GanttChart: React.FC<GanttChartProps> = ({
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                 viewMode === 'weekly'
                   ? 'bg-blue-500 text-white shadow-sm'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                  : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
               }`}
             >
               Weekly
@@ -268,16 +268,16 @@ const GanttChart: React.FC<GanttChartProps> = ({
       {/* Gantt Chart Container */}
       <div className="flex h-96">
         {/* Left Grid Panel */}
-        <div ref={gridRef} className="w-80 border-r border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 overflow-y-auto">
-          <div className="p-3 border-b border-gray-200 dark:border-gray-600 bg-gray-100 dark:bg-gray-800">
+        <div ref={gridRef} className="w-80 border-r border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/50 overflow-y-auto">
+          <div className="p-3 border-b border-gray-200 dark:border-white/10 bg-gray-100 dark:bg-black/60">
             <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Tasks</h4>
           </div>
           <div className="space-y-0">
             {allTasks.map((task) => (
               <div
                 key={task.id}
-                className={`flex items-center p-3 border-b border-gray-100 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 cursor-pointer transition-colors ${
-                  selectedTasks.has(task.id) ? 'bg-blue-100 dark:bg-blue-800' : ''
+                className={`group flex items-center p-3 border-b border-gray-100 dark:border-white/10 hover:bg-blue-50 dark:hover:bg-blue-900/20 cursor-pointer transition-colors ${
+                  selectedTasks.has(task.id) ? 'bg-blue-100 dark:bg-blue-900/30' : ''
                 } ${task.type === 'summary' ? 'font-semibold' : 'pl-8'}`}
                 onClick={(e) => {
                   if (task.type === 'summary') {
@@ -295,7 +295,7 @@ const GanttChart: React.FC<GanttChartProps> = ({
                         e.stopPropagation()
                         togglePhase(task.phaseId)
                       }}
-                      className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                      className="p-1 hover:bg-gray-200 dark:hover:bg-black/40 rounded"
                     >
                       {expandedPhases.has(task.phaseId) ? (
                         <ChevronDown className="h-4 w-4 text-gray-500" />
@@ -321,7 +321,7 @@ const GanttChart: React.FC<GanttChartProps> = ({
                         e.stopPropagation()
                         onTaskEdit(task)
                       }}
-                      className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded opacity-0 group-hover:opacity-100"
+                      className="p-1 hover:bg-gray-200 dark:hover:bg-black/40 rounded opacity-0 group-hover:opacity-100"
                     >
                       <Edit3 className="h-3 w-3 text-gray-500" />
                     </button>
@@ -333,14 +333,14 @@ const GanttChart: React.FC<GanttChartProps> = ({
         </div>
 
         {/* Right Chart Panel */}
-        <div ref={chartRef} className="flex-1 overflow-auto">
+        <div ref={chartRef} className="flex-1 overflow-auto dark:bg-black/60">
           {/* Timeline Header */}
-          <div className="sticky top-0 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-600">
+          <div className="sticky top-0 bg-gray-100 dark:bg-black/60 border-b border-gray-200 dark:border-white/10">
             <div className="flex" style={{ width: `${timelineData.length * cellWidth}px` }}>
               {timelineData.map((date, index) => (
                 <div 
                   key={index} 
-                  className="p-1 text-center border-r border-gray-200 dark:border-gray-600" 
+                  className="p-1 text-center border-r border-gray-200 dark:border-white/10" 
                   style={{ minWidth: `${cellWidth}px`, width: `${cellWidth}px` }}
                 >
                   {viewMode === 'daily' ? (
@@ -371,7 +371,7 @@ const GanttChart: React.FC<GanttChartProps> = ({
           </div>
 
           {/* Chart Area */}
-          <div className="relative" style={{ height: 'calc(100% - 40px)', width: `${timelineData.length * cellWidth}px` }}>
+          <div className="relative dark:bg-black/70" style={{ height: 'calc(100% - 40px)', width: `${timelineData.length * cellWidth}px` }}>
             {allTasks.map((task, index) => {
               const position = calculateBarPosition(task.start, task.end)
               const isSelected = selectedTasks.has(task.id)
@@ -436,7 +436,7 @@ const GanttChart: React.FC<GanttChartProps> = ({
       {/* Tooltip */}
       {hoveredItem && (
         <div
-          className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-4 max-w-xs"
+          className="fixed z-50 bg-white dark:bg-black/80 border border-gray-200 dark:border-white/10 rounded-lg shadow-lg p-4 max-w-xs"
           style={{
             left: tooltipPosition.x + 10,
             top: tooltipPosition.y - 10,
@@ -476,7 +476,7 @@ const GanttChart: React.FC<GanttChartProps> = ({
             
             {hoveredItem.type === 'task' && (
               <>
-                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 mt-2">
+                <div className="w-full bg-gray-200 dark:bg-white/10 rounded-full h-1.5 mt-2">
                   <div
                     className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
                     style={{ width: `${hoveredItem.data.progress}%` }}
