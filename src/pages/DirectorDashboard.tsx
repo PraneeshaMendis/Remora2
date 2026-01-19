@@ -1,257 +1,632 @@
-import React, { useState, useEffect } from 'react'
-import { KPI, ActivityItem, Project, TimeLog } from '../types/index.ts'
+import React, { useEffect, useMemo, useState } from 'react'
+import { ActivityItem, Comment, KPI, Project, Task, TimeLog } from '../types/index.ts'
+import { apiGet } from '../services/api.ts'
+import { getProjects } from '../services/projectsAPI.ts'
+
+type ProjectDocumentMetric = {
+  id: string
+  taskId?: string
+  createdById: string
+  reviewerId?: string
+  status: string
+}
+
+type ProjectMetrics = {
+  timeLogs: TimeLog[]
+  comments: Comment[]
+  documents: ProjectDocumentMetric[]
+}
+
+const mapProjectStatus = (status?: string): Project['status'] => {
+  const normalized = String(status || '').toUpperCase()
+  switch (normalized) {
+    case 'IN_PROGRESS':
+      return 'in-progress'
+    case 'ON_HOLD':
+      return 'blocked'
+    case 'COMPLETED':
+      return 'completed'
+    case 'CANCELLED':
+      return 'blocked'
+    case 'PLANNING':
+      return 'planning'
+    default:
+      return 'planning'
+  }
+}
+
+const mapTaskStatus = (status?: string): Task['status'] => {
+  const normalized = String(status || '').toUpperCase()
+  switch (normalized) {
+    case 'IN_PROGRESS':
+      return 'in-progress'
+    case 'ON_HOLD':
+      return 'blocked'
+    case 'COMPLETED':
+      return 'completed'
+    case 'NOT_STARTED':
+      return 'planning'
+    default:
+      return 'planning'
+  }
+}
+
+const mapPriority = (priority?: string): Task['priority'] => {
+  const normalized = String(priority || '').toUpperCase()
+  switch (normalized) {
+    case 'CRITICAL':
+      return 'critical'
+    case 'HIGH':
+      return 'high'
+    case 'LOW':
+      return 'low'
+    case 'MEDIUM':
+      return 'medium'
+    default:
+      return 'medium'
+  }
+}
+
+const priorityRank: Record<Task['priority'], number> = {
+  low: 1,
+  medium: 2,
+  high: 3,
+  critical: 4,
+}
+
+const deriveProjectPriority = (tasks: Task[]): Project['priority'] => {
+  if (!tasks.length) return 'medium'
+  return tasks.reduce<Project['priority']>((current, task) => {
+    return priorityRank[task.priority] > priorityRank[current] ? task.priority : current
+  }, 'low')
+}
+
+const formatRelativeTime = (iso?: string) => {
+  if (!iso) return ''
+  const ts = new Date(iso).getTime()
+  if (Number.isNaN(ts)) return ''
+  const diff = Date.now() - ts
+  if (diff < 60_000) return 'Just now'
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`
+  return new Date(iso).toLocaleDateString()
+}
+
+const formatDate = (value?: string) => {
+  if (!value) return ''
+  const ts = Date.parse(value)
+  if (Number.isNaN(ts)) return value
+  return new Date(ts).toLocaleDateString()
+}
+
+const getInitials = (name: string) => {
+  const cleaned = String(name || '').trim()
+  if (!cleaned) return 'U'
+  return cleaned
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(part => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+}
+
+const toTimestamp = (value?: string) => {
+  const ts = Date.parse(value || '')
+  return Number.isNaN(ts) ? null : ts
+}
+
+const calcPercentChange = (current: number, previous: number) => {
+  if (previous === 0) return current === 0 ? 0 : 100
+  return Math.round(((current - previous) / previous) * 100)
+}
+
+const trendFromChange = (change: number): KPI['trend'] => {
+  if (change > 0) return 'up'
+  if (change < 0) return 'down'
+  return 'stable'
+}
+
+const deriveProjectDates = (detail: any) => {
+  const phases = Array.isArray(detail?.phases) ? detail.phases : []
+  const parseDate = (value: any) => {
+    const ts = Date.parse(value || '')
+    return Number.isNaN(ts) ? null : new Date(ts)
+  }
+  let start = parseDate(detail?.startDate)
+  let end = parseDate(detail?.endDate)
+
+  if (!start) {
+    const phaseStarts = phases
+      .map((phase: any) => parseDate(phase?.startDate))
+      .filter(Boolean) as Date[]
+    if (phaseStarts.length) {
+      start = new Date(Math.min(...phaseStarts.map(date => date.getTime())))
+    }
+  }
+
+  if (!end) {
+    const phaseEnds = phases
+      .map((phase: any) => parseDate(phase?.endDate))
+      .filter(Boolean) as Date[]
+    if (phaseEnds.length) {
+      end = new Date(Math.max(...phaseEnds.map(date => date.getTime())))
+    }
+  }
+
+  return {
+    startDate: start ? start.toISOString() : '',
+    dueDate: end ? end.toISOString() : '',
+  }
+}
 
 const DirectorDashboard: React.FC = () => {
-  // State for time tracking data
   const [projects, setProjects] = useState<Project[]>([])
-  const [timeLogs, setTimeLogs] = useState<TimeLog[]>([])
+  const [tasks, setTasks] = useState<Task[]>([])
   const [teamMembers, setTeamMembers] = useState<Array<{ id: string; name: string; email: string }>>([])
+  const [metricsByProjectId, setMetricsByProjectId] = useState<Record<string, ProjectMetrics>>({})
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
-  // Load data from data aggregator
   useEffect(() => {
+    let active = true
+
     const loadData = async () => {
+      setIsLoading(true)
+      setLoadError(null)
       try {
-        // Get all projects from the data aggregator
-        const allProjects = [
-          {
-            id: '1',
-            name: 'Mobile App Redesign',
-            description: 'Complete redesign of the mobile application with modern UI/UX',
-            owner: 'Sarah Johnson',
-            status: 'in-progress' as const,
-            progress: 75,
-            startDate: '2024-01-01',
-            dueDate: '2024-02-15',
-            team: ['1', '2', '3'],
-            tags: ['Mobile', 'UI/UX', 'React Native'],
-            priority: 'high' as const,
-            phases: [],
-            tasks: [],
-            members: [],
-            allocatedHours: 200,
-            loggedHours: 150,
-            remainingHours: 50
-          },
-          {
-            id: '2',
-            name: 'Backend API Development',
-            description: 'RESTful API development for the new platform',
-            owner: 'Mike Chen',
-            status: 'in-progress' as const,
-            progress: 60,
-            startDate: '2024-01-05',
-            dueDate: '2024-02-20',
-            team: ['2', '4'],
-            tags: ['Backend', 'API', 'Node.js'],
-            priority: 'medium' as const,
-            phases: [],
-            tasks: [],
-            members: [],
-            allocatedHours: 150,
-            loggedHours: 90,
-            remainingHours: 60
-          },
-          {
-            id: '3',
-            name: 'Design System',
-            description: 'Comprehensive design system for consistent UI components',
-            owner: 'Alex Rodriguez',
-            status: 'in-review' as const,
-            progress: 90,
-            startDate: '2023-12-15',
-            dueDate: '2024-01-30',
-            team: ['3', '1'],
-            tags: ['Design', 'Components', 'Figma'],
-            priority: 'high' as const,
-            phases: [],
-            tasks: [],
-            members: [],
-            allocatedHours: 120,
-            loggedHours: 110,
-            remainingHours: 10
-          },
-          {
-            id: '4',
-            name: 'Database Migration',
-            description: 'Migration from legacy database to new architecture',
-            owner: 'David Kim',
-            status: 'completed' as const,
-            progress: 100,
-            startDate: '2023-11-01',
-            dueDate: '2023-12-31',
-            team: ['4', '2'],
-            tags: ['Database', 'Migration', 'PostgreSQL'],
-            priority: 'medium' as const,
-            phases: [],
-            tasks: [],
-            members: [],
-            allocatedHours: 100,
-            loggedHours: 95,
-            remainingHours: 5
-          },
-          {
-            id: '5',
-            name: 'User Authentication',
-            description: 'Implement secure user authentication and authorization',
-            owner: 'Sarah Johnson',
-            status: 'blocked' as const,
-            progress: 20,
-            startDate: '2024-01-10',
-            dueDate: '2024-02-05',
-            team: ['1', '2'],
-            tags: ['Security', 'Auth', 'JWT'],
-            priority: 'critical' as const,
-            phases: [],
-            tasks: [],
-            members: [],
-            allocatedHours: 80,
-            loggedHours: 15,
-            remainingHours: 65
-          }
-        ]
+        const list = await getProjects()
+        const projectIds = (list || [])
+          .map((p: any) => String(p?.id || ''))
+          .filter(Boolean)
 
-        // Mock time logs data
-        const mockTimeLogs: TimeLog[] = [
-          {
-            id: '1',
-            userId: '1',
-            userName: 'Sarah Johnson',
-            projectId: '1',
-            taskId: 'task-1',
-            phaseId: 'phase-1',
-            hours: 8,
-            description: 'UI/UX design work',
-            loggedAt: '2024-01-15T09:00:00Z',
-            createdAt: '2024-01-15T09:00:00Z'
-          },
-          {
-            id: '2',
-            userId: '1',
-            userName: 'Sarah Johnson',
-            projectId: '1',
-            taskId: 'task-2',
-            phaseId: 'phase-1',
-            hours: 6,
-            description: 'Wireframe creation',
-            loggedAt: '2024-01-16T10:00:00Z',
-            createdAt: '2024-01-16T10:00:00Z'
-          },
-          {
-            id: '3',
-            userId: '2',
-            userName: 'Mike Chen',
-            projectId: '2',
-            taskId: 'task-3',
-            phaseId: 'phase-2',
-            hours: 7,
-            description: 'API endpoint development',
-            loggedAt: '2024-01-17T08:30:00Z',
-            createdAt: '2024-01-17T08:30:00Z'
-          },
-          {
-            id: '4',
-            userId: '3',
-            userName: 'Alex Rodriguez',
-            projectId: '3',
-            taskId: 'task-4',
-            phaseId: 'phase-3',
-            hours: 9,
-            description: 'Component library development',
-            loggedAt: '2024-01-18T09:15:00Z',
-            createdAt: '2024-01-18T09:15:00Z'
-          },
-          {
-            id: '5',
-            userId: '4',
-            userName: 'David Kim',
-            projectId: '4',
-            taskId: 'task-5',
-            phaseId: 'phase-4',
-            hours: 8,
-            description: 'Database schema migration',
-            loggedAt: '2024-01-19T10:00:00Z',
-            createdAt: '2024-01-19T10:00:00Z'
-          }
-        ]
+        const details = await Promise.all(
+          projectIds.map(id => apiGet(`/projects/${id}`).catch(() => null))
+        )
 
-        // Mock team members
-        const mockTeamMembers = [
-          { id: '1', name: 'Sarah Johnson', email: 'sarah@company.com' },
-          { id: '2', name: 'Mike Chen', email: 'mike@company.com' },
-          { id: '3', name: 'Alex Rodriguez', email: 'alex@company.com' },
-          { id: '4', name: 'David Kim', email: 'david@company.com' }
-        ]
+        const memberMap = new Map<string, { id: string; name: string; email: string }>()
+        const allTasks: Task[] = []
 
-        setProjects(allProjects)
-        setTimeLogs(mockTimeLogs)
-        setTeamMembers(mockTeamMembers)
-        setIsLoading(false)
+        const mappedProjects = details
+          .filter(Boolean)
+          .map((detail: any) => {
+            const memberships = Array.isArray(detail?.memberships) ? detail.memberships : []
+            const owner = detail?.owner || null
+            const teamIds = memberships
+              .map((m: any) => String(m?.user?.id || m?.userId || ''))
+              .filter(Boolean)
+
+            if (owner?.id && !teamIds.includes(String(owner.id))) {
+              teamIds.unshift(String(owner.id))
+            }
+
+            memberships.forEach((member: any) => {
+              const user = member?.user
+              if (!user?.id) return
+              memberMap.set(String(user.id), {
+                id: String(user.id),
+                name: String(user.name || 'Unknown'),
+                email: String(user.email || ''),
+              })
+            })
+
+            if (owner?.id) {
+              memberMap.set(String(owner.id), {
+                id: String(owner.id),
+                name: String(owner.name || 'Unknown'),
+                email: String(owner.email || ''),
+              })
+            }
+
+            const phases = Array.isArray(detail?.phases) ? detail.phases : []
+            const projectTasks: Task[] = phases.flatMap((phase: any) => {
+              const phaseTasks = Array.isArray(phase?.tasks) ? phase.tasks : []
+              return phaseTasks.map((task: any) => {
+                const assignees = Array.isArray(task?.assignees) ? task.assignees : []
+                const assigneeIds = assignees
+                  .map((a: any) => String(a?.user?.id || a?.userId || ''))
+                  .filter(Boolean)
+                const status = mapTaskStatus(task?.status)
+                const createdAt = String(task?.createdAt || new Date().toISOString())
+                const updatedAt = String(task?.updatedAt || createdAt)
+                return {
+                  id: String(task?.id || ''),
+                  title: String(task?.title || ''),
+                  description: String(task?.description || ''),
+                  status,
+                  priority: mapPriority(task?.priority),
+                  dueDate: task?.dueDate ? new Date(task.dueDate).toISOString() : '',
+                  projectId: String(detail?.id || ''),
+                  phaseId: String(phase?.id || ''),
+                  assignees: assigneeIds,
+                  assignee: assigneeIds[0],
+                  isDone: status === 'completed',
+                  createdAt,
+                  updatedAt,
+                  completedAt: status === 'completed' ? updatedAt : undefined,
+                  progress: status === 'completed' ? 100 : status === 'in-progress' ? 50 : 0,
+                }
+              })
+            })
+
+            allTasks.push(...projectTasks)
+
+            const projectPriority = deriveProjectPriority(projectTasks)
+            const { startDate, dueDate } = deriveProjectDates(detail)
+            const allocatedHours = Number(detail?.allocatedHours || 0)
+            const loggedHours = Number(detail?.usedHours ?? detail?.loggedHours ?? 0)
+            const remainingHours = Number(detail?.leftHours ?? Math.max(allocatedHours - loggedHours, 0))
+
+            return {
+              id: String(detail?.id || ''),
+              name: String(detail?.title || ''),
+              description: String(detail?.description || ''),
+              owner: String(owner?.name || memberships[0]?.user?.name || 'Unassigned'),
+              status: mapProjectStatus(detail?.status),
+              progress: Number(detail?.progress ?? 0),
+              startDate,
+              dueDate,
+              team: teamIds,
+              tags: [],
+              priority: projectPriority,
+              phases: [],
+              tasks: [],
+              members: [],
+              allocatedHours,
+              loggedHours,
+              remainingHours,
+            } as Project
+          })
+
+        if (active) {
+          setProjects(mappedProjects)
+          setTasks(allTasks)
+          setTeamMembers(Array.from(memberMap.values()))
+        }
       } catch (error) {
-        console.error('Error loading data:', error)
-        setIsLoading(false)
+        console.error('Error loading dashboard data:', error)
+        if (active) setLoadError('Failed to load dashboard data.')
+      } finally {
+        if (active) setIsLoading(false)
       }
     }
 
     loadData()
+    return () => {
+      active = false
+    }
   }, [])
 
-  // Mock data
-  const kpis: KPI[] = [
-    { label: 'Active Projects', value: projects.filter(p => p.status === 'in-progress').length, trend: 'up', change: 2, color: 'blue' },
-    { label: 'Tasks in Progress', value: 48, trend: 'down', change: -5, color: 'green' },
-    { label: 'Overdue Tasks', value: 3, trend: 'down', change: -2, color: 'red' },
-    { label: 'On-Track %', value: 87, trend: 'up', change: 3, color: 'purple' }
-  ]
+  const teamMemberById = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; email: string }>()
+    teamMembers.forEach(member => map.set(member.id, member))
+    return map
+  }, [teamMembers])
 
-  const recentActivity: ActivityItem[] = [
-    {
-      id: '1',
-      type: 'task_completed',
-      title: 'Task completed',
-      description: 'User completed "Design system implementation"',
-      timestamp: '2 hours ago',
-      user: 'Sarah Johnson',
-      projectId: 'proj-1',
-      taskId: 'task-1'
-    },
-    {
-      id: '2',
-      type: 'project_updated',
-      title: 'Project updated',
-      description: 'Project "Mobile App Redesign" status changed to In Review',
-      timestamp: '4 hours ago',
-      user: 'Mike Chen',
-      projectId: 'proj-2'
-    },
-    {
-      id: '3',
-      type: 'task_created',
-      title: 'New task created',
-      description: 'Task "API Documentation" added to project',
-      timestamp: '6 hours ago',
-      user: 'Alex Rodriguez',
-      projectId: 'proj-3',
-      taskId: 'task-3'
+  const projectById = useMemo(() => {
+    const map = new Map<string, Project>()
+    projects.forEach(project => map.set(project.id, project))
+    return map
+  }, [projects])
+
+  const tasksByProjectId = useMemo(() => {
+    const map = new Map<string, Task[]>()
+    tasks.forEach(task => {
+      if (!map.has(task.projectId)) map.set(task.projectId, [])
+      map.get(task.projectId)?.push(task)
+    })
+    return map
+  }, [tasks])
+
+  const kpis: KPI[] = useMemo(() => {
+    const now = Date.now()
+    const activeProjects = projects.filter(project => project.status !== 'completed').length
+    const tasksInProgress = tasks.filter(task => task.status === 'in-progress').length
+    const tasksWithDueDates = tasks.filter(task => toTimestamp(task.dueDate) !== null)
+    const overdueTasks = tasksWithDueDates.filter(task => {
+      const dueTs = toTimestamp(task.dueDate)
+      return dueTs !== null && dueTs < now && task.status !== 'completed'
+    }).length
+    const onTrackTasks = tasksWithDueDates.filter(task => {
+      const dueTs = toTimestamp(task.dueDate)
+      if (task.status === 'completed') return true
+      return dueTs !== null && dueTs >= now
+    }).length
+    const onTrackPercent = tasksWithDueDates.length
+      ? Math.round((onTrackTasks / tasksWithDueDates.length) * 100)
+      : 100
+
+    const weekMs = 7 * 24 * 60 * 60 * 1000
+    const recentStart = now - weekMs
+    const prevStart = now - weekMs * 2
+    const inProgressRecent = tasks.filter(task => {
+      const updatedTs = toTimestamp(task.updatedAt)
+      return task.status === 'in-progress' && updatedTs !== null && updatedTs >= recentStart
+    }).length
+    const inProgressPrev = tasks.filter(task => {
+      const updatedTs = toTimestamp(task.updatedAt)
+      return task.status === 'in-progress' && updatedTs !== null && updatedTs >= prevStart && updatedTs < recentStart
+    }).length
+    const inProgressChange = calcPercentChange(inProgressRecent, inProgressPrev)
+
+    const overdueRecent = tasks.filter(task => {
+      const dueTs = toTimestamp(task.dueDate)
+      return dueTs !== null && dueTs >= recentStart && dueTs < now && task.status !== 'completed'
+    }).length
+    const overduePrev = tasks.filter(task => {
+      const dueTs = toTimestamp(task.dueDate)
+      return dueTs !== null && dueTs >= prevStart && dueTs < recentStart && task.status !== 'completed'
+    }).length
+    const overdueChange = calcPercentChange(overdueRecent, overduePrev)
+
+    return [
+      { label: 'Active Projects', value: activeProjects, trend: 'stable', change: 0, color: 'blue' },
+      { label: 'Tasks in Progress', value: tasksInProgress, trend: trendFromChange(inProgressChange), change: inProgressChange, color: 'green' },
+      { label: 'Overdue Tasks', value: overdueTasks, trend: trendFromChange(overdueChange), change: overdueChange, color: 'red' },
+      { label: 'On-Track %', value: onTrackPercent, trend: 'stable', change: 0, color: 'purple' },
+    ]
+  }, [projects, tasks])
+
+  const recentActivity: ActivityItem[] = useMemo(() => {
+    const items: Array<{ time: number; item: ActivityItem }> = []
+    tasks.forEach(task => {
+      const projectName = projectById.get(task.projectId)?.name || 'Project'
+      const assigneeId = task.assignees?.[0]
+      const actor = assigneeId ? teamMemberById.get(assigneeId)?.name : undefined
+      const userName = actor || 'Team'
+
+      if (task.status === 'completed' && task.updatedAt) {
+        const time = toTimestamp(task.updatedAt) || 0
+        items.push({
+          time,
+          item: {
+            id: `task-complete-${task.id}`,
+            type: 'task_completed',
+            title: 'Task completed',
+            description: `${userName} completed "${task.title}" in ${projectName}`,
+            timestamp: formatRelativeTime(task.updatedAt),
+            user: userName,
+            projectId: task.projectId,
+            taskId: task.id,
+          },
+        })
+      }
+
+      if (task.createdAt) {
+        const time = toTimestamp(task.createdAt) || 0
+        items.push({
+          time,
+          item: {
+            id: `task-created-${task.id}`,
+            type: 'task_created',
+            title: 'New task created',
+            description: `${userName} created "${task.title}" in ${projectName}`,
+            timestamp: formatRelativeTime(task.createdAt),
+            user: userName,
+            projectId: task.projectId,
+            taskId: task.id,
+          },
+        })
+      }
+    })
+
+    return items
+      .sort((a, b) => b.time - a.time)
+      .slice(0, 3)
+      .map(entry => entry.item)
+  }, [tasks, projectById, teamMemberById])
+
+  const upcomingDeadlines = useMemo(() => {
+    const now = Date.now()
+    const cutoff = now + 30 * 24 * 60 * 60 * 1000
+    const tasksWithDue = tasks
+      .map(task => ({ task, dueTs: toTimestamp(task.dueDate) }))
+      .filter(item => item.dueTs !== null && item.dueTs >= now) as Array<{ task: Task; dueTs: number }>
+
+    let list = tasksWithDue.filter(item => item.dueTs <= cutoff)
+    if (!list.length) list = tasksWithDue
+
+    return list
+      .sort((a, b) => a.dueTs - b.dueTs)
+      .slice(0, 3)
+      .map(({ task }) => ({
+        task: task.title,
+        dueDate: formatDate(task.dueDate),
+        project: projectById.get(task.projectId)?.name || 'Project',
+      }))
+  }, [tasks, projectById])
+
+  const statusBreakdown = useMemo(() => {
+    const inProgressCount = projects.filter(project => ['in-progress', 'planning', 'in-review'].includes(project.status)).length
+    const blockedCount = projects.filter(project => project.status === 'blocked').length
+    const completedCount = projects.filter(project => project.status === 'completed').length
+    const total = inProgressCount + blockedCount + completedCount
+
+    const inProgressPct = total ? (inProgressCount / total) * 100 : 0
+    const blockedPct = total ? (blockedCount / total) * 100 : 0
+    const completedPct = total ? (completedCount / total) * 100 : 0
+
+    const gradient = total
+      ? `conic-gradient(#3b82f6 0 ${inProgressPct}%, #f97316 ${inProgressPct}% ${inProgressPct + blockedPct}%, #22c55e ${inProgressPct + blockedPct}% 100%)`
+      : 'conic-gradient(#e5e7eb 0 100%)'
+
+    return {
+      total,
+      gradient,
+      segments: [
+        { label: 'In Progress', color: 'bg-blue-500', percent: Math.round(inProgressPct) },
+        { label: 'On Hold', color: 'bg-orange-500', percent: Math.round(blockedPct) },
+        { label: 'Completed', color: 'bg-emerald-500', percent: Math.round(completedPct) },
+      ],
     }
-  ]
+  }, [projects])
 
-  const upcomingDeadlines = [
-    { task: 'User Authentication Flow', dueDate: '2024-01-15', project: 'Mobile App Redesign' },
-    { task: 'Database Schema Design', dueDate: '2024-01-16', project: 'Backend API' },
-    { task: 'UI Component Library', dueDate: '2024-01-18', project: 'Design System' }
-  ]
+  const progressHeights = useMemo(() => {
+    const start = new Date()
+    start.setHours(0, 0, 0, 0)
+    start.setDate(start.getDate() - 6)
+    const startTs = start.getTime()
+    const dayMs = 24 * 60 * 60 * 1000
+    const counts = Array(7).fill(0)
+
+    tasks.forEach(task => {
+      if (task.status !== 'completed') return
+      const updatedTs = toTimestamp(task.updatedAt)
+      if (updatedTs === null || updatedTs < startTs) return
+      const index = Math.floor((updatedTs - startTs) / dayMs)
+      if (index >= 0 && index < counts.length) counts[index] += 1
+    })
+
+    const max = Math.max(...counts, 1)
+    return counts.map(count => Math.round((count / max) * 100))
+  }, [tasks])
 
   // State for project detail modal
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false)
 
+  const selectedProjectId = selectedProject?.id
+
+  useEffect(() => {
+    if (!isProjectModalOpen || !selectedProjectId) return
+    if (metricsByProjectId[selectedProjectId]) return
+
+    const projectTasks = tasksByProjectId.get(selectedProjectId) || []
+    if (!projectTasks.length) {
+      setMetricsByProjectId(prev => ({
+        ...prev,
+        [selectedProjectId]: { timeLogs: [], comments: [], documents: [] },
+      }))
+      return
+    }
+
+    let active = true
+    const loadMetrics = async () => {
+      try {
+        const taskIds = projectTasks.map(task => task.id).filter(Boolean)
+        const taskMetaById = new Map(projectTasks.map(task => [task.id, { phaseId: task.phaseId }]))
+
+        const [logsByTask, commentsByTask, documentsByTask] = await Promise.all([
+          Promise.all(taskIds.map(taskId => apiGet(`/timelogs/tasks/${taskId}/timelogs`).catch(() => []))),
+          Promise.all(taskIds.map(taskId => apiGet(`/tasks/${taskId}/comments`).catch(() => []))),
+          Promise.all(taskIds.map(taskId => apiGet(`/api/documents/by-task/${taskId}`).catch(() => []))),
+        ])
+
+        const mappedLogs: TimeLog[] = logsByTask.flat().map((log: any) => {
+          const taskId = String(log?.taskId || '')
+          const taskMeta = taskMetaById.get(taskId)
+          const userId = String(log?.userId || log?.user?.id || '')
+          const userName = String(
+            log?.userName ||
+            log?.user?.name ||
+            teamMemberById.get(userId)?.name ||
+            'Unknown'
+          )
+          const hours = Math.round(((Number(log?.durationMins || 0) / 60) + Number.EPSILON) * 10) / 10
+          return {
+            id: String(log?.id || ''),
+            userId,
+            userName,
+            projectId: selectedProjectId,
+            taskId,
+            phaseId: taskMeta?.phaseId || '',
+            hours,
+            description: String(log?.description || ''),
+            loggedAt: String(log?.startedAt || log?.createdAt || new Date().toISOString()),
+            createdAt: String(log?.createdAt || log?.startedAt || new Date().toISOString()),
+          }
+        })
+
+        const mappedComments: Comment[] = commentsByTask.flat().map((comment: any) => {
+          const taskId = String(comment?.taskId || '')
+          const taskMeta = taskMetaById.get(taskId)
+          const authorName = String(comment?.author?.name || 'Unknown')
+          return {
+            id: String(comment?.id || ''),
+            taskId,
+            content: String(comment?.content || ''),
+            author: {
+              id: String(comment?.author?.id || ''),
+              name: authorName,
+              email: String(comment?.author?.email || ''),
+              avatar: getInitials(authorName),
+            },
+            projectId: selectedProjectId,
+            phaseId: taskMeta?.phaseId,
+            createdAt: String(comment?.createdAt || new Date().toISOString()),
+            replies: (comment?.replies || []).map((reply: any) => {
+              const replyName = String(reply?.author?.name || 'Unknown')
+              return {
+                id: String(reply?.id || ''),
+                content: String(reply?.content || ''),
+                author: {
+                  id: String(reply?.author?.id || ''),
+                  name: replyName,
+                  email: String(reply?.author?.email || ''),
+                  avatar: getInitials(replyName),
+                },
+                createdAt: String(reply?.createdAt || new Date().toISOString()),
+              }
+            }),
+          }
+        })
+
+        const mappedDocuments: ProjectDocumentMetric[] = documentsByTask.flat().map((doc: any) => ({
+          id: String(doc?.id || ''),
+          taskId: doc?.taskId ? String(doc.taskId) : undefined,
+          createdById: String(doc?.createdBy?.id || doc?.createdById || ''),
+          reviewerId: doc?.reviewer?.id ? String(doc.reviewer.id) : undefined,
+          status: String(doc?.status || '').toLowerCase(),
+        }))
+
+        if (active) {
+          setMetricsByProjectId(prev => ({
+            ...prev,
+            [selectedProjectId]: {
+              timeLogs: mappedLogs,
+              comments: mappedComments,
+              documents: mappedDocuments,
+            },
+          }))
+        }
+      } catch (error) {
+        console.error('Error loading project metrics:', error)
+        if (active) {
+          setMetricsByProjectId(prev => ({
+            ...prev,
+            [selectedProjectId]: { timeLogs: [], comments: [], documents: [] },
+          }))
+        }
+      }
+    }
+
+    loadMetrics()
+    return () => {
+      active = false
+    }
+  }, [isProjectModalOpen, selectedProjectId, tasksByProjectId, metricsByProjectId, teamMemberById])
+
+  const selectedMetrics = selectedProjectId ? metricsByProjectId[selectedProjectId] : undefined
+  const projectTimeLogs = selectedMetrics?.timeLogs ?? []
+  const projectComments = selectedMetrics?.comments ?? []
+  const projectDocuments = selectedMetrics?.documents ?? []
+  const projectLoggedHours = projectTimeLogs.length
+    ? projectTimeLogs.reduce((sum, log) => sum + log.hours, 0)
+    : (selectedProject?.loggedHours || 0)
+  const projectUtilization = selectedProject?.allocatedHours
+    ? Math.round((projectLoggedHours / selectedProject.allocatedHours) * 100)
+    : 0
+  const totalProjectLogged = projectTimeLogs.reduce((sum, log) => sum + log.hours, 0)
+  const flattenedComments = useMemo(() => {
+    return projectComments.flatMap(comment => [comment, ...(comment.replies || [])])
+  }, [projectComments])
 
   // Use all projects instead of just recent ones
   const displayProjects = projects
 
   const getStatusColor = (status: string) => {
     switch (status) {
+      case 'planning': return 'badge-info'
       case 'in-progress': return 'badge-info'
       case 'in-review': return 'badge-warning'
       case 'completed': return 'badge-success'
@@ -297,6 +672,11 @@ const DirectorDashboard: React.FC = () => {
           Executive overview of project performance and team productivity
         </p>
       </div>
+      {loadError && (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {loadError}
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -347,29 +727,21 @@ const DirectorDashboard: React.FC = () => {
           <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-center">
             <div
               className="relative h-40 w-40 rounded-full"
-              style={{ background: 'conic-gradient(#3b82f6 0 60%, #f97316 60% 85%, #22c55e 85% 100%)' }}
+              style={{ background: statusBreakdown.gradient }}
             >
               <div className="absolute inset-4 rounded-full bg-white dark:bg-black/80 border border-gray-200 dark:border-white/10 flex flex-col items-center justify-center">
-                <div className="text-2xl font-semibold text-gray-900 dark:text-white">5</div>
+                <div className="text-2xl font-semibold text-gray-900 dark:text-white">{statusBreakdown.total}</div>
                 <div className="text-xs uppercase tracking-widest text-gray-400">Total</div>
               </div>
             </div>
             <div className="space-y-3 text-sm">
-              <div className="flex items-center gap-3">
-                <span className="h-3 w-3 rounded-full bg-blue-500" />
-                <span className="text-gray-400">In Progress</span>
-                <span className="ml-auto text-gray-900 dark:text-white font-semibold">60%</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="h-3 w-3 rounded-full bg-orange-500" />
-                <span className="text-gray-400">In Review</span>
-                <span className="ml-auto text-gray-900 dark:text-white font-semibold">25%</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="h-3 w-3 rounded-full bg-emerald-500" />
-                <span className="text-gray-400">Completed</span>
-                <span className="ml-auto text-gray-900 dark:text-white font-semibold">15%</span>
-              </div>
+              {statusBreakdown.segments.map(segment => (
+                <div key={segment.label} className="flex items-center gap-3">
+                  <span className={`h-3 w-3 rounded-full ${segment.color}`} />
+                  <span className="text-gray-400">{segment.label}</span>
+                  <span className="ml-auto text-gray-900 dark:text-white font-semibold">{segment.percent}%</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -378,7 +750,7 @@ const DirectorDashboard: React.FC = () => {
         <div className={`${cardBase} p-6`}>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Progress Over Time</h3>
           <div className="h-32 flex items-end gap-2">
-            {[20, 35, 45, 60, 75, 80, 85].map((height, index) => (
+            {progressHeights.map((height, index) => (
               <div key={index} className="flex-1 rounded-t-2xl bg-gradient-to-t from-blue-600 to-sky-400/70" style={{ height: `${height}%` }} />
             ))}
           </div>
@@ -392,83 +764,87 @@ const DirectorDashboard: React.FC = () => {
       <div className={`${cardBase} p-6`}>
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">All Projects</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {displayProjects.map((project) => (
-            <div 
-              key={project.id} 
-              className="rounded-3xl border border-gray-200 dark:border-white/10 bg-white dark:bg-black/50 p-5 hover:border-gray-300 dark:hover:border-white/20 hover:shadow-[0_12px_40px_rgba(0,0,0,0.35)] transition duration-200 cursor-pointer"
-              onClick={() => {
-                setSelectedProject(project)
-                setIsProjectModalOpen(true)
-              }}
-            >
-              <div className="flex items-start justify-between mb-4">
-                <h4 className="text-lg font-semibold text-gray-900 dark:text-white">{project.name}</h4>
-                <span className={`text-xs font-semibold px-3 py-1 rounded-full border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/40 ${getPriorityColor(project.priority)}`}>
-                  {project.priority.toUpperCase()}
-                </span>
-              </div>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Owner: {project.owner}</p>
-              
-              <div className="mb-3">
-                <div className="flex items-center justify-between text-sm mb-1">
-                  <span className="text-gray-600 dark:text-gray-400">Progress</span>
-                  <span className="font-medium text-gray-900 dark:text-white">{project.progress}%</span>
+          {displayProjects.map((project) => {
+            const allocationRatio = project.allocatedHours > 0 ? project.loggedHours / project.allocatedHours : 0
+            const allocationPercent = Math.round(allocationRatio * 100)
+            return (
+              <div
+                key={project.id}
+                className="rounded-3xl border border-gray-200 dark:border-white/10 bg-white dark:bg-black/50 p-5 hover:border-gray-300 dark:hover:border-white/20 hover:shadow-[0_12px_40px_rgba(0,0,0,0.35)] transition duration-200 cursor-pointer"
+                onClick={() => {
+                  setSelectedProject(project)
+                  setIsProjectModalOpen(true)
+                }}
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <h4 className="text-lg font-semibold text-gray-900 dark:text-white">{project.name}</h4>
+                  <span className={`text-xs font-semibold px-3 py-1 rounded-full border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/40 ${getPriorityColor(project.priority)}`}>
+                    {project.priority.toUpperCase()}
+                  </span>
                 </div>
-                <div className="w-full bg-gray-200 dark:bg-black/40 rounded-full h-2">
-                  <div 
-                    className="bg-blue-500 h-2 rounded-full transition-all duration-300" 
-                    style={{ width: `${project.progress}%` }}
-                  ></div>
-                </div>
-              </div>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Owner: {project.owner}</p>
 
-              {/* Time Tracking Information */}
-              {project.allocatedHours > 0 && (
-                <div className="mb-4">
+                <div className="mb-3">
                   <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="text-gray-600 dark:text-gray-400">Time Allocation</span>
-                    <span className="font-medium text-gray-900 dark:text-white">
-                      {Math.round((project.loggedHours / project.allocatedHours) * 100)}%
-                    </span>
+                    <span className="text-gray-600 dark:text-gray-400">Progress</span>
+                    <span className="font-medium text-gray-900 dark:text-white">{project.progress}%</span>
                   </div>
                   <div className="w-full bg-gray-200 dark:bg-black/40 rounded-full h-2">
-                    <div 
-                      className={`h-2 rounded-full transition-all duration-300 ${
-                        (project.loggedHours / project.allocatedHours) >= 1 ? 'bg-red-500' :
-                        (project.loggedHours / project.allocatedHours) >= 0.8 ? 'bg-yellow-500' : 'bg-green-500'
-                      }`}
-                      style={{ width: `${Math.min(100, (project.loggedHours / project.allocatedHours) * 100)}%` }}
+                    <div
+                      className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${project.progress}%` }}
                     ></div>
                   </div>
-                  <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    <span>Logged: {project.loggedHours}h</span>
-                    <span>Allocated: {project.allocatedHours}h</span>
+                </div>
+
+                {/* Time Tracking Information */}
+                {project.allocatedHours > 0 && (
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between text-sm mb-1">
+                      <span className="text-gray-600 dark:text-gray-400">Time Allocation</span>
+                      <span className="font-medium text-gray-900 dark:text-white">
+                        {allocationPercent}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 dark:bg-black/40 rounded-full h-2">
+                      <div
+                        className={`h-2 rounded-full transition-all duration-300 ${
+                          allocationRatio >= 1 ? 'bg-red-500' :
+                          allocationRatio >= 0.8 ? 'bg-yellow-500' : 'bg-green-500'
+                        }`}
+                        style={{ width: `${Math.min(100, allocationRatio * 100)}%` }}
+                      ></div>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      <span>Logged: {project.loggedHours}h</span>
+                      <span>Allocated: {project.allocatedHours}h</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between">
+                  <span className={`badge ${getStatusColor(project.status)} px-3 py-1 rounded-full text-xs`}>
+                    {project.status.replace('-', ' ').toUpperCase()}
+                  </span>
+                  <div className="flex -space-x-2">
+                    {project.team.slice(0, 3).map((memberId, index) => {
+                      const member = teamMemberById.get(memberId)
+                      return (
+                        <div key={index} className="h-7 w-7 rounded-full bg-gray-200 dark:bg-white/10 flex items-center justify-center text-xs text-gray-700 dark:text-white border border-gray-200 dark:border-white/10">
+                          {member ? member.name.charAt(0) : memberId.charAt(0)}
+                        </div>
+                      )
+                    })}
+                    {project.team.length > 3 && (
+                      <div className="h-7 w-7 rounded-full bg-gray-200 dark:bg-white/10 flex items-center justify-center text-xs text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-white/10">
+                        +{project.team.length - 3}
+                      </div>
+                    )}
                   </div>
                 </div>
-              )}
-
-              <div className="flex items-center justify-between">
-                <span className={`badge ${getStatusColor(project.status)} px-3 py-1 rounded-full text-xs`}>
-                  {project.status.replace('-', ' ').toUpperCase()}
-                </span>
-                <div className="flex -space-x-2">
-                  {project.team.slice(0, 3).map((memberId, index) => {
-                    const member = teamMembers.find(m => m.id === memberId)
-                    return (
-                      <div key={index} className="h-7 w-7 rounded-full bg-gray-200 dark:bg-white/10 flex items-center justify-center text-xs text-gray-700 dark:text-white border border-gray-200 dark:border-white/10">
-                        {member ? member.name.charAt(0) : memberId.charAt(0)}
-                      </div>
-                    )
-                  })}
-                  {project.team.length > 3 && (
-                    <div className="h-7 w-7 rounded-full bg-gray-200 dark:bg-white/10 flex items-center justify-center text-xs text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-white/10">
-                      +{project.team.length - 3}
-                    </div>
-                  )}
-                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
 
@@ -478,23 +854,29 @@ const DirectorDashboard: React.FC = () => {
         <div className={`${cardBase} p-6`}>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Recent Activity</h3>
           <div className="relative space-y-6">
-            <div className="absolute left-4 top-2 bottom-2 w-px bg-gray-200 dark:bg-white/10" />
-            {recentActivity.map((activity, idx) => (
-              <div key={activity.id} className="flex items-start gap-4">
-                <div className={`h-10 w-10 rounded-full border border-gray-200 dark:border-white/10 flex items-center justify-center ${
-                  idx === 0 ? 'bg-emerald-500/15 text-emerald-400' :
-                  idx === 1 ? 'bg-sky-500/15 text-sky-400' :
-                  'bg-violet-500/15 text-violet-400'
-                }`}>
-                  <span className="text-sm font-semibold">{activity.title.charAt(0)}</span>
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-gray-900 dark:text-white">{activity.title}</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">{activity.description}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{activity.timestamp}</p>
-                </div>
-              </div>
-            ))}
+            {recentActivity.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">No recent activity yet.</p>
+            ) : (
+              <>
+                <div className="absolute left-4 top-2 bottom-2 w-px bg-gray-200 dark:bg-white/10" />
+                {recentActivity.map((activity, idx) => (
+                  <div key={activity.id} className="flex items-start gap-4">
+                    <div className={`h-10 w-10 rounded-full border border-gray-200 dark:border-white/10 flex items-center justify-center ${
+                      idx === 0 ? 'bg-emerald-500/15 text-emerald-400' :
+                      idx === 1 ? 'bg-sky-500/15 text-sky-400' :
+                      'bg-violet-500/15 text-violet-400'
+                    }`}>
+                      <span className="text-sm font-semibold">{activity.title.charAt(0)}</span>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">{activity.title}</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">{activity.description}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{activity.timestamp}</p>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         </div>
 
@@ -502,18 +884,22 @@ const DirectorDashboard: React.FC = () => {
         <div className={`${cardBase} p-6`}>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Upcoming Deadlines</h3>
           <div className="space-y-4">
-            {upcomingDeadlines.map((deadline, index) => (
-              <div key={index} className="flex items-center justify-between rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-black/50 p-4">
-                <div>
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">{deadline.task}</p>
-                  <p className="text-xs text-gray-600 dark:text-gray-400">{deadline.project}</p>
+            {upcomingDeadlines.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">No upcoming deadlines.</p>
+            ) : (
+              upcomingDeadlines.map((deadline, index) => (
+                <div key={index} className="flex items-center justify-between rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-black/50 p-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">{deadline.task}</p>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">{deadline.project}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">{deadline.dueDate}</p>
+                    <p className="text-xs font-semibold text-rose-400">DUE</p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">{deadline.dueDate}</p>
-                  <p className="text-xs font-semibold text-rose-400">DUE</p>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>
@@ -553,13 +939,13 @@ const DirectorDashboard: React.FC = () => {
                   </div>
                   <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-4">
                     <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                      {selectedProject.loggedHours}h
+                      {projectLoggedHours}h
                     </div>
                     <div className="text-sm text-gray-600 dark:text-gray-400">Total Logged</div>
                   </div>
                   <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-4">
                     <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                      {Math.round((selectedProject.loggedHours / selectedProject.allocatedHours) * 100)}%
+                      {projectUtilization}%
                     </div>
                     <div className="text-sm text-gray-600 dark:text-gray-400">Utilization</div>
                   </div>
@@ -579,19 +965,22 @@ const DirectorDashboard: React.FC = () => {
                 </h3>
                 <div className="space-y-4">
                   {selectedProject.team.map((memberId) => {
-                    const member = teamMembers.find(m => m.id === memberId)
+                    const member = teamMemberById.get(memberId)
                     if (!member) return null
 
                     // Calculate member statistics
-                    const memberTimeLogs = timeLogs.filter(log => 
-                      log.userId === memberId && log.projectId === selectedProject.id
+                    const memberTimeLogs = projectTimeLogs.filter(log =>
+                      log.userId === memberId
                     )
                     const totalLoggedHours = memberTimeLogs.reduce((sum, log) => sum + log.hours, 0)
-                    
-                    // Mock data for documents and comments (in real app, this would come from actual data)
-                    const documentsShared = Math.floor(Math.random() * 5) + 1
-                    const documentsReviewed = Math.floor(Math.random() * 3) + 1
-                    const commentsAdded = Math.floor(Math.random() * 10) + 1
+                    const documentsShared = projectDocuments.filter(doc => doc.createdById === memberId).length
+                    const documentsReviewed = projectDocuments.filter(doc =>
+                      doc.reviewerId === memberId && doc.status === 'approved'
+                    ).length
+                    const commentsAdded = flattenedComments.filter(comment => comment.author?.id === memberId).length
+                    const contributionPercent = totalProjectLogged > 0
+                      ? Math.round((totalLoggedHours / totalProjectLogged) * 100)
+                      : 0
 
                     return (
                       <div key={memberId} className="border border-gray-200 dark:border-white/10 rounded-lg p-4">
@@ -679,7 +1068,7 @@ const DirectorDashboard: React.FC = () => {
                               </svg>
                               <div>
                                 <div className="text-lg font-semibold text-gray-900 dark:text-white">
-                                  {Math.round((totalLoggedHours / selectedProject.allocatedHours) * 100)}%
+                                  {contributionPercent}%
                                 </div>
                                 <div className="text-xs text-gray-600 dark:text-gray-400">Project Contribution</div>
                               </div>
