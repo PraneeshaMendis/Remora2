@@ -10,8 +10,17 @@ export function renderInvoiceEmailHtml(i: any): string {
   const issueDate = i?.issueDate ? new Date(i.issueDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : ''
   const dueDate = i?.dueDate ? new Date(i.dueDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : ''
   const currency = String(i?.currency || 'USD')
-  const totalNum = Number(i?.total || 0)
-  const totalFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(totalNum)
+  const subtotalNum = Number(i?.subtotal || 0)
+  const taxNum = Number(i?.taxAmount || 0)
+  const vatNum = Number(i?.vatAmount || 0)
+  const totalNum = Number(i?.total || (subtotalNum + taxNum + vatNum))
+  const taxRate = subtotalNum > 0 ? (taxNum / subtotalNum) * 100 : 0
+  const vatRate = subtotalNum > 0 ? (vatNum / subtotalNum) * 100 : 0
+  const formatter = new Intl.NumberFormat('en-US', { style: 'currency', currency })
+  const subtotalFmt = formatter.format(subtotalNum)
+  const taxFmt = formatter.format(taxNum)
+  const vatFmt = formatter.format(vatNum)
+  const totalFmt = formatter.format(totalNum)
   const desc = String(i?.description || 'Project work')
   return `<!doctype html><html><body style="margin:0;background:#0b1220;font-family:Arial,Helvetica,sans-serif;color:#e5e7eb;">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:16px;background:#0b1220;">
@@ -43,7 +52,15 @@ export function renderInvoiceEmailHtml(i: any): string {
                 </tr>
                 <tr>
                   <td style="padding:10px 12px;border-top:1px solid #374151;border-right:1px solid #374151;">${desc}</td>
-                  <td align="right" style="padding:10px 12px;border-top:1px solid #374151;">${totalFmt}</td>
+                  <td align="right" style="padding:10px 12px;border-top:1px solid #374151;">${subtotalFmt}</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 12px;border-top:1px solid #374151;border-right:1px solid #374151;">Tax (${taxRate.toFixed(2)}%)</td>
+                  <td align="right" style="padding:10px 12px;border-top:1px solid #374151;">${taxFmt}</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 12px;border-top:1px solid #374151;border-right:1px solid #374151;">VAT (${vatRate.toFixed(2)}%)</td>
+                  <td align="right" style="padding:10px 12px;border-top:1px solid #374151;">${vatFmt}</td>
                 </tr>
                 <tr>
                   <td style="padding:10px 12px;border-top:1px solid #374151;background:#0b1220;font-weight:700;">Total</td>

@@ -56,6 +56,7 @@ function mapInvoice(i: any) {
     currency: i.currency,
     subtotal: i.subtotal,
     taxAmount: i.taxAmount,
+    vatAmount: i.vatAmount,
     total: i.total,
     collected: i.collected,
     outstanding: i.outstanding,
@@ -93,6 +94,7 @@ const createSchema = z.object({
   currency: z.string().default('USD'),
   subtotal: z.number().nonnegative().default(0),
   taxAmount: z.number().nonnegative().default(0),
+  vatAmount: z.number().nonnegative().default(0),
   total: z.number().nonnegative().default(0),
   notes: z.string().optional().default(''),
 })
@@ -129,6 +131,7 @@ router.post('/', authRequired, async (req: Request, res: Response) => {
         currency: data.currency,
         subtotal: data.subtotal,
         taxAmount: data.taxAmount,
+        vatAmount: data.vatAmount,
         total: data.total,
         collected: 0,
         outstanding: data.total,

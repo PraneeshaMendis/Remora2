@@ -169,6 +169,7 @@ router.get('/:id/suggestions', async (req: Request, res: Response) => {
       currency: x.invoice.currency,
       subtotal: x.invoice.subtotal,
       taxAmount: x.invoice.taxAmount,
+      vatAmount: x.invoice.vatAmount,
       total: x.invoice.total,
       collected: x.invoice.collected,
       outstanding: x.invoice.outstanding,

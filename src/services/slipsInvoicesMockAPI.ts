@@ -79,6 +79,7 @@ class SlipsInvoicesMockAPI {
         currency: 'USD',
         subtotal: 5000,
         taxAmount: 500,
+        vatAmount: 0,
         total: 5500,
         collected: 5500,
         outstanding: 0,
@@ -100,6 +101,7 @@ class SlipsInvoicesMockAPI {
         currency: 'USD',
         subtotal: 8000,
         taxAmount: 800,
+        vatAmount: 0,
         total: 8800,
         collected: 4400,
         outstanding: 4400,
@@ -121,6 +123,7 @@ class SlipsInvoicesMockAPI {
         currency: 'USD',
         subtotal: 3000,
         taxAmount: 300,
+        vatAmount: 0,
         total: 3300,
         collected: 0,
         outstanding: 3300,
@@ -142,6 +145,7 @@ class SlipsInvoicesMockAPI {
         currency: 'USD',
         subtotal: 12000,
         taxAmount: 1200,
+        vatAmount: 0,
         total: 13200,
         collected: 0,
         outstanding: 13200,
@@ -163,6 +167,7 @@ class SlipsInvoicesMockAPI {
         currency: 'USD',
         subtotal: 4500,
         taxAmount: 450,
+        vatAmount: 0,
         total: 4950,
         collected: 0,
         outstanding: 4950,
@@ -184,6 +189,7 @@ class SlipsInvoicesMockAPI {
         currency: 'USD',
         subtotal: 2500,
         taxAmount: 250,
+        vatAmount: 0,
         total: 2750,
         collected: 2750,
         outstanding: 0,
@@ -205,6 +211,7 @@ class SlipsInvoicesMockAPI {
         currency: 'USD',
         subtotal: 6000,
         taxAmount: 600,
+        vatAmount: 0,
         total: 6600,
         collected: 0,
         outstanding: 6600,
@@ -226,6 +233,7 @@ class SlipsInvoicesMockAPI {
         currency: 'USD',
         subtotal: 3500,
         taxAmount: 350,
+        vatAmount: 0,
         total: 3850,
         collected: 0,
         outstanding: 3850,
@@ -577,7 +585,7 @@ class SlipsInvoicesMockAPI {
       }
       const subject = `Invoice ${inv.invoiceNo} – ${inv.projectName} / ${inv.phaseName}`
       const text = `Dear Client,\n\nPlease find your invoice ${inv.invoiceNo} for the phase "${inv.phaseName}" under project "${inv.projectName}".\nTotal due: ${inv.currency} ${inv.total}.\n\nPaymentID: ${inv.invoiceNo}\n\nPlease reply to this email with the payment slip once paid.\n\nThank you.\n`
-      const r = await fetch(`${API_BASE}/api/gmail/send`, { method: 'POST', headers: { 'content-type': 'application/json', ...this.authHeaders() }, body: JSON.stringify({ to, subject, text, template: 'invoice', invoice: { invoiceNo: inv.invoiceNo, projectName: inv.projectName, phaseName: inv.phaseName, clientName: inv.clientName || '', clientCompanyName: inv.clientCompanyName || '', clientAddress: inv.clientAddress || '', clientPhone: inv.clientPhone || '', clientDesignation: inv.clientDesignation || '', issueDate: inv.issueDate, dueDate: inv.dueDate, currency: inv.currency, total: inv.total, description: 'Project work' } }) })
+      const r = await fetch(`${API_BASE}/api/gmail/send`, { method: 'POST', headers: { 'content-type': 'application/json', ...this.authHeaders() }, body: JSON.stringify({ to, subject, text, template: 'invoice', invoice: { invoiceNo: inv.invoiceNo, projectName: inv.projectName, phaseName: inv.phaseName, clientName: inv.clientName || '', clientCompanyName: inv.clientCompanyName || '', clientAddress: inv.clientAddress || '', clientPhone: inv.clientPhone || '', clientDesignation: inv.clientDesignation || '', issueDate: inv.issueDate, dueDate: inv.dueDate, currency: inv.currency, subtotal: inv.subtotal, taxAmount: inv.taxAmount, vatAmount: inv.vatAmount || 0, total: inv.total, description: 'Project work' } }) })
       if (!r.ok) {
         let msg = ''
         try { msg = await r.text() } catch {}
@@ -1235,6 +1243,7 @@ class SlipsInvoicesMockAPI {
         currency: invoice.currency,
         subtotal: invoice.subtotal,
         taxAmount: invoice.taxAmount,
+        vatAmount: invoice.vatAmount,
         total: invoice.total,
         notes: invoice.notes || '',
       }) })
@@ -1268,6 +1277,7 @@ class SlipsInvoicesMockAPI {
         currency: updatedInvoice.currency,
         subtotal: updatedInvoice.subtotal,
         taxAmount: updatedInvoice.taxAmount,
+        vatAmount: updatedInvoice.vatAmount,
         total: updatedInvoice.total,
         notes: updatedInvoice.notes || '',
       }) })

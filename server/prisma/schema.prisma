@@ -551,6 +551,7 @@ model Invoice {
   currency     String
   subtotal     Float         @default(0)
   taxAmount    Float         @default(0)
+  vatAmount    Float         @default(0)
   total        Float         @default(0)
   collected    Float         @default(0)
   outstanding  Float         @default(0)

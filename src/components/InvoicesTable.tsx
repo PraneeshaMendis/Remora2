@@ -848,6 +848,10 @@ const InvoiceDrawer: React.FC<{
     }
   }
 
+  const taxRate = invoice.subtotal > 0 ? (invoice.taxAmount / invoice.subtotal) * 100 : 0
+  const vatAmount = invoice.vatAmount || 0
+  const vatRate = invoice.subtotal > 0 ? (vatAmount / invoice.subtotal) * 100 : 0
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
       <div className="bg-white dark:bg-black/60 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -966,7 +970,7 @@ const InvoiceDrawer: React.FC<{
               Financial Summary
             </h3>
             <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <div className="text-center">
                   <div className="text-sm text-gray-600 dark:text-gray-400">Subtotal</div>
                   <div className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -974,9 +978,15 @@ const InvoiceDrawer: React.FC<{
                   </div>
                 </div>
                 <div className="text-center">
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Tax</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Tax ({taxRate.toFixed(2)}%)</div>
                   <div className="text-lg font-semibold text-gray-900 dark:text-white">
                     {formatCurrency(invoice.taxAmount, invoice.currency)}
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">VAT ({vatRate.toFixed(2)}%)</div>
+                  <div className="text-lg font-semibold text-gray-900 dark:text-white">
+                    {formatCurrency(vatAmount, invoice.currency)}
                   </div>
                 </div>
                 <div className="text-center">
@@ -1211,6 +1221,8 @@ const CreateInvoiceModal: React.FC<{
     subtotal: 0,
     taxRate: 10,
     taxAmount: 0,
+    vatRate: 0,
+    vatAmount: 0,
     total: 0,
     notes: ''
   })
@@ -1309,13 +1321,16 @@ const CreateInvoiceModal: React.FC<{
       const updated = { ...prev, [field]: value }
       
       // Auto-calculate tax and total
-      if (field === 'subtotal' || field === 'taxRate') {
+      if (field === 'subtotal' || field === 'taxRate' || field === 'vatRate') {
         const subtotal = field === 'subtotal' ? parseFloat(value) || 0 : updated.subtotal
         const taxRate = field === 'taxRate' ? parseFloat(value) || 0 : updated.taxRate
+        const vatRate = field === 'vatRate' ? parseFloat(value) || 0 : updated.vatRate
         const taxAmount = (subtotal * taxRate) / 100
-        const total = subtotal + taxAmount
-        
+        const vatAmount = (subtotal * vatRate) / 100
+        const total = subtotal + taxAmount + vatAmount
+
         updated.taxAmount = taxAmount
+        updated.vatAmount = vatAmount
         updated.total = total
       }
       
@@ -1364,6 +1379,7 @@ const CreateInvoiceModal: React.FC<{
         currency: formData.currency,
         subtotal: formData.subtotal,
         taxAmount: formData.taxAmount,
+        vatAmount: formData.vatAmount,
         total: formData.total,
         collected: 0,
         outstanding: formData.total,
@@ -1599,7 +1615,7 @@ const CreateInvoiceModal: React.FC<{
           </div>
 
           {/* Currency and Amounts */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Currency
@@ -1634,7 +1650,7 @@ const CreateInvoiceModal: React.FC<{
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Tax Rate (%)
+                Tax (%)
               </label>
               <input
                 type="number"
@@ -1646,11 +1662,25 @@ const CreateInvoiceModal: React.FC<{
                 className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                VAT (%)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="100"
+                value={formData.vatRate}
+                onChange={(e) => handleInputChange('vatRate', parseFloat(e.target.value) || 0)}
+                className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
+              />
+            </div>
           </div>
 
           {/* Calculated Amounts */}
           <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
                 <div className="text-sm text-gray-600 dark:text-gray-400">Subtotal</div>
                 <div className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -1658,9 +1688,19 @@ const CreateInvoiceModal: React.FC<{
                 </div>
               </div>
               <div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">Tax Amount</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  Tax ({formData.taxRate.toFixed(2)}%)
+                </div>
                 <div className="text-lg font-semibold text-gray-900 dark:text-white">
                   {formData.currency} {formData.taxAmount.toFixed(2)}
+                </div>
+              </div>
+              <div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  VAT ({formData.vatRate.toFixed(2)}%)
+                </div>
+                <div className="text-lg font-semibold text-gray-900 dark:text-white">
+                  {formData.currency} {formData.vatAmount.toFixed(2)}
                 </div>
               </div>
               <div>
@@ -1731,6 +1771,8 @@ const EditInvoiceModal: React.FC<{
     subtotal: invoice.subtotal,
     taxRate: invoice.taxAmount > 0 ? (invoice.taxAmount / invoice.subtotal) * 100 : 10,
     taxAmount: invoice.taxAmount,
+    vatRate: invoice.vatAmount && invoice.subtotal > 0 ? (invoice.vatAmount / invoice.subtotal) * 100 : 0,
+    vatAmount: invoice.vatAmount || 0,
     total: invoice.total,
     notes: invoice.notes || ''
   })
@@ -1760,13 +1802,16 @@ const EditInvoiceModal: React.FC<{
       const updated = { ...prev, [field]: value }
       
       // Auto-calculate tax and total
-      if (field === 'subtotal' || field === 'taxRate') {
+      if (field === 'subtotal' || field === 'taxRate' || field === 'vatRate') {
         const subtotal = field === 'subtotal' ? parseFloat(value) || 0 : updated.subtotal
         const taxRate = field === 'taxRate' ? parseFloat(value) || 0 : updated.taxRate
+        const vatRate = field === 'vatRate' ? parseFloat(value) || 0 : updated.vatRate
         const taxAmount = (subtotal * taxRate) / 100
-        const total = subtotal + taxAmount
-        
+        const vatAmount = (subtotal * vatRate) / 100
+        const total = subtotal + taxAmount + vatAmount
+
         updated.taxAmount = taxAmount
+        updated.vatAmount = vatAmount
         updated.total = total
       }
       
@@ -1802,6 +1847,7 @@ const EditInvoiceModal: React.FC<{
         currency: formData.currency,
         subtotal: formData.subtotal,
         taxAmount: formData.taxAmount,
+        vatAmount: formData.vatAmount,
         total: formData.total,
         outstanding: formData.total - invoice.collected, // Recalculate outstanding
         notes: formData.notes,
@@ -1935,7 +1981,7 @@ const EditInvoiceModal: React.FC<{
           </div>
 
           {/* Currency and Amounts */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Currency
@@ -1970,7 +2016,7 @@ const EditInvoiceModal: React.FC<{
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Tax Rate (%)
+                Tax (%)
               </label>
               <input
                 type="number"
@@ -1982,11 +2028,25 @@ const EditInvoiceModal: React.FC<{
                 className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                VAT (%)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="100"
+                value={formData.vatRate}
+                onChange={(e) => handleInputChange('vatRate', parseFloat(e.target.value) || 0)}
+                className="w-full border border-gray-300 dark:border-white/10 rounded-md px-3 py-2 bg-white dark:bg-black/50 text-gray-900 dark:text-white"
+              />
+            </div>
           </div>
 
           {/* Calculated Amounts */}
           <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
                 <div className="text-sm text-gray-600 dark:text-gray-400">Subtotal</div>
                 <div className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -1994,9 +2054,19 @@ const EditInvoiceModal: React.FC<{
                 </div>
               </div>
               <div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">Tax Amount</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  Tax ({formData.taxRate.toFixed(2)}%)
+                </div>
                 <div className="text-lg font-semibold text-gray-900 dark:text-white">
                   {formData.currency} {formData.taxAmount.toFixed(2)}
+                </div>
+              </div>
+              <div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  VAT ({formData.vatRate.toFixed(2)}%)
+                </div>
+                <div className="text-lg font-semibold text-gray-900 dark:text-white">
+                  {formData.currency} {formData.vatAmount.toFixed(2)}
                 </div>
               </div>
               <div>

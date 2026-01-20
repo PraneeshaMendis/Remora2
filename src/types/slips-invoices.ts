@@ -21,6 +21,7 @@ export interface Invoice {
   currency: string
   subtotal: number
   taxAmount: number
+  vatAmount: number
   total: number
   collected: number
   outstanding: number
