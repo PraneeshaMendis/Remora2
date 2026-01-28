@@ -84,6 +84,7 @@ interface Task {
   description: string
   status: 'not-started' | 'in-progress' | 'completed' | 'on-hold'
   priority: 'low' | 'medium' | 'high' | 'critical'
+  startDate?: string
   dueDate: string
   assignee?: ProjectMember
   assignees?: ProjectMember[]
@@ -183,6 +184,7 @@ const ProjectDetail: React.FC = () => {
         description: t.description || '',
         status: (t.status || 'NOT_STARTED').toString().toLowerCase().replace('_', '-') as any,
         priority: 'medium',
+        startDate: t.startDate ? new Date(t.startDate).toISOString().split('T')[0] : '',
         dueDate: t.dueDate || '',
         assignee: { id: '', name: '', email: '', role: '', department: '' },
         phaseId: p.id,
@@ -1043,7 +1045,9 @@ const ProjectDetail: React.FC = () => {
               tasks: phase.tasks.map(task => ({
                 id: task.id,
                 name: task.title,
-                start: task.dueDate ? new Date(new Date(task.dueDate).getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+                start: task.startDate || (task.dueDate
+                  ? new Date(new Date(task.dueDate).getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+                  : new Date().toISOString().split('T')[0]),
                 end: task.dueDate || new Date().toISOString().split('T')[0],
                 progress: task.status === 'completed' ? 100 : task.status === 'in-progress' ? 50 : 0,
                 phaseId: phase.id,

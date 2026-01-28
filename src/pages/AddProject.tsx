@@ -124,9 +124,10 @@ const AddProject: React.FC = () => {
   const roles = [...new Set(teamMembers.map(member => member.role).filter(Boolean))]
 
   const clients: Client[] = [
-    { id: '1', name: 'John Doe', email: 'john@client1.com', company: 'Tech Corp', phone: '+1-555-0123' },
-    { id: '2', name: 'Jane Smith', email: 'jane@client2.com', company: 'Finance Inc', phone: '+1-555-0456' },
-    { id: '3', name: 'Mike Johnson', email: 'mike@client3.com', company: 'Healthcare Ltd', phone: '+1-555-0789' }
+    
+    { id: '4', name: 'Akila Dineth', email: 'akila@client4.com', company: 'Aurelia Labs', phone: '+1-555-0114' },
+    { id: '5', name: 'Tharusha Sampath', email: 'tharusha@client5.com', company: 'Sampath Holdings', phone: '+1-555-0115' },
+    { id: '6', name: 'Sahan Madurangaa', email: 'sahan@client6.com', company: 'Madurangaa Group', phone: '+1-555-0116' }
   ]
 
   const categories = {

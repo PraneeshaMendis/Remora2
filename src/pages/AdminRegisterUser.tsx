@@ -74,7 +74,7 @@ const AdminRegisterUser: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full max-w-3xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Admin: Users</h1>
@@ -83,7 +83,7 @@ const AdminRegisterUser: React.FC = () => {
       </div>
 
       {/* Register (set password now) */}
-      <form onSubmit={submit} className="card space-y-4 max-w-xl">
+      <form onSubmit={submit} className="card space-y-4 w-full">
         {msg && (
           <div className="text-sm p-2 rounded bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200">{msg}</div>
         )}
@@ -127,7 +127,7 @@ const AdminRegisterUser: React.FC = () => {
       </form>
 
       {/* Invite user (email link to accept invite) */}
-      <form onSubmit={submitInvite} className="card space-y-4 max-w-xl">
+      <form onSubmit={submitInvite} className="card space-y-4 w-full">
         <div>
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Invite User</h2>
           <p className="text-sm text-gray-600 dark:text-gray-400">Sends an email with an accept‑invite link</p>

@@ -6,6 +6,7 @@ interface Task {
   id: string
   title: string
   description: string
+  startDate?: string
   dueDate: string
   status: 'not-started' | 'in-progress' | 'completed' | 'on-hold'
   priority: 'low' | 'medium' | 'high' | 'critical'
@@ -47,6 +48,7 @@ const EditTaskModal: React.FC<EditTaskModalProps> = ({
     id: '',
     title: '',
     description: '',
+    startDate: '',
     dueDate: '',
     status: 'not-started',
     priority: 'medium',
@@ -64,9 +66,12 @@ const EditTaskModal: React.FC<EditTaskModalProps> = ({
 
   useEffect(() => {
     if (task) {
-      // Ensure dueDate is in YYYY-MM-DD format for <input type="date">
+      // Ensure dates are in YYYY-MM-DD format for <input type="date">
       const normalized = {
         ...task,
+        startDate: task.startDate && task.startDate.includes('T')
+          ? task.startDate.split('T')[0]
+          : (task.startDate || ''),
         dueDate: task.dueDate && task.dueDate.includes('T')
           ? task.dueDate.split('T')[0]
           : (task.dueDate || ''),
@@ -204,20 +209,35 @@ const EditTaskModal: React.FC<EditTaskModalProps> = ({
             </div>
           </div>
 
-          {/* Due Date */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              <Calendar className="h-4 w-4 inline mr-2" />
-              Due Date *
-            </label>
-            <input
-              type="date"
-              name="dueDate"
-              value={formData.dueDate}
-              onChange={handleInputChange}
-              required
-              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-            />
+          {/* Start/Due Dates */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <Calendar className="h-4 w-4 inline mr-2" />
+                Start Date
+              </label>
+              <input
+                type="date"
+                name="startDate"
+                value={formData.startDate || ''}
+                onChange={handleInputChange}
+                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <Calendar className="h-4 w-4 inline mr-2" />
+                Due Date *
+              </label>
+              <input
+                type="date"
+                name="dueDate"
+                value={formData.dueDate}
+                onChange={handleInputChange}
+                required
+                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+              />
+            </div>
           </div>
 
 

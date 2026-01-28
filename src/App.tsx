@@ -8,7 +8,6 @@ import ForgotPassword from './pages/ForgotPassword.tsx'
 import ResetPassword from './pages/ResetPassword.tsx'
 import AuthenticatedLayout from './components/AuthenticatedLayout.tsx'
 import DirectorDashboard from './pages/DirectorDashboard.tsx'
-import ManagerDashboard from './pages/ManagerDashboard.tsx'
 import ProjectsList from './pages/ProjectsList.tsx'
 import AddProject from './pages/AddProject.tsx'
 import ProjectDetail from './pages/ProjectDetail.tsx'
@@ -42,7 +41,6 @@ function App() {
             <Route path="/" element={<AuthenticatedLayout />}>
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard" element={<DirectorDashboard />} />
-              <Route path="manager-dashboard" element={<ManagerDashboard />} />
               <Route path="projects" element={<ProjectsList />} />
               <Route path="projects/add" element={<AddProject />} />
               <Route path="projects/:id" element={<ProjectDetail />} />

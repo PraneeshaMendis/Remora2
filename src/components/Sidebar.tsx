@@ -35,13 +35,6 @@ const Sidebar: React.FC = () => {
       description: 'Executive overview'
     },
     { 
-      name: 'Manager Dashboard', 
-      href: '/manager-dashboard', 
-      icon: Users, 
-      roles: ['manager', 'director'],
-      description: 'Team management'
-    },
-    { 
       name: 'Projects', 
       href: '/projects', 
       icon: FolderOpen, 
