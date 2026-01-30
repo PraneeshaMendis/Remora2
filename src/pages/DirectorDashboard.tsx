@@ -191,14 +191,9 @@ const DirectorDashboard: React.FC = () => {
           .filter(Boolean)
           .map((detail: any) => {
             const memberships = Array.isArray(detail?.memberships) ? detail.memberships : []
-            const owner = detail?.owner || null
             const teamIds = memberships
               .map((m: any) => String(m?.user?.id || m?.userId || ''))
               .filter(Boolean)
-
-            if (owner?.id && !teamIds.includes(String(owner.id))) {
-              teamIds.unshift(String(owner.id))
-            }
 
             memberships.forEach((member: any) => {
               const user = member?.user
@@ -210,13 +205,6 @@ const DirectorDashboard: React.FC = () => {
               })
             })
 
-            if (owner?.id) {
-              memberMap.set(String(owner.id), {
-                id: String(owner.id),
-                name: String(owner.name || 'Unknown'),
-                email: String(owner.email || ''),
-              })
-            }
 
             const phases = Array.isArray(detail?.phases) ? detail.phases : []
             const projectTasks: Task[] = phases.flatMap((phase: any) => {
@@ -261,7 +249,6 @@ const DirectorDashboard: React.FC = () => {
               id: String(detail?.id || ''),
               name: String(detail?.title || ''),
               description: String(detail?.description || ''),
-              owner: String(owner?.name || memberships[0]?.user?.name || 'Unassigned'),
               status: mapProjectStatus(detail?.status),
               progress: Number(detail?.progress ?? 0),
               startDate,
@@ -655,12 +642,12 @@ const DirectorDashboard: React.FC = () => {
     )
   }
 
-  const cardBase = 'rounded-3xl border border-gray-200 dark:border-white/10 bg-white dark:bg-black/60 dark:bg-gradient-to-b dark:from-white/[0.06] dark:to-white/[0.02] shadow-[0_20px_60px_rgba(0,0,0,0.45)]'
+  const cardBase = 'rounded-3xl border border-slate-200/80 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.12)] dark:border-white/10 dark:bg-black/60 dark:bg-gradient-to-b dark:from-white/[0.06] dark:to-white/[0.02] dark:shadow-[0_20px_60px_rgba(0,0,0,0.45)]'
   const kpiIconStyles = [
-    { icon: 'layers', tone: 'text-sky-400', ring: 'bg-sky-500/15 border-sky-500/30' },
-    { icon: 'refresh', tone: 'text-orange-400', ring: 'bg-orange-500/15 border-orange-500/30' },
-    { icon: 'alert', tone: 'text-rose-400', ring: 'bg-rose-500/15 border-rose-500/30' },
-    { icon: 'pulse', tone: 'text-emerald-400', ring: 'bg-emerald-500/15 border-emerald-500/30' },
+    { icon: 'layers', tone: 'text-sky-600 dark:text-sky-400', ring: 'bg-sky-100 border-sky-200 dark:bg-sky-500/15 dark:border-sky-500/30' },
+    { icon: 'refresh', tone: 'text-orange-600 dark:text-orange-400', ring: 'bg-orange-100 border-orange-200 dark:bg-orange-500/15 dark:border-orange-500/30' },
+    { icon: 'alert', tone: 'text-rose-600 dark:text-rose-400', ring: 'bg-rose-100 border-rose-200 dark:bg-rose-500/15 dark:border-rose-500/30' },
+    { icon: 'pulse', tone: 'text-emerald-600 dark:text-emerald-400', ring: 'bg-emerald-100 border-emerald-200 dark:bg-emerald-500/15 dark:border-emerald-500/30' },
   ]
 
   return (
@@ -668,7 +655,7 @@ const DirectorDashboard: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Director Dashboard</h1>
-        <p className="text-gray-600 dark:text-gray-400">
+        <p className="text-slate-600 dark:text-gray-400">
           Executive overview of project performance and team productivity
         </p>
       </div>
@@ -683,8 +670,8 @@ const DirectorDashboard: React.FC = () => {
         {kpis.map((kpi, index) => (
           <div key={index} className={`${cardBase} p-6`}>
             <div className="flex items-start justify-between">
-              <div className={`h-12 w-12 rounded-2xl border ${kpiIconStyles[index]?.ring || 'border-gray-200 dark:border-white/10'} flex items-center justify-center`}>
-                <svg className={`h-6 w-6 ${kpiIconStyles[index]?.tone || 'text-white'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+              <div className={`h-12 w-12 rounded-2xl border ${kpiIconStyles[index]?.ring || 'border-slate-200/80 dark:border-white/10'} flex items-center justify-center`}>
+                <svg className={`h-6 w-6 ${kpiIconStyles[index]?.tone || 'text-slate-600 dark:text-white'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
                   {kpiIconStyles[index]?.icon === 'layers' && (
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l8 4-8 4-8-4 8-4Zm0 8l8 4-8 4-8-4 8-4Z" />
                   )}
@@ -701,9 +688,9 @@ const DirectorDashboard: React.FC = () => {
               </div>
               {kpi.trend && (
                 <div className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                  kpi.trend === 'up' ? 'bg-emerald-500/15 text-emerald-400' :
-                  kpi.trend === 'down' ? 'bg-rose-500/15 text-rose-400' :
-                  'bg-white/10 text-gray-300'
+                  kpi.trend === 'up' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400' :
+                  kpi.trend === 'down' ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400' :
+                  'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-gray-300'
                 }`}>
                   {kpi.trend === 'up' ? '+' : ''}{kpi.change ? Math.abs(kpi.change) : 0}%
                 </div>
@@ -731,14 +718,14 @@ const DirectorDashboard: React.FC = () => {
             >
               <div className="absolute inset-4 rounded-full bg-white dark:bg-black/80 border border-gray-200 dark:border-white/10 flex flex-col items-center justify-center">
                 <div className="text-2xl font-semibold text-gray-900 dark:text-white">{statusBreakdown.total}</div>
-                <div className="text-xs uppercase tracking-widest text-gray-400">Total</div>
+                <div className="text-xs uppercase tracking-widest text-slate-500 dark:text-gray-400">Total</div>
               </div>
             </div>
             <div className="space-y-3 text-sm">
               {statusBreakdown.segments.map(segment => (
                 <div key={segment.label} className="flex items-center gap-3">
                   <span className={`h-3 w-3 rounded-full ${segment.color}`} />
-                  <span className="text-gray-400">{segment.label}</span>
+                  <span className="text-slate-600 dark:text-gray-400">{segment.label}</span>
                   <span className="ml-auto text-gray-900 dark:text-white font-semibold">{segment.percent}%</span>
                 </div>
               ))}
@@ -770,7 +757,7 @@ const DirectorDashboard: React.FC = () => {
             return (
               <div
                 key={project.id}
-                className="rounded-3xl border border-gray-200 dark:border-white/10 bg-white dark:bg-black/50 p-5 hover:border-gray-300 dark:hover:border-white/20 hover:shadow-[0_12px_40px_rgba(0,0,0,0.35)] transition duration-200 cursor-pointer"
+                className="rounded-3xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-black/50 p-5 hover:border-slate-300 dark:hover:border-white/20 hover:shadow-[0_18px_45px_rgba(15,23,42,0.16)] dark:hover:shadow-[0_12px_40px_rgba(0,0,0,0.35)] transition duration-200 cursor-pointer"
                 onClick={() => {
                   setSelectedProject(project)
                   setIsProjectModalOpen(true)
@@ -782,14 +769,13 @@ const DirectorDashboard: React.FC = () => {
                     {project.priority.toUpperCase()}
                   </span>
                 </div>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Owner: {project.owner}</p>
 
                 <div className="mb-3">
                   <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="text-gray-600 dark:text-gray-400">Progress</span>
+                    <span className="text-slate-600 dark:text-gray-400">Progress</span>
                     <span className="font-medium text-gray-900 dark:text-white">{project.progress}%</span>
                   </div>
-                  <div className="w-full bg-gray-200 dark:bg-black/40 rounded-full h-2">
+                  <div className="w-full bg-slate-200 dark:bg-black/40 rounded-full h-2">
                     <div
                       className="bg-blue-500 h-2 rounded-full transition-all duration-300"
                       style={{ width: `${project.progress}%` }}
@@ -801,12 +787,12 @@ const DirectorDashboard: React.FC = () => {
                 {project.allocatedHours > 0 && (
                   <div className="mb-4">
                     <div className="flex items-center justify-between text-sm mb-1">
-                      <span className="text-gray-600 dark:text-gray-400">Time Allocation</span>
+                      <span className="text-slate-600 dark:text-gray-400">Time Allocation</span>
                       <span className="font-medium text-gray-900 dark:text-white">
                         {allocationPercent}%
                       </span>
                     </div>
-                    <div className="w-full bg-gray-200 dark:bg-black/40 rounded-full h-2">
+                    <div className="w-full bg-slate-200 dark:bg-black/40 rounded-full h-2">
                       <div
                         className={`h-2 rounded-full transition-all duration-300 ${
                           allocationRatio >= 1 ? 'bg-red-500' :
@@ -815,7 +801,7 @@ const DirectorDashboard: React.FC = () => {
                         style={{ width: `${Math.min(100, allocationRatio * 100)}%` }}
                       ></div>
                     </div>
-                    <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    <div className="flex items-center justify-between text-xs text-slate-500 dark:text-gray-400 mt-1">
                       <span>Logged: {project.loggedHours}h</span>
                       <span>Allocated: {project.allocatedHours}h</span>
                     </div>
@@ -830,13 +816,13 @@ const DirectorDashboard: React.FC = () => {
                     {project.team.slice(0, 3).map((memberId, index) => {
                       const member = teamMemberById.get(memberId)
                       return (
-                        <div key={index} className="h-7 w-7 rounded-full bg-gray-200 dark:bg-white/10 flex items-center justify-center text-xs text-gray-700 dark:text-white border border-gray-200 dark:border-white/10">
+                        <div key={index} className="h-7 w-7 rounded-full bg-slate-200 dark:bg-white/10 flex items-center justify-center text-xs text-slate-700 dark:text-white border border-slate-200/80 dark:border-white/10">
                           {member ? member.name.charAt(0) : memberId.charAt(0)}
                         </div>
                       )
                     })}
                     {project.team.length > 3 && (
-                      <div className="h-7 w-7 rounded-full bg-gray-200 dark:bg-white/10 flex items-center justify-center text-xs text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-white/10">
+                      <div className="h-7 w-7 rounded-full bg-slate-200 dark:bg-white/10 flex items-center justify-center text-xs text-slate-600 dark:text-gray-300 border border-slate-200/80 dark:border-white/10">
                         +{project.team.length - 3}
                       </div>
                     )}
@@ -858,20 +844,20 @@ const DirectorDashboard: React.FC = () => {
               <p className="text-sm text-gray-500 dark:text-gray-400">No recent activity yet.</p>
             ) : (
               <>
-                <div className="absolute left-4 top-2 bottom-2 w-px bg-gray-200 dark:bg-white/10" />
+                <div className="absolute left-4 top-2 bottom-2 w-px bg-slate-200 dark:bg-white/10" />
                 {recentActivity.map((activity, idx) => (
                   <div key={activity.id} className="flex items-start gap-4">
-                    <div className={`h-10 w-10 rounded-full border border-gray-200 dark:border-white/10 flex items-center justify-center ${
-                      idx === 0 ? 'bg-emerald-500/15 text-emerald-400' :
-                      idx === 1 ? 'bg-sky-500/15 text-sky-400' :
-                      'bg-violet-500/15 text-violet-400'
+                    <div className={`h-10 w-10 rounded-full border border-slate-200/80 dark:border-white/10 flex items-center justify-center ${
+                      idx === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400' :
+                      idx === 1 ? 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400' :
+                      'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-400'
                     }`}>
                       <span className="text-sm font-semibold">{activity.title.charAt(0)}</span>
                     </div>
                     <div className="flex-1">
                       <p className="text-sm font-semibold text-gray-900 dark:text-white">{activity.title}</p>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">{activity.description}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{activity.timestamp}</p>
+                      <p className="text-sm text-slate-600 dark:text-gray-400">{activity.description}</p>
+                      <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">{activity.timestamp}</p>
                     </div>
                   </div>
                 ))}
@@ -888,14 +874,14 @@ const DirectorDashboard: React.FC = () => {
               <p className="text-sm text-gray-500 dark:text-gray-400">No upcoming deadlines.</p>
             ) : (
               upcomingDeadlines.map((deadline, index) => (
-                <div key={index} className="flex items-center justify-between rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-black/50 p-4">
+                <div key={index} className="flex items-center justify-between rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/80 dark:bg-black/50 p-4">
                   <div>
                     <p className="text-sm font-medium text-gray-900 dark:text-white">{deadline.task}</p>
-                    <p className="text-xs text-gray-600 dark:text-gray-400">{deadline.project}</p>
+                    <p className="text-xs text-slate-600 dark:text-gray-400">{deadline.project}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-medium text-gray-900 dark:text-white">{deadline.dueDate}</p>
-                    <p className="text-xs font-semibold text-rose-400">DUE</p>
+                    <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">DUE</p>
                   </div>
                 </div>
               ))

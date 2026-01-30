@@ -46,7 +46,6 @@ model User {
   documentsReviewed Document[]          @relation("DocumentReviewer")
   documentsCreated  Document[]          @relation("DocumentCreator")
   notifications     Notification[]      @relation("UserNotifications")
-  projectsOwned     Project[]           @relation("ProjectOwner")
   historyEvents     HistoryEvent[]      @relation("HistoryCreatedBy")
   calendarAccounts  CalendarAccount[]
   calendarSources   CalendarSource[]
@@ -57,11 +56,9 @@ model User {
   invoicesApproved  Invoice[]           @relation("InvoiceApprovedBy")
   authTokens        AuthToken[]
   approvalRequests  ApprovalRequest[]
-  // Back-relations for audits, impersonation, department leads and approvals
+  // Back-relations for audits, department leads and approvals
   adminAudits       AdminAudit[]         @relation("AdminAuditAdmin")
   targetAudits      AdminAudit[]         @relation("AdminAuditTarget")
-  impersonationsAsAdmin ImpersonationSession[] @relation("ImpersonationAdmin")
-  impersonationsAsUser  ImpersonationSession[] @relation("ImpersonatedUser")
   leads             Department[]         @relation("DepartmentLead")
   decisions         ApprovalRequest[]    @relation("ApprovalDecider")
   createdAt         DateTime            @default(now())
@@ -108,20 +105,6 @@ model AdminAudit {
   @@index([targetUserId, createdAt])
 }
 
-// Secure impersonation session for support/debugging
-model ImpersonationSession {
-  id         String   @id @default(cuid())
-  admin      User     @relation("ImpersonationAdmin", fields: [adminId], references: [id])
-  adminId    String
-  user       User     @relation("ImpersonatedUser", fields: [userId], references: [id])
-  userId     String
-  startedAt  DateTime @default(now())
-  endedAt    DateTime?
-  createdAt  DateTime @default(now())
-
-  @@index([adminId, endedAt])
-  @@index([userId, endedAt])
-}
 
 enum CalendarProvider {
   GOOGLE
@@ -296,8 +279,6 @@ model Project {
   title          String
   description    String
   status         ProjectStatus       @default(PLANNING)
-  ownerId        String?
-  owner          User?               @relation("ProjectOwner", fields: [ownerId], references: [id])
   visibility     Visibility          @default(TEAM)
   allocatedHours Int                 @default(0)
   startDate      DateTime?
@@ -346,6 +327,7 @@ model Task {
   description String
   status      TaskStatus          @default(NOT_STARTED)
   priority    Priority            @default(MEDIUM)
+  startDate   DateTime?
   dueDate     DateTime?
   phase       Phase               @relation(fields: [phaseId], references: [id])
   phaseId     String

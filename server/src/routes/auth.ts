@@ -412,33 +412,6 @@ if (DEV_AUTH) {
     }
   })
 
-  // Impersonate a user (sets a dev cookie that middleware reads)
-  router.post('/dev/impersonate', async (req, res) => {
-    const { userId, email } = req.body || {}
-    let id = String(userId || '')
-    try {
-      if (!id && email) {
-        const u = await prisma.user.findUnique({ where: { email: String(email).toLowerCase() } })
-        if (!u) return res.status(404).json({ error: 'User not found' })
-        id = u.id
-      }
-      if (!id) return res.status(400).json({ error: 'userId or email required' })
-      // Ensure exists
-      const u = await prisma.user.findUnique({ where: { id } })
-      if (!u) return res.status(404).json({ error: 'User not found' })
-      const isProd = (process.env.NODE_ENV || '').toLowerCase() === 'production'
-      res.cookie('xuid', id, { httpOnly: true, sameSite: 'lax', secure: isProd })
-      return res.json({ ok: true, id })
-    } catch (e: any) {
-      return res.status(400).json({ error: e?.message || 'Failed to impersonate' })
-    }
-  })
-
-  // Clear impersonation
-  router.post('/dev/clear-impersonate', async (_req, res) => {
-    res.clearCookie('xuid')
-    res.json({ ok: true })
-  })
 }
 
 export default router

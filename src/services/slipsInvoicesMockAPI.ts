@@ -579,7 +579,9 @@ class SlipsInvoicesMockAPI {
           const pres = await fetch(`${API_BASE}/projects/${inv.projectId}`, { headers: { 'content-type': 'application/json' } })
           if (pres.ok) {
             const p = await pres.json()
-            to = p?.owner?.email || (Array.isArray(p?.memberships) ? (p.memberships.find((m: any) => m?.user?.email)?.user?.email || to) : to)
+            to = Array.isArray(p?.memberships)
+              ? (p.memberships.find((m: any) => m?.user?.email)?.user?.email || to)
+              : to
           }
         } catch {}
       }

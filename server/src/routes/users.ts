@@ -235,13 +235,6 @@ router.delete('/:id', requireSuperAdmin, async (req, res) => {
         await tx.historyEvent.updateMany({ where: { createdById: id }, data: { createdById: adminUser.id } })
         // Comments: reassign author
         await tx.comment.updateMany({ where: { authorId: id }, data: { authorId: adminUser.id } })
-        // Projects: clear owner if this user
-        await tx.project.updateMany({ where: { ownerId: id }, data: { ownerId: null } })
-        // Impersonation sessions involving this user
-        try {
-          const db: any = tx as any
-          await db.impersonationSession.deleteMany({ where: { OR: [{ userId: id }, { adminId: id }] } })
-        } catch {}
         // Finally delete the user (AuthTokens cascade)
         await tx.user.delete({ where: { id } })
       })

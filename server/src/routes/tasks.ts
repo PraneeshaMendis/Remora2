@@ -11,13 +11,14 @@ router.post('/phases/:phaseId/tasks', async (req: Request, res: Response) => {
   const schema = z.object({
     title: z.string(),
     description: z.string().default(''),
-    dueDate: z.string().datetime().optional(),
+    startDate: z.string().optional(),
+    dueDate: z.string().optional(),
     priority: z.enum(['LOW','MEDIUM','HIGH','CRITICAL']).optional(),
   })
   const parsed = schema.safeParse(req.body)
   if (!parsed.success) return res.status(400).json(parsed.error.flatten())
-  const { title, description, dueDate, priority } = parsed.data as any
-  const task = await prisma.task.create({ data: ({ title, description, priority: (priority || 'MEDIUM') as any, dueDate: dueDate ? new Date(dueDate) : null, phaseId } as any) })
+  const { title, description, startDate, dueDate, priority } = parsed.data as any
+  const task = await prisma.task.create({ data: ({ title, description, priority: (priority || 'MEDIUM') as any, startDate: startDate ? new Date(startDate) : null, dueDate: dueDate ? new Date(dueDate) : null, phaseId } as any) })
   res.status(201).json(task)
 })
 
@@ -52,7 +53,8 @@ router.patch('/:id', async (req: Request, res: Response) => {
     title: z.string().optional(),
     description: z.string().optional(),
     status: z.nativeEnum(TaskStatus).optional(),
-    dueDate: z.string().datetime().nullable().optional(),
+    startDate: z.string().nullable().optional(),
+    dueDate: z.string().nullable().optional(),
     priority: z.enum(['LOW','MEDIUM','HIGH','CRITICAL']).optional(),
     assigneeUserIds: z.array(z.string()).optional(),
   })
@@ -74,6 +76,9 @@ router.patch('/:id', async (req: Request, res: Response) => {
     taskMeta = { title: taskInfo.title, phaseName: taskInfo.phase.name, projectId: taskInfo.phase.projectId }
   }
   const data: any = { ...rest }
+  if (data.startDate !== undefined) {
+    data.startDate = data.startDate ? new Date(data.startDate) : null
+  }
   if (data.dueDate !== undefined) {
     data.dueDate = data.dueDate ? new Date(data.dueDate) : null
   }

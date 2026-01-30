@@ -23,6 +23,7 @@ import SlipsInvoicesPage from './pages/SlipsInvoicesPage.tsx'
 import AdminRegisterUser from './pages/AdminRegisterUser.tsx'
 import PendingApprovals from './pages/PendingApprovals.tsx'
 import Permissions from './pages/Permissions.tsx'
+import BudgetConfig from './pages/BudgetConfig.tsx'
 
 function App() {
   return (
@@ -56,6 +57,7 @@ function App() {
               <Route path="completed-projects/:id" element={<CompletedProjectDetail />} />
               <Route path="calendar" element={<CalendarDashboard />} />
               <Route path="slips-invoices" element={<SlipsInvoicesPage />} />
+              <Route path="budget-config" element={<BudgetConfig />} />
             </Route>
           </Routes>
         </div>

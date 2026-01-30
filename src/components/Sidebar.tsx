@@ -14,7 +14,8 @@ import {
   CheckCircle,
   Calendar,
   Receipt,
-  Shield
+  Shield,
+  Wallet
 } from 'lucide-react'
 import CyberLabsLogo from './CyberLabsLogo.tsx'
 import SidebarLogoScene from './SidebarLogoScene.tsx'
@@ -61,6 +62,13 @@ const Sidebar: React.FC = () => {
       icon: Receipt, 
       roles: ['director', 'manager'],
       description: 'Financial tracking'
+    },
+    { 
+      name: 'Budget Config', 
+      href: '/budget-config', 
+      icon: Wallet, 
+      roles: ['director', 'manager'],
+      description: 'Project budget view'
     },
     { 
       name: 'User Management', 

@@ -164,7 +164,7 @@ const CompletedProjects: React.FC = () => {
             })
           })
           const range = deriveDateRange(phases)
-          let manager = detail?.owner ? mapMember(detail.owner) : team[0]
+          let manager = team[0]
           if (manager && !manager.department) {
             const match = team.find((member: ProjectMember) => member.id === manager.id)
             if (match?.department) manager = { ...manager, department: match.department }

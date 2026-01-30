@@ -2,14 +2,12 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext.tsx'
 import { useTheme } from '../contexts/ThemeContext.tsx'
-import { getImpersonationStatus, stopImpersonation } from '../services/adminAPI.ts'
 import { listNotifications, markAllNotificationsRead, markNotificationRead } from '../services/notificationsAPI'
 import type { NotificationItem } from '../types'
 import { toast } from '../hooks/use-toast'
 
 const Topbar: React.FC = () => {
   const { user, logout } = useAuth()
-  const [impersonation, setImpersonation] = useState<{ active: boolean; user?: { id: string; name: string; email: string } } | null>(null)
   const navigate = useNavigate()
   const { theme, toggleTheme } = useTheme()
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
@@ -19,15 +17,6 @@ const Topbar: React.FC = () => {
   const seenIdsRef = useRef<Set<string>>(new Set())
   const panelRef = useRef<HTMLDivElement | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
-
-  useEffect(() => {
-    ;(async () => {
-      try {
-        const st = await getImpersonationStatus()
-        setImpersonation(st)
-      } catch {}
-    })()
-  }, [])
 
   useEffect(() => {
     if (!user?.id) return
@@ -163,18 +152,6 @@ const Topbar: React.FC = () => {
 
   return (
     <div className="flex items-center justify-end gap-4">
-      {impersonation?.active && impersonation.user && (
-        <div className="flex items-center gap-2 rounded-full px-3 py-1 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100 border border-yellow-300 dark:border-yellow-700">
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M12 5c-7 0-10 7-10 7s3 7 10 7 10-7 10-7-3-7-10-7zm0 12a5 5 0 110-10 5 5 0 010 10z"/>
-          </svg>
-          <span className="text-xs">Viewing as: {impersonation.user.name}</span>
-          <button
-            className="text-xs underline"
-            onClick={async () => { try { await stopImpersonation(); window.location.reload() } catch {} }}
-          >Stop</button>
-        </div>
-      )}
       <button
         onClick={toggleTheme}
         className="p-2 rounded-xl bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors duration-200"

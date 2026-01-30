@@ -243,7 +243,6 @@
     padding: 0.6rem 0.85rem;
     background: linear-gradient(180deg, #ffffff, #eef2f7);
     box-shadow: 0 14px 30px rgba(15, 23, 42, 0.18);
-    animation: logo-float 7s ease-in-out infinite;
   }
 
   .dark .sidebar-logo-shell {
@@ -252,16 +251,7 @@
   }
 
   .sidebar-logo-shell::before {
-    content: "";
-    position: absolute;
-    top: -80%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: linear-gradient(120deg, transparent 0%, rgba(255, 255, 255, 0.75) 45%, transparent 60%);
-    transform: translateX(-60%) rotate(12deg);
-    opacity: 0;
-    animation: logo-sheen 5.5s ease-in-out infinite;
+    content: none;
   }
 
   .sidebar-logo-shell.logo-static {
@@ -283,13 +273,7 @@
   }
 
   .sidebar-logo-shell::after {
-    content: "";
-    position: absolute;
-    inset: 1px;
-    border-radius: inherit;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.5), transparent 55%, rgba(0, 0, 0, 0.2));
-    opacity: 0.75;
-    pointer-events: none;
+    content: none;
   }
 
   .sidebar-logo-shell > * {
@@ -298,11 +282,11 @@
   }
 
   .sidebar-logo-img {
-    filter: grayscale(1) contrast(1.25) brightness(0.95);
+    filter: none;
   }
 
   .dark .sidebar-logo-img {
-    filter: grayscale(1) invert(1) brightness(1.05) contrast(1.25);
+    filter: none;
   }
   
   .badge {

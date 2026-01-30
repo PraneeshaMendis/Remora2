@@ -96,19 +96,6 @@ app.use(async (req, _res, next) => {
     userId = fromHeader || fromCookie || null
   }
 
-  // Secure impersonation: if an active impersonation session cookie is present and admin JWT is valid, act as the target user
-  try {
-    const impSid = (req as any).cookies?.impSid || ''
-    if (impSid && adminId) {
-      const session = await prisma.impersonationSession.findUnique({ where: { id: String(impSid) } })
-      if (session && !session.endedAt && session.adminId === adminId) {
-        userId = session.userId
-        ;(req as any).adminId = adminId
-        ;(req as any).impersonationSessionId = session.id
-      }
-    }
-  } catch {}
-
   ;(req as any).userId = userId
   // Attach hydrated user for role checks when available
   // Skip eager load in dev; routes look up user as needed

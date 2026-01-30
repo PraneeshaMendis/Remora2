@@ -2,7 +2,6 @@ export interface Project {
   id: string
   name: string
   description: string
-  owner: string
   status: 'planning' | 'in-progress' | 'in-review' | 'completed' | 'blocked'
   progress: number
   startDate: string

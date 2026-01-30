@@ -281,13 +281,9 @@ const CompletedProjectDetail: React.FC = () => {
         const progress = allTasks.length > 0 ? Math.round((completedTasks / allTasks.length) * 100) : 0
 
         let manager: ProjectMember | null = null
-        if (detail?.owner) {
-          manager = mapMember(detail.owner, detail.owner?.role?.name, detail.owner?.department?.name)
-        } else {
-          const preferred = memberships.find((m: any) => String(m?.role || '').toUpperCase() === 'DIRECTOR')
-            || memberships.find((m: any) => String(m?.role || '').toUpperCase() === 'MANAGER')
-          if (preferred?.user) manager = mapMember(preferred.user, preferred.role, preferred.user?.department?.name)
-        }
+        const preferred = memberships.find((m: any) => String(m?.role || '').toUpperCase() === 'DIRECTOR')
+          || memberships.find((m: any) => String(m?.role || '').toUpperCase() === 'MANAGER')
+        if (preferred?.user) manager = mapMember(preferred.user, preferred.role, preferred.user?.department?.name)
         if (!manager) manager = team[0] || { id: 'unknown', name: 'Unknown', email: '', role: 'Manager', department: '', avatar: 'U' }
 
         const projectData: CompletedProjectData = {

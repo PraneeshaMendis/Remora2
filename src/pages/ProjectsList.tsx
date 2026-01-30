@@ -34,7 +34,6 @@ const ProjectsList: React.FC = () => {
     status: 'planning' as const,
     priority: 'medium' as 'low' | 'medium' | 'high' | 'critical',
     visibility: 'assigned-only' as const,
-    owner: '',
     team: [] as string[],
     clients: [] as string[]
   })
@@ -149,7 +148,6 @@ const ProjectsList: React.FC = () => {
       id: '1',
       name: 'Mobile App Redesign',
       description: 'Complete redesign of the mobile application with modern UI/UX',
-      owner: 'Sarah Johnson',
       status: 'in-progress',
       progress: 60,
       startDate: '2024-01-01',
@@ -180,7 +178,6 @@ const ProjectsList: React.FC = () => {
           id: p.id,
           name: p.title,
           description: p.description,
-          owner: p.owner?.name || '',
           status: (p.status || 'PLANNING').toLowerCase(),
           progress: p.progress ?? 0,
           startDate: p.startDate || '',
@@ -241,7 +238,6 @@ const ProjectsList: React.FC = () => {
       status: project.status as any,
       priority: project.priority as any,
       visibility: 'assigned-only' as const,
-      owner: project.owner,
       team: project.team,
       clients: []
     })
@@ -268,7 +264,6 @@ const ProjectsList: React.FC = () => {
         ...selectedProject,
         name: editData.title,
         description: editData.description,
-        owner: editData.owner,
         status: editData.status,
         priority: editData.priority,
         startDate: editData.startDate,
@@ -347,7 +342,6 @@ const ProjectsList: React.FC = () => {
       status: 'planning' as const,
       priority: 'medium' as 'low' | 'medium' | 'high' | 'critical',
       visibility: 'assigned-only' as const,
-      owner: '',
       team: [],
       clients: []
     })
@@ -846,10 +840,6 @@ const ProjectsList: React.FC = () => {
                       <span className="text-gray-900 dark:text-white">{selectedProject.id}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600 dark:text-gray-400">Owner:</span>
-                      <span className="text-gray-900 dark:text-white">{selectedProject.owner}</span>
-                    </div>
-                    <div className="flex justify-between">
                       <span className="text-gray-600 dark:text-gray-400">Start Date:</span>
                       <span className="text-gray-900 dark:text-white">
                         {new Date(selectedProject.startDate).toLocaleDateString()}
@@ -1264,24 +1254,6 @@ const ProjectsList: React.FC = () => {
 
                 {/* Sidebar */}
                 <div className="space-y-6">
-                  {/* Project Owner */}
-                  <div className="card dark:bg-black/60 dark:border-white/10">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Project Owner</h3>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Owner Name *
-                      </label>
-                      <input
-                        type="text"
-                        value={editData.owner}
-                        onChange={(e) => handleInputChange('owner', e.target.value)}
-                        className="input-field"
-                        placeholder="Enter owner name"
-                        required
-                      />
-                    </div>
-                  </div>
-
                   {/* Attachments */}
                   <div className="card dark:bg-black/60 dark:border-white/10">
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Attachments</h3>

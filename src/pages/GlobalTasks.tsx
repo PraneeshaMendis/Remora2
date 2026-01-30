@@ -10,9 +10,9 @@ const GlobalTasks: React.FC = () => {
 
   // Mock data
   const projects: Project[] = [
-    { id: '1', name: 'Mobile App Redesign', description: '', owner: '', status: 'in-progress', progress: 0, startDate: '', dueDate: '', team: [], tags: [], priority: 'high', phases: [], tasks: [], members: [], allocatedHours: 200, loggedHours: 45.5, remainingHours: 154.5 },
-    { id: '2', name: 'Backend API Development', description: '', owner: '', status: 'in-progress', progress: 0, startDate: '', dueDate: '', team: [], tags: [], priority: 'medium', phases: [], tasks: [], members: [], allocatedHours: 150, loggedHours: 30.0, remainingHours: 120.0 },
-    { id: '3', name: 'Design System', description: '', owner: '', status: 'in-review', progress: 0, startDate: '', dueDate: '', team: [], tags: [], priority: 'high', phases: [], tasks: [], members: [], allocatedHours: 120, loggedHours: 85.0, remainingHours: 35.0 }
+    { id: '1', name: 'Mobile App Redesign', description: '', status: 'in-progress', progress: 0, startDate: '', dueDate: '', team: [], tags: [], priority: 'high', phases: [], tasks: [], members: [], allocatedHours: 200, loggedHours: 45.5, remainingHours: 154.5 },
+    { id: '2', name: 'Backend API Development', description: '', status: 'in-progress', progress: 0, startDate: '', dueDate: '', team: [], tags: [], priority: 'medium', phases: [], tasks: [], members: [], allocatedHours: 150, loggedHours: 30.0, remainingHours: 120.0 },
+    { id: '3', name: 'Design System', description: '', status: 'in-review', progress: 0, startDate: '', dueDate: '', team: [], tags: [], priority: 'high', phases: [], tasks: [], members: [], allocatedHours: 120, loggedHours: 85.0, remainingHours: 35.0 }
   ]
 
   const tasks: Task[] = [

@@ -3,10 +3,10 @@ import { listUsers, updateUser, deleteUser as apiDeleteUser } from '../services/
 import { inviteUser } from '../services/adminAPI.ts'
 import { listDepartments, createDepartment as apiCreateDepartment, deleteDepartment as apiDeleteDepartment } from '../services/departmentsAPI.ts'
 import { listRoles, createRole as apiCreateRole, deleteRole as apiDeleteRole } from '../services/rolesAPI.ts'
-import { startImpersonation, stopImpersonation, getImpersonationStatus, purgeNonAdminUsers } from '../services/adminAPI'
+import { purgeNonAdminUsers } from '../services/adminAPI'
 import { useAuth } from '../contexts/AuthContext'
 import { Button } from '@/components/ui/button'
-import { Plus, Building2, Shield, Trash2, LogOut } from 'lucide-react'
+import { Plus, Building2, Shield, Trash2 } from 'lucide-react'
 
 const Users: React.FC = () => {
   const { user } = useAuth()
@@ -136,7 +136,6 @@ const Users: React.FC = () => {
   const [roleIdByName, setRoleIdByName] = useState<Record<string, string>>({})
   const [departmentIdByName, setDepartmentIdByName] = useState<Record<string, string>>({})
   const [departmentOptions, setDepartmentOptions] = useState<string[]>([])
-  const [impersonationActive, setImpersonationActive] = useState(false)
 
   // Load roles + departments for Add User (keeps UI as names)
   useEffect(() => {
@@ -151,10 +150,6 @@ const Users: React.FC = () => {
         setDepartmentOptions((depts || []).map((d: any) => String(d.name)))
         setDepartmentIdByName(Object.fromEntries((depts || []).map((d: any) => [String(d.name), String(d.id)])))
       } catch (e) { console.error('Failed to load departments', e) }
-      try {
-        const st = await getImpersonationStatus()
-        setImpersonationActive(!!st?.active)
-      } catch {}
     })()
   }, [])
 
@@ -300,12 +295,6 @@ const Users: React.FC = () => {
             <Trash2 className="h-4 w-4" />
             Purge Non-admins
           </Button>
-          {impersonationActive && (
-            <Button variant="outline" className="rounded-full gap-2" onClick={async () => { try { await stopImpersonation(); window.location.reload() } catch {} }}>
-              <LogOut className="h-4 w-4" />
-              Stop Impersonation
-            </Button>
-          )}
         </div>
       </div>
 
@@ -472,15 +461,6 @@ const Users: React.FC = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                           </svg>
                         </button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="rounded-full px-3 py-1"
-                          onClick={async () => { try { await startImpersonation(user.id); window.location.reload() } catch (e: any) { alert(e?.message || 'Failed to impersonate') } }}
-                          title="View as this user"
-                        >
-                          View as
-                        </Button>
                       </div>
                     </td>
                   </tr>

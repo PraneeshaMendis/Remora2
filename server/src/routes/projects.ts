@@ -99,7 +99,6 @@ const createProjectSchema = z.object({
   code: z.string(),
   title: z.string(),
   description: z.string().default(''),
-  ownerId: z.string().optional(),
   allocatedHours: z.number().int().nonnegative().default(0),
   visibility: z.enum(['PRIVATE', 'TEAM', 'COMPANY']).default('TEAM'),
   status: z.enum(['PLANNING', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'CANCELLED']).default('PLANNING'),
@@ -162,7 +161,6 @@ router.get('/:id', async (req: Request, res: Response) => {
     include: {
       phases: { include: { tasks: { include: { assignees: { include: { user: true } } } } } },
       memberships: { include: { user: true } },
-      owner: true,
     },
   })
   if (!project) return res.status(404).json({ error: 'Not found' })
@@ -327,6 +325,7 @@ router.post('/:id/phases/:phaseId/tasks', async (req: Request, res: Response) =>
   const schema = z.object({
     title: z.string().min(1),
     description: z.string().optional().default(''),
+    startDate: z.string().optional(), // Accepts ISO strings or YYYY-MM-DD
     dueDate: z.string().optional(), // Accepts ISO strings or YYYY-MM-DD
     status: z.enum(['NOT_STARTED', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED']).optional().default('NOT_STARTED'),
     assigneeUserIds: z.array(z.string()).optional().default([]),
@@ -335,7 +334,7 @@ router.post('/:id/phases/:phaseId/tasks', async (req: Request, res: Response) =>
 
   const parsed = schema.safeParse(req.body)
   if (!parsed.success) return res.status(400).json(parsed.error.flatten())
-  const { title, description, dueDate, status, assigneeUserIds, priority } = parsed.data as any
+  const { title, description, startDate, dueDate, status, assigneeUserIds, priority } = parsed.data as any
 
   try {
     // Ensure phase belongs to project
@@ -343,7 +342,15 @@ router.post('/:id/phases/:phaseId/tasks', async (req: Request, res: Response) =>
     if (!phase) return res.status(404).json({ error: 'Phase not found for project' })
 
     // Normalize date string (support date-only)
+    let start: Date | undefined
     let due: Date | undefined
+    if (startDate) {
+      const asDate = new Date(startDate)
+      if (isNaN(asDate.getTime())) {
+        return res.status(400).json({ error: 'Invalid startDate format' })
+      }
+      start = asDate
+    }
     if (dueDate) {
       const asDate = new Date(dueDate)
       if (isNaN(asDate.getTime())) {
@@ -383,6 +390,7 @@ router.post('/:id/phases/:phaseId/tasks', async (req: Request, res: Response) =>
         title,
         description: description || '',
         status: status as any,
+        startDate: start,
         dueDate: due,
         priority: (priority || 'MEDIUM') as any,
         phaseId,

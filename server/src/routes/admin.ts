@@ -131,59 +131,6 @@ router.post('/invite-user', async (req, res) => {
   }
 })
 
-// --- Impersonation APIs ---
-// Start impersonation: sets an impersonation session cookie (impSid)
-router.post('/impersonation/start', async (req, res) => {
-  const body = z.object({ userId: z.string().min(1) }).parse(req.body || {})
-  const adminId = (req as any).userId as string
-  if (!adminId) return res.status(401).json({ error: 'Authentication required' })
-  try {
-    const target = await prisma.user.findUnique({ where: { id: body.userId } })
-    if (!target) return res.status(404).json({ error: 'User not found' })
-    const db: any = prisma
-    const session = await db.impersonationSession.create({ data: { adminId, userId: target.id } })
-    await db.adminAudit.create({ data: { adminId, targetUserId: target.id, action: 'IMPERSONATION_START', details: `path=/api/admin/impersonation/start` } })
-    const isProd = (process.env.NODE_ENV || '').toLowerCase() === 'production'
-    res.cookie('impSid', session.id, { httpOnly: true, sameSite: 'lax', secure: isProd })
-    res.json({ ok: true, sessionId: session.id, user: { id: target.id, name: target.name, email: target.email } })
-  } catch (e: any) {
-    res.status(400).json({ error: e?.message || 'Failed to start impersonation' })
-  }
-})
-
-router.post('/impersonation/stop', async (req, res) => {
-  const adminId = (req as any).userId as string
-  const impSid = (req as any).cookies?.impSid || ''
-  if (!adminId) return res.status(401).json({ error: 'Authentication required' })
-  try {
-    if (impSid) {
-      const db: any = prisma
-      await db.impersonationSession.updateMany({ where: { id: String(impSid), adminId, endedAt: null }, data: { endedAt: new Date() } })
-    }
-    const db: any = prisma
-    await db.adminAudit.create({ data: { adminId, action: 'IMPERSONATION_STOP', details: `path=/api/admin/impersonation/stop` } })
-    res.clearCookie('impSid')
-    res.json({ ok: true })
-  } catch (e: any) {
-    res.status(400).json({ error: e?.message || 'Failed to stop impersonation' })
-  }
-})
-
-router.get('/impersonation/status', async (req, res) => {
-  const adminId = (req as any).userId as string
-  const impSid = (req as any).cookies?.impSid || ''
-  if (!adminId) return res.status(401).json({ error: 'Authentication required' })
-  if (!impSid) return res.json({ active: false })
-  try {
-    const db: any = prisma
-    const session = await db.impersonationSession.findFirst({ where: { id: String(impSid), adminId, endedAt: null }, include: { user: true } })
-    if (!session) return res.json({ active: false })
-    res.json({ active: true, session: { id: session.id, user: { id: session.userId, name: session.user.name, email: session.user.email }, startedAt: session.startedAt } })
-  } catch (e: any) {
-    res.status(400).json({ error: e?.message || 'Failed to read status' })
-  }
-})
-
 // Dangerous: purge all users except super admin. Attempts deletion; if constrained, deactivate and scrub.
 router.post('/purge-non-admin-users', async (_req, res) => {
   const adminEmail = String(process.env.SUPERADMIN_EMAIL || '').trim().toLowerCase()

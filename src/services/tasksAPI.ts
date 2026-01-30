@@ -1,6 +1,6 @@
 import { request } from './api'
 
-export async function createTask(phaseId: string, payload: { title: string; description?: string; dueDate?: string }) {
+export async function createTask(phaseId: string, payload: { title: string; description?: string; startDate?: string; dueDate?: string }) {
   return request(`/tasks/phases/${phaseId}/tasks`, {
     method: 'POST',
     body: JSON.stringify(payload),
@@ -17,4 +17,3 @@ export async function updateTask(id: string, payload: any) {
     body: JSON.stringify(payload),
   })
 }
-

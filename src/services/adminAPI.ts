@@ -12,21 +12,6 @@ export function inviteUser(body: { name: string; email: string; roleName?: strin
   return apiJson('/api/admin/invite-user', 'POST', body)
 }
 
-export function startImpersonation(userId: string) {
-  return apiJson('/api/admin/impersonation/start', 'POST', { userId })
-}
-
-export function stopImpersonation() {
-  return apiJson('/api/admin/impersonation/stop', 'POST')
-}
-
-export async function getImpersonationStatus(): Promise<{ active: boolean; user?: { id: string; name: string; email: string } }> {
-  const res: any = await apiGet('/api/admin/impersonation/status')
-  // Normalize shape to { active, user }
-  const user = res?.user || res?.session?.user
-  return { active: !!res?.active, ...(user ? { user } : {}) }
-}
-
 export function purgeNonAdminUsers() {
   return apiJson('/api/admin/purge-non-admin-users', 'POST')
 }

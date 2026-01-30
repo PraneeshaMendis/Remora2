@@ -2182,7 +2182,9 @@ const SendInvoiceModal: React.FC<{
     ;(async () => {
       try {
         const p = await apiGet(`/projects/${invoice.projectId}`)
-        const guess = p?.owner?.email || (Array.isArray(p?.memberships) ? (p.memberships.find((m: any) => m?.user?.email)?.user?.email) : '')
+        const guess = Array.isArray(p?.memberships)
+          ? (p.memberships.find((m: any) => m?.user?.email)?.user?.email || '')
+          : ''
         setEmail(String(guess || ''))
       } catch {
         setEmail('')
