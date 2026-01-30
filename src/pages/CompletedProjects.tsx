@@ -103,6 +103,14 @@ const CompletedProjects: React.FC = () => {
     }
   }
 
+  const formatRole = (role?: string) => {
+    if (!role) return 'Member'
+    return role
+      .toLowerCase()
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, char => char.toUpperCase())
+  }
+
   const deriveDateRange = (phases: any[]) => {
     let minStart = Number.POSITIVE_INFINITY
     let maxEnd = Number.NEGATIVE_INFINITY
@@ -503,15 +511,21 @@ const CompletedProjects: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="mt-6 rounded-2xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/50 px-4 py-3 flex items-center gap-4">
-                    <div className="h-12 w-12 rounded-full bg-gray-800 text-white flex items-center justify-center text-sm font-semibold">
-                      {project.manager.avatar}
+                  <div className="mt-6 rounded-2xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/50 px-4 py-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-gray-500 dark:text-gray-500 mb-3">Team Members</p>
+                    <div className="flex flex-wrap gap-4">
+                      {project.team.map(member => (
+                        <div key={member.id} className="flex items-center gap-3 rounded-xl border border-gray-200/80 dark:border-white/10 bg-white/80 dark:bg-black/60 px-3 py-2">
+                          <div className="h-10 w-10 rounded-full bg-gray-800 text-white flex items-center justify-center text-xs font-semibold">
+                            {member.avatar}
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-gray-900 dark:text-white">{member.name}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{formatRole(member.role)}</p>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.2em] text-gray-500 dark:text-gray-500">Manager</p>
-                      <p className="text-lg font-semibold text-gray-900 dark:text-white">{project.manager.name}</p>
-                    </div>
-                    <div className="ml-auto h-2.5 w-2.5 rounded-full bg-emerald-400"></div>
                   </div>
 
                   <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">

@@ -24,6 +24,12 @@ const TaskDetail: React.FC = () => {
   const [newLogContent, setNewLogContent] = useState('')
   const [newLogHours, setNewLogHours] = useState(0)
   const [isSavingLog, setIsSavingLog] = useState(false)
+  const [newCostDate, setNewCostDate] = useState(new Date().toISOString().split('T')[0])
+  const [newCostAmount, setNewCostAmount] = useState('')
+  const [newCostCategory, setNewCostCategory] = useState('Food')
+  const [newCostCustomCategory, setNewCostCustomCategory] = useState('')
+  const [newCostNote, setNewCostNote] = useState('')
+  const [isSavingCost, setIsSavingCost] = useState(false)
   const [newComment, setNewComment] = useState('')
   const [comments, setComments] = useState<Comment[]>([])
   const [activity, setActivity] = useState<Array<{ id: string; description: string; timestamp: string; by?: string }>>([])
@@ -991,6 +997,50 @@ const TaskDetail: React.FC = () => {
     }
   }
 
+  const handleAdditionalCostSubmit = async () => {
+    if (!project?.id || !task?.id) return
+    const amountValue = Number(newCostAmount)
+    if (!amountValue || amountValue <= 0) return
+    const category = newCostCategory.trim() || 'Other'
+    const isOther = category.toLowerCase() === 'other'
+    if (isOther && !newCostCustomCategory.trim()) return
+
+    setIsSavingCost(true)
+    try {
+      try {
+        const existingUid = localStorage.getItem('userId')
+        if (!existingUid && currentUser?.id) {
+          localStorage.setItem('userId', currentUser.id)
+        }
+      } catch (_) { /* ignore storage errors */ }
+
+      const baseDate = new Date(`${newCostDate}T12:00:00`)
+      const spentAt = isNaN(baseDate.getTime()) ? new Date() : baseDate
+
+      await apiJson('/api/additional-costs', 'POST', {
+        projectId: project.id,
+        phaseId: task.phaseId || undefined,
+        taskId: task.id,
+        spentAt: spentAt.toISOString(),
+        amount: amountValue,
+        category,
+        ...(isOther ? { customCategory: newCostCustomCategory.trim() } : {}),
+        ...(newCostNote.trim() ? { note: newCostNote.trim() } : {}),
+      })
+
+      setNewCostAmount('')
+      setNewCostCategory('Food')
+      setNewCostCustomCategory('')
+      setNewCostNote('')
+      setNewCostDate(new Date().toISOString().split('T')[0])
+    } catch (e) {
+      console.error('Failed to save additional cost:', e)
+      alert('Failed to save additional cost. Please try again.')
+    } finally {
+      setIsSavingCost(false)
+    }
+  }
+
   const handleStatusChange = async (newStatus: string) => {
     try {
       // Optimistic update
@@ -1844,6 +1894,97 @@ const TaskDetail: React.FC = () => {
                 </button>
               </div>
             </form>
+
+            <div className="mt-6 border-t border-gray-200 dark:border-white/10 pt-6">
+              <h4 className="text-base font-semibold text-gray-900 dark:text-white mb-4">Additional Costs</h4>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  handleAdditionalCostSubmit()
+                }}
+                className="space-y-4"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Date
+                    </label>
+                    <input
+                      type="date"
+                      value={newCostDate}
+                      onChange={(e) => setNewCostDate(e.target.value)}
+                      className="input-field"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Amount
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={newCostAmount}
+                      onChange={(e) => setNewCostAmount(e.target.value)}
+                      className="input-field"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Category
+                    </label>
+                    <select
+                      value={newCostCategory}
+                      onChange={(e) => setNewCostCategory(e.target.value)}
+                      className="input-field"
+                    >
+                      <option value="Food">Food</option>
+                      <option value="Transport">Transport</option>
+                      <option value="Equipment">Equipment</option>
+                      <option value="Accommodation">Accommodation</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                </div>
+
+                {newCostCategory === 'Other' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Other category
+                    </label>
+                    <input
+                      type="text"
+                      value={newCostCustomCategory}
+                      onChange={(e) => setNewCostCustomCategory(e.target.value)}
+                      className="input-field"
+                      placeholder="Describe the cost category"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Notes (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={newCostNote}
+                    onChange={(e) => setNewCostNote(e.target.value)}
+                    className="input-field"
+                    placeholder="What was this for?"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSavingCost}
+                  className="btn-outline"
+                >
+                  {isSavingCost ? 'Saving...' : 'Add Cost'}
+                </button>
+              </form>
+            </div>
           </div>
 
             {/* Time Logs History */}

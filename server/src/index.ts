@@ -31,6 +31,7 @@ import calendarRouter from './routes/calendar.ts'
 import gmailRouter from './routes/gmail.ts'
 import invoicesRouter from './routes/invoices.ts'
 import receiptsRouter from './routes/receipts.ts'
+import additionalCostsRouter from './routes/additional-costs.ts'
 import bankCreditsRouter from './routes/bank-credits.ts'
 import documentsRouter from './routes/documents.ts'
 import notificationsRouter from './routes/notifications.ts'
@@ -119,6 +120,7 @@ app.use('/api/calendar', calendarRouter)
 // Gmail integration for Slips & Invoices
 app.use('/api/gmail', gmailRouter)
 app.use('/api/receipts', receiptsRouter)
+app.use('/api/additional-costs', additionalCostsRouter)
 app.use('/api/bank-credits', bankCreditsRouter)
 // Invoices
 app.use('/invoices', invoicesRouter)

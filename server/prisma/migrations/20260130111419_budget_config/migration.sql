@@ -1,0 +1,1 @@
+-- No-op: keep existing defaults to avoid drift on existing databases

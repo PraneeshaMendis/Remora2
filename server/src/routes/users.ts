@@ -80,15 +80,23 @@ const createUserSchema = z.object({
   roleId: z.string(),
   departmentId: z.string(),
   isActive: z.boolean().optional(),
+  costRate: z.number().nonnegative().optional(),
 })
 
 router.post('/', requireSuperAdmin, async (req, res) => {
   const parsed = createUserSchema.safeParse(req.body)
   if (!parsed.success) return res.status(400).json(parsed.error.flatten())
-  const { name, email, roleId, departmentId, isActive } = parsed.data
+  const { name, email, roleId, departmentId, isActive, costRate } = parsed.data
   try {
     const user = await prisma.user.create({
-      data: { name, email: email.trim().toLowerCase(), roleId, departmentId, isActive: isActive ?? true },
+      data: {
+        name,
+        email: email.trim().toLowerCase(),
+        roleId,
+        departmentId,
+        isActive: isActive ?? true,
+        ...(costRate !== undefined ? { costRate } : {}),
+      },
     })
     res.status(201).json(user)
   } catch (e: any) {

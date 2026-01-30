@@ -125,6 +125,27 @@
     background-color: #000000;
   }
 
+  .dark input[type="date"] {
+    color-scheme: dark;
+    background-color: rgba(0, 0, 0, 0.35);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #e5e7eb;
+  }
+
+  .dark input[type="date"]::-webkit-datetime-edit,
+  .dark input[type="date"]::-webkit-datetime-edit-fields-wrapper,
+  .dark input[type="date"]::-webkit-datetime-edit-text,
+  .dark input[type="date"]::-webkit-datetime-edit-month-field,
+  .dark input[type="date"]::-webkit-datetime-edit-day-field,
+  .dark input[type="date"]::-webkit-datetime-edit-year-field {
+    color: #e5e7eb;
+  }
+
+  .dark input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    opacity: 0.85;
+  }
+
   /* Registration page helpers */
   .bg-gradient-subtle {
     background: radial-gradient(1200px 400px at 50% -120px, hsl(0 0% 100% / 0.9), transparent),

@@ -56,6 +56,7 @@ model User {
   invoicesApproved  Invoice[]           @relation("InvoiceApprovedBy")
   authTokens        AuthToken[]
   approvalRequests  ApprovalRequest[]
+  additionalCosts   AdditionalCost[]
   // Back-relations for audits, department leads and approvals
   adminAudits       AdminAudit[]         @relation("AdminAuditAdmin")
   targetAudits      AdminAudit[]         @relation("AdminAuditTarget")
@@ -288,6 +289,7 @@ model Project {
   attachments    Attachment[]
   documents      Document[]
   receipts       PaymentReceipt[]
+  additionalCosts AdditionalCost[]
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
   invoices       Invoice[]
@@ -317,6 +319,7 @@ model Phase {
   documents   Document[]
   invoices    Invoice[]
   receipts    PaymentReceipt[]
+  additionalCosts AdditionalCost[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @default(now()) @updatedAt
 }
@@ -336,6 +339,7 @@ model Task {
   comments    Comment[]
   documents   Document[]
   history     HistoryEvent[]
+  additionalCosts AdditionalCost[]
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
 }
@@ -349,10 +353,36 @@ model TimeLog {
   startedAt    DateTime
   endedAt      DateTime
   durationMins Int
+  hourlyRate   Float?
   description  String
   attachment   Attachment? @relation(fields: [attachmentId], references: [id])
   attachmentId String?     @unique
   createdAt    DateTime    @default(now())
+}
+
+model AdditionalCost {
+  id             String   @id @default(cuid())
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId      String
+  phase          Phase?   @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+  phaseId        String?
+  task           Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  taskId         String?
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  category       String
+  customCategory String?
+  amount         Float
+  note           String?
+  spentAt        DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([phaseId])
+  @@index([taskId])
+  @@index([userId])
+  @@index([spentAt])
 }
 
 model Comment {

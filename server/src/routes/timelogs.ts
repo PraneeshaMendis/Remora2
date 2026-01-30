@@ -40,6 +40,7 @@ router.post('/tasks/:taskId/timelogs', upload.single('file'), async (req: Reques
   const end = new Date(endedAt)
   const durationMins = Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000))
   try {
+    const rateSource = await prisma.user.findUnique({ where: { id: String(userId) }, select: { costRate: true } })
     let attachmentId: string | undefined
     if ((req as any).file) {
       // Attach uploaded file to this task's project if possible
@@ -58,7 +59,16 @@ router.post('/tasks/:taskId/timelogs', upload.single('file'), async (req: Reques
     }
 
     const log = await prisma.timeLog.create({
-      data: { taskId, userId, startedAt: start, endedAt: end, durationMins, description, attachmentId },
+      data: {
+        taskId,
+        userId,
+        startedAt: start,
+        endedAt: end,
+        durationMins,
+        description,
+        attachmentId,
+        hourlyRate: typeof rateSource?.costRate === 'number' ? rateSource.costRate : undefined,
+      },
     })
     try {
       // Record in task history for unified timeline
