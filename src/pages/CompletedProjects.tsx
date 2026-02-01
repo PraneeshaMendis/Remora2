@@ -483,12 +483,12 @@ const CompletedProjects: React.FC = () => {
               {filteredAndSortedProjects.map((project, index) => (
                 <div
                   key={project.id}
-                  className="rounded-[28px] border border-gray-200 dark:border-white/10 bg-white dark:bg-black/60 p-6 shadow-sm animate-slide-up"
+                  className="rounded-[28px] border border-gray-200 dark:border-white/10 bg-white dark:bg-black/60 p-5 shadow-sm animate-slide-up"
                   style={{ animationDelay: `${0.2 + index * 0.05}s` }}
                 >
                   <div className="flex flex-col gap-3">
                     <div className="flex flex-wrap items-center gap-3">
-                      <h3 className="text-2xl font-semibold text-gray-900 dark:text-white">{project.title}</h3>
+                      <h3 className="text-xl font-semibold text-gray-900 dark:text-white">{project.title}</h3>
                       <span className={`inline-flex items-center gap-2 rounded-full px-4 py-1 text-xs font-semibold uppercase tracking-widest ${
                         project.priority === 'high' ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-300' :
                         project.priority === 'medium' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-300' :
@@ -511,12 +511,12 @@ const CompletedProjects: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="mt-6 rounded-2xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/50 px-4 py-4">
+                  <div className="mt-4 rounded-2xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/50 px-4 py-3">
                     <p className="text-xs uppercase tracking-[0.2em] text-gray-500 dark:text-gray-500 mb-3">Team Members</p>
                     <div className="flex flex-wrap gap-4">
                       {project.team.map(member => (
                         <div key={member.id} className="flex items-center gap-3 rounded-xl border border-gray-200/80 dark:border-white/10 bg-white/80 dark:bg-black/60 px-3 py-2">
-                          <div className="h-10 w-10 rounded-full bg-gray-800 text-white flex items-center justify-center text-xs font-semibold">
+                          <div className="h-9 w-9 rounded-full bg-gray-800 text-white flex items-center justify-center text-[11px] font-semibold">
                             {member.avatar}
                           </div>
                           <div>

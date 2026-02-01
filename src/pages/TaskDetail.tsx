@@ -1,10 +1,25 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, Link, useLocation } from 'react-router-dom'
 import { Task, User, Comment, TimeLog, Project } from '../types/index.ts'
-import { HiArrowLeft, HiClock, HiDocument, HiChat, HiCheckCircle, HiCalendar, HiTrendingUp, HiEye, HiDownload, HiPlay, HiStop, HiUser, HiUsers } from 'react-icons/hi'
+import { HiArrowLeft, HiClock, HiDocument, HiChat, HiCheckCircle, HiCalendar, HiTrendingUp, HiEye, HiDownload, HiPlay, HiStop, HiUser, HiUsers, HiCurrencyDollar } from 'react-icons/hi'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { apiGet, apiJson, API_BASE } from '../services/api'
 import { getCurrentUser } from '../services/usersAPI'
+
+type AdditionalCost = {
+  id: string
+  projectId: string
+  taskId?: string | null
+  phaseId?: string | null
+  userId: string
+  userName?: string | null
+  category: string
+  customCategory?: string | null
+  amount: number
+  note?: string | null
+  spentAt?: string | null
+  createdAt?: string | null
+}
 
 const TaskDetail: React.FC = () => {
   const { projectId, taskId } = useParams<{ projectId: string; taskId: string }>()
@@ -16,6 +31,9 @@ const TaskDetail: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [projectTimeLogs, setProjectTimeLogs] = useState<TimeLog[]>([])
   const [taskTimeLogs, setTaskTimeLogs] = useState<Array<{ durationMins: number; startedAt: string; endedAt: string; description: string; userId: string; userName?: string; attachmentPath?: string | null }>>([])
+  const [additionalCosts, setAdditionalCosts] = useState<AdditionalCost[]>([])
+  const [additionalCostFilter, setAdditionalCostFilter] = useState<'all' | 'mine'>('all')
+  const [isLoadingCosts, setIsLoadingCosts] = useState(false)
   const [isMarkingDone, setIsMarkingDone] = useState(false)
   const [isTimerRunning, setIsTimerRunning] = useState(false)
   const [timerStartTime, setTimerStartTime] = useState<Date | null>(null)
@@ -69,7 +87,7 @@ const TaskDetail: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [newLogFile, setNewLogFile] = useState<File | null>(null)
-  const [activeTab, setActiveTab] = useState<'overview' | 'time' | 'comments' | 'documents' | 'history'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'time' | 'additional-costs' | 'comments' | 'documents' | 'history'>('overview')
   const [timeLogFilter, setTimeLogFilter] = useState<'all' | 'mine'>('all')
   const [docName, setDocName] = useState('')
   const [docReviewerId, setDocReviewerId] = useState('')
@@ -562,6 +580,29 @@ const TaskDetail: React.FC = () => {
     return formatHoursMinutesFromMins(totalMins)
   }
 
+  const formatTitleCase = (value: string) => {
+    return String(value || '')
+      .toLowerCase()
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, char => char.toUpperCase())
+  }
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value || 0)
+  }
+
+  const formatDateTime = (value?: string | null) => {
+    if (!value) return 'Unknown date'
+    const ts = new Date(value)
+    if (isNaN(ts.getTime())) return value
+    return `${ts.toLocaleDateString()} at ${ts.toLocaleTimeString()}`
+  }
+
   // Normalize status to match ProjectDetail set: not-started | in-progress | completed | on-hold
   const normalizeStatus = (s?: string) => {
     switch ((s || '').toLowerCase()) {
@@ -997,6 +1038,21 @@ const TaskDetail: React.FC = () => {
     }
   }
 
+  const loadAdditionalCosts = async (projectIdOverride?: string) => {
+    const resolvedProjectId = projectIdOverride || project?.id || projectId
+    if (!resolvedProjectId) return
+    setIsLoadingCosts(true)
+    try {
+      const list = await apiGet(`/api/additional-costs?projectId=${encodeURIComponent(String(resolvedProjectId))}`)
+      setAdditionalCosts(Array.isArray(list) ? list : [])
+    } catch (e) {
+      console.error('Failed to load additional costs', e)
+      setAdditionalCosts([])
+    } finally {
+      setIsLoadingCosts(false)
+    }
+  }
+
   const handleAdditionalCostSubmit = async () => {
     if (!project?.id || !task?.id) return
     const amountValue = Number(newCostAmount)
@@ -1033,6 +1089,7 @@ const TaskDetail: React.FC = () => {
       setNewCostCustomCategory('')
       setNewCostNote('')
       setNewCostDate(new Date().toISOString().split('T')[0])
+      await loadAdditionalCosts(project.id)
     } catch (e) {
       console.error('Failed to save additional cost:', e)
       alert('Failed to save additional cost. Please try again.')
@@ -1040,6 +1097,11 @@ const TaskDetail: React.FC = () => {
       setIsSavingCost(false)
     }
   }
+
+  useEffect(() => {
+    if (!projectId && !project?.id) return
+    loadAdditionalCosts()
+  }, [projectId, project?.id])
 
   const handleStatusChange = async (newStatus: string) => {
     try {
@@ -1219,6 +1281,34 @@ const TaskDetail: React.FC = () => {
   const filteredTimeLogs = timeLogFilter === 'mine' 
     ? projectTimeLogs.filter(log => log.userId === currentUser?.id)
     : projectTimeLogs
+
+  const additionalCostNameById = React.useMemo(() => {
+    const map: Record<string, string> = {}
+    teamMembers.forEach(member => { map[member.id] = member.name })
+    if (currentUser) map[currentUser.id] = currentUser.name
+    return map
+  }, [teamMembers, currentUser])
+
+  const taskAdditionalCosts = React.useMemo(() => {
+    const tid = task?.id || taskId
+    if (!tid) return additionalCosts
+    return additionalCosts.filter(cost => String(cost.taskId || '') === String(tid))
+  }, [additionalCosts, task?.id, taskId])
+
+  const filteredAdditionalCosts = React.useMemo(() => {
+    if (additionalCostFilter === 'mine') {
+      return taskAdditionalCosts.filter(cost => String(cost.userId || '') === String(currentUser?.id || ''))
+    }
+    return taskAdditionalCosts
+  }, [additionalCostFilter, taskAdditionalCosts, currentUser?.id])
+
+  const sortedAdditionalCosts = React.useMemo(() => {
+    return [...filteredAdditionalCosts].sort((a, b) => {
+      const aTime = Date.parse(a.spentAt || a.createdAt || '')
+      const bTime = Date.parse(b.spentAt || b.createdAt || '')
+      return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime)
+    })
+  }, [filteredAdditionalCosts])
 
   const handleFileUpload = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1546,6 +1636,7 @@ const TaskDetail: React.FC = () => {
           {[
             { id: 'overview', label: 'Overview', icon: HiEye },
             { id: 'time', label: 'Time Tracking', icon: HiClock },
+            { id: 'additional-costs', label: 'Additional Costs', icon: HiCurrencyDollar },
             { id: 'comments', label: 'Comments', icon: HiChat },
             { id: 'documents', label: 'Documents', icon: HiDocument },
             { id: 'history', label: 'History', icon: HiTrendingUp }
@@ -1895,96 +1986,6 @@ const TaskDetail: React.FC = () => {
               </div>
             </form>
 
-            <div className="mt-6 border-t border-gray-200 dark:border-white/10 pt-6">
-              <h4 className="text-base font-semibold text-gray-900 dark:text-white mb-4">Additional Costs</h4>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  handleAdditionalCostSubmit()
-                }}
-                className="space-y-4"
-              >
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Date
-                    </label>
-                    <input
-                      type="date"
-                      value={newCostDate}
-                      onChange={(e) => setNewCostDate(e.target.value)}
-                      className="input-field"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Amount
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={newCostAmount}
-                      onChange={(e) => setNewCostAmount(e.target.value)}
-                      className="input-field"
-                      placeholder="0.00"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Category
-                    </label>
-                    <select
-                      value={newCostCategory}
-                      onChange={(e) => setNewCostCategory(e.target.value)}
-                      className="input-field"
-                    >
-                      <option value="Food">Food</option>
-                      <option value="Transport">Transport</option>
-                      <option value="Equipment">Equipment</option>
-                      <option value="Accommodation">Accommodation</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
-                </div>
-
-                {newCostCategory === 'Other' && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Other category
-                    </label>
-                    <input
-                      type="text"
-                      value={newCostCustomCategory}
-                      onChange={(e) => setNewCostCustomCategory(e.target.value)}
-                      className="input-field"
-                      placeholder="Describe the cost category"
-                    />
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Notes (optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={newCostNote}
-                    onChange={(e) => setNewCostNote(e.target.value)}
-                    className="input-field"
-                    placeholder="What was this for?"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isSavingCost}
-                  className="btn-outline"
-                >
-                  {isSavingCost ? 'Saving...' : 'Add Cost'}
-                </button>
-              </form>
-            </div>
           </div>
 
             {/* Time Logs History */}
@@ -2116,6 +2117,218 @@ const TaskDetail: React.FC = () => {
                   <Bar dataKey="documents" fill="#F59E0B" name="Documents" />
                 </BarChart>
               </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'additional-costs' && (
+        <div className="space-y-6">
+          <div className="card">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Additional Costs</h3>
+              <span className="text-sm text-gray-500 dark:text-gray-400">Track expenses for this task</span>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                handleAdditionalCostSubmit()
+              }}
+              className="space-y-4"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    value={newCostDate}
+                    onChange={(e) => setNewCostDate(e.target.value)}
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Amount
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={newCostAmount}
+                    onChange={(e) => setNewCostAmount(e.target.value)}
+                    className="input-field"
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Category
+                  </label>
+                  <select
+                    value={newCostCategory}
+                    onChange={(e) => setNewCostCategory(e.target.value)}
+                    className="input-field"
+                  >
+                    <option value="Food">Food</option>
+                    <option value="Transport">Transport</option>
+                    <option value="Equipment">Equipment</option>
+                    <option value="Accommodation">Accommodation</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+
+              {newCostCategory === 'Other' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Other category
+                  </label>
+                  <input
+                    type="text"
+                    value={newCostCustomCategory}
+                    onChange={(e) => setNewCostCustomCategory(e.target.value)}
+                    className="input-field"
+                    placeholder="Describe the cost category"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Notes (optional)
+                </label>
+                <input
+                  type="text"
+                  value={newCostNote}
+                  onChange={(e) => setNewCostNote(e.target.value)}
+                  className="input-field"
+                  placeholder="What was this for?"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSavingCost}
+                className="btn-outline"
+              >
+                {isSavingCost ? 'Saving...' : 'Add Cost'}
+              </button>
+            </form>
+          </div>
+
+          <div className="card">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Additional Cost Logs</h3>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setAdditionalCostFilter('all')}
+                  className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                    additionalCostFilter === 'all'
+                      ? 'bg-amber-500 text-white'
+                      : 'bg-gray-100 dark:bg-black/50 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-black/40'
+                  }`}
+                >
+                  All AC Logs
+                </button>
+                <button
+                  onClick={() => setAdditionalCostFilter('mine')}
+                  className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                    additionalCostFilter === 'mine'
+                      ? 'bg-amber-500 text-white'
+                      : 'bg-gray-100 dark:bg-black/50 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-black/40'
+                  }`}
+                >
+                  My AC Logs
+                </button>
+              </div>
+            </div>
+            <div className="mb-4 text-sm text-gray-600 dark:text-gray-400">
+              {isLoadingCosts
+                ? 'Loading additional costs...'
+                : `Showing ${sortedAdditionalCosts.length} of ${taskAdditionalCosts.length} additional cost logs`
+              }
+              {!isLoadingCosts && additionalCostFilter === 'mine' && (
+                <span className="ml-2 text-amber-600 dark:text-amber-400">
+                  (Your logs only)
+                </span>
+              )}
+            </div>
+            <div className="space-y-4">
+              {isLoadingCosts ? (
+                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                  <HiCurrencyDollar className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p className="text-lg font-medium mb-2">Loading additional costs</p>
+                  <p className="text-sm">Fetching recent expense entries.</p>
+                </div>
+              ) : sortedAdditionalCosts.length > 0 ? (
+                sortedAdditionalCosts.map((cost) => {
+                  const isMyCost = String(cost.userId || '') === String(currentUser?.id || '')
+                  const rawCategory = cost.category || 'Other'
+                  const categoryLabel = rawCategory.toLowerCase() === 'other' && cost.customCategory
+                    ? cost.customCategory
+                    : rawCategory
+                  const displayCategory = formatTitleCase(categoryLabel || 'Other')
+                  const displayName = cost.userName || additionalCostNameById[String(cost.userId || '')] || (isMyCost ? currentUser?.name : undefined) || 'Unknown User'
+                  const initials = displayName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'U'
+                  const amountValue = Number(cost.amount || 0)
+                  return (
+                    <div key={cost.id} className="border rounded-xl p-4 bg-white dark:bg-black border-gray-200 dark:border-white/10">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center space-x-3">
+                          <div className="h-8 w-8 rounded-full flex items-center justify-center text-xs text-white bg-gray-500">
+                            {initials}
+                          </div>
+                          <div>
+                            <div className="flex items-center space-x-2">
+                              <span className="text-sm font-medium text-gray-900 dark:text-white">
+                                {displayName}
+                              </span>
+                              {isMyCost && additionalCostFilter === 'all' && (
+                                <span className="text-xs bg-primary-100 dark:bg-primary-800 text-primary-800 dark:text-primary-200 px-2 py-1 rounded-full">
+                                  You
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              {formatDateTime(cost.spentAt || cost.createdAt || undefined)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-lg font-bold text-primary-600 dark:text-primary-400">
+                            {formatCurrency(amountValue)}
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                            logged
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3">
+                        <p className="text-sm text-gray-700 dark:text-gray-300">
+                          {cost.note?.trim() ? cost.note : 'No notes provided.'}
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{displayCategory}</p>
+                      </div>
+                    </div>
+                  )
+                })
+              ) : (
+                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                  <HiCurrencyDollar className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p className="text-lg font-medium mb-2">
+                    {additionalCostFilter === 'mine' ? 'No additional costs found' : 'No additional costs available'}
+                  </p>
+                  <p className="text-sm">
+                    {additionalCostFilter === 'mine' 
+                      ? 'You have not logged any additional costs for this task yet.'
+                      : 'No team members have logged additional costs for this task yet.'
+                    }
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>

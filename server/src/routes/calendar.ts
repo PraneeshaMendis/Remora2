@@ -701,7 +701,8 @@ router.get('/sources/:id/events', async (req: Request, res: Response) => {
     if (!/^https?:\/\//i.test(icsUrl)) return res.status(400).json({ error: 'Invalid or undecryptable ICS URL' })
     const r = await axios.get(icsUrl, { responseType: 'text', timeout: 15000, headers: { 'User-Agent': 'ProjectHubCalendar/1.0' } })
     const text = String(r.data || '')
-    const events = parseICS(text, src.name)
+    const targetTimeZone = String(req.query.tz || '').trim() || undefined
+    const events = parseICS(text, src.name, targetTimeZone)
     res.json(events)
   } catch (e: any) {
     res.status(400).json({ error: e?.message || 'Failed to load ICS events' })
@@ -904,7 +905,7 @@ router.get('/holidays', async (req: Request, res: Response) => {
 })
 
 // --- Minimal ICS parser (shared logic with frontend, sanitized) ---
-function parseICS(text: string, sourceName: string) {
+function parseICS(text: string, sourceName: string, targetTimeZone?: string) {
   const rawLines = text.split(/\r?\n/)
   const lines: string[] = []
   for (let i = 0; i < rawLines.length; i++) {
@@ -921,10 +922,14 @@ function parseICS(text: string, sourceName: string) {
         const uid = cursor['UID'] || Math.random().toString(36).slice(2)
         const summary = cursor['SUMMARY'] || '(No title)'
         const descRaw = (cursor['DESCRIPTION'] || '').replace(/\\n/g, '\n')
-        const dtstart = cursor['DTSTART'] || cursor['DTSTART;VALUE=DATE'] || ''
-        const dtend = cursor['DTEND'] || cursor['DTEND;VALUE=DATE'] || ''
-        const st = parseIcsDate(dtstart)
-        const et = parseIcsDate(dtend || dtstart)
+        const dtstart = cursor['DTSTART'] || ''
+        const dtend = cursor['DTEND'] || ''
+        const dtstartTz = cursor['DTSTART_TZID'] || ''
+        const dtendTz = cursor['DTEND_TZID'] || dtstartTz
+        const dtstartValue = cursor['DTSTART_VALUE'] || ''
+        const dtendValue = cursor['DTEND_VALUE'] || dtstartValue
+        const st = parseIcsDate(dtstart, { tzid: dtstartTz, valueType: dtstartValue, targetTimeZone })
+        const et = parseIcsDate(dtend || dtstart, { tzid: dtendTz, valueType: dtendValue, targetTimeZone })
         const location = cursor['LOCATION'] || ''
         const urlProp = cursor['URL'] || ''
         const all = `${urlProp}\n${descRaw}\n${location}`
@@ -934,7 +939,7 @@ function parseICS(text: string, sourceName: string) {
           || urls.find(u => u.toLowerCase().includes('meet.google.com'))
           || urls[0]
         const platform = detectPlatform(firstUrl)
-        const isAllDay = /VALUE=DATE/i.test(dtstart || '')
+        const isAllDay = st.isDateOnly
         const type = firstUrl ? 'meeting' : (isAllDay ? 'reminder' : 'task')
         out.push({
           id: `ics-${uid}`,
@@ -955,27 +960,129 @@ function parseICS(text: string, sourceName: string) {
       }
       cursor = null
     } else if (cursor) {
-      const idx = l.indexOf(':')
-      if (idx > 0) {
-        const key = l.slice(0, idx).split(';')[0].toUpperCase()
-        const value = l.slice(idx + 1)
-        cursor[key] = value
+      const prop = parseIcsProperty(l)
+      if (prop) {
+        const { name, value, params } = prop
+        cursor[name] = value
+        if (name === 'DTSTART' || name === 'DTEND') {
+          if (params.TZID) cursor[`${name}_TZID`] = params.TZID
+          if (params.VALUE) cursor[`${name}_VALUE`] = params.VALUE
+        }
       }
     }
   }
   return out
 }
 
-function parseIcsDate(val: string): { date: string; time: string } {
-  const m = String(val || '')
+function parseIcsProperty(line: string): { name: string; value: string; params: Record<string, string> } | null {
+  const idx = line.indexOf(':')
+  if (idx <= 0) return null
+  const left = line.slice(0, idx)
+  const value = line.slice(idx + 1)
+  const parts = left.split(';')
+  const name = parts[0].toUpperCase()
+  const params: Record<string, string> = {}
+  for (let i = 1; i < parts.length; i++) {
+    const p = parts[i]
+    const eq = p.indexOf('=')
+    if (eq > 0) params[p.slice(0, eq).toUpperCase()] = p.slice(eq + 1)
+  }
+  return { name, value, params }
+}
+
+function parseIcsDate(
+  val: string,
+  opts: { tzid?: string; valueType?: string; targetTimeZone?: string } = {}
+): { date: string; time: string; isDateOnly: boolean } {
+  const m = String(val || '').trim()
   const datePart = m.slice(0, 8)
-  const year = datePart.slice(0, 4)
-  const month = datePart.slice(4, 6)
-  const day = datePart.slice(6, 8)
-  const date = `${year}-${month}-${day}`
-  let time = '00:00'
-  if (m.length >= 15 && m[8] === 'T') time = `${m.slice(9, 11)}:${m.slice(11, 13)}`
-  return { date, time }
+  const year = Number(datePart.slice(0, 4))
+  const month = Number(datePart.slice(4, 6))
+  const day = Number(datePart.slice(6, 8))
+  const hasTime = m.length >= 15 && m[8] === 'T'
+  const isDateOnly = String(opts.valueType || '').toUpperCase() === 'DATE' || (!hasTime && m.length >= 8)
+  if (!hasTime || isDateOnly) {
+    return { date: `${pad2(year)}-${pad2(month)}-${pad2(day)}`, time: '00:00', isDateOnly: true }
+  }
+  const hour = Number(m.slice(9, 11))
+  const minute = Number(m.slice(11, 13))
+  const second = Number(m.slice(13, 15))
+  const isUtc = m.endsWith('Z')
+  const targetTz = normalizeTimeZone(opts.targetTimeZone)
+  const sourceTz = normalizeTimeZone(opts.tzid)
+  const fallback = { date: `${pad2(year)}-${pad2(month)}-${pad2(day)}`, time: `${pad2(hour)}:${pad2(minute)}`, isDateOnly: false }
+  if (!targetTz) return fallback
+  try {
+    let instant: Date
+    if (isUtc) {
+      instant = new Date(Date.UTC(year, month - 1, day, hour, minute, second))
+    } else if (sourceTz) {
+      instant = zonedTimeToUtc({ year, month, day, hour, minute, second }, sourceTz)
+    } else {
+      // Floating time: assume it's already in the viewer's timezone
+      return fallback
+    }
+    const formatted = formatDateInTimeZone(instant, targetTz)
+    return { ...formatted, isDateOnly: false }
+  } catch {
+    return fallback
+  }
+}
+
+function formatDateInTimeZone(date: Date, timeZone: string): { date: string; time: string } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date)
+  const map: Record<string, string> = {}
+  for (const p of parts) {
+    if (p.type !== 'literal') map[p.type] = p.value
+  }
+  return { date: `${map.year}-${map.month}-${map.day}`, time: `${map.hour}:${map.minute}` }
+}
+
+function zonedTimeToUtc(
+  parts: { year: number; month: number; day: number; hour: number; minute: number; second: number },
+  timeZone: string
+): Date {
+  const utcGuess = new Date(Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second))
+  const offsetMinutes = getTimeZoneOffsetMinutes(timeZone, utcGuess)
+  return new Date(utcGuess.getTime() - offsetMinutes * 60000)
+}
+
+function getTimeZoneOffsetMinutes(timeZone: string, date: Date): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(date)
+  const map: Record<string, number> = {}
+  for (const p of parts) {
+    if (p.type !== 'literal') map[p.type] = Number(p.value)
+  }
+  const asUtc = Date.UTC(map.year, map.month - 1, map.day, map.hour, map.minute, map.second)
+  return (asUtc - date.getTime()) / 60000
+}
+
+function normalizeTimeZone(tz?: string): string | null {
+  const v = String(tz || '').trim()
+  if (!v) return null
+  if (v.toUpperCase() === 'UTC' || v.toUpperCase() === 'GMT') return 'UTC'
+  return v
+}
+
+function pad2(n: number): string {
+  return String(n || 0).padStart(2, '0')
 }
 function stripUrls(s: string): string {
   return String(s || '').replace(/https?:\/\/\S+/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()

@@ -107,7 +107,6 @@ const CalendarDashboard: React.FC = () => {
   }, [localEvents, sources, calendarScope])
   const [isEventModalOpen, setIsEventModalOpen] = useState(false)
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null)
-  const [selectedDayEvents, setSelectedDayEvents] = useState<CalendarEvent[]>([])
   const [filterType, setFilterType] = useState<string>('all')
   const [isDayEventsModalOpen, setIsDayEventsModalOpen] = useState(false)
   const [selectedDayDate, setSelectedDayDate] = useState<string>('')
@@ -117,6 +116,9 @@ const CalendarDashboard: React.FC = () => {
   const [showAddIcs, setShowAddIcs] = useState(false)
   const [errorBanner, setErrorBanner] = useState<string | null>(null)
   const syncedOnce = React.useRef<Set<string>>(new Set())
+  const clientTimeZone = React.useMemo(() => {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone } catch { return '' }
+  }, [])
   // Holidays toggle + country code (persisted per user)
   const [showHolidays, setShowHolidays] = useState<boolean>(() => {
     try {
@@ -167,6 +169,11 @@ const CalendarDashboard: React.FC = () => {
         ...(token ? { 'authorization': `Bearer ${token}` } : {}),
       }
     } catch { return {} }
+  }
+
+  const withTimeZone = (url: string): string => {
+    if (!clientTimeZone) return url
+    return `${url}${url.includes('?') ? '&' : '?'}tz=${encodeURIComponent(clientTimeZone)}`
   }
 
   // Remove URLs from descriptions to avoid duplicating Join links in UI
@@ -227,7 +234,6 @@ const CalendarDashboard: React.FC = () => {
 
   useEffect(() => {
     setSelectedDate('')
-    setSelectedDayEvents([])
   }, [calendarScope, selectedUserId])
 
   // Detect linked accounts and per-user ICS sources from backend
@@ -298,7 +304,7 @@ const CalendarDashboard: React.FC = () => {
     try {
       const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
       if (src.type === 'ics-url') {
-        const res = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/sources/${src.id}/events`, { headers: { ...authHeaders() }, cache: 'no-store' })
+        const res = await fetch(withTimeZone(`${String(base).replace(/\/+$/, '')}/api/calendar/sources/${src.id}/events`), { headers: { ...authHeaders() }, cache: 'no-store' })
         if (!res.ok) return null
         const events = await res.json()
         return (events || []).map((ev: any) => ({ ...ev, sourceName: src.name, sourceType: src.type, sourceColor: src.color }))
@@ -456,19 +462,25 @@ const CalendarDashboard: React.FC = () => {
   const todayEvents = events.filter(event => event.date === today)
 
   // Group events by date
-  const eventsByDate: DayEvents = events.reduce((acc, event) => {
-    if (!acc[event.date]) {
-      acc[event.date] = []
-    }
-    acc[event.date].push(event)
-    return acc
-  }, {} as DayEvents)
+  const eventsByDate: DayEvents = useMemo(() => {
+    return events.reduce((acc, event) => {
+      if (!acc[event.date]) {
+        acc[event.date] = []
+      }
+      acc[event.date].push(event)
+      return acc
+    }, {} as DayEvents)
+  }, [events])
 
-  useEffect(() => {
-    if (selectedDate) {
-      setSelectedDayEvents(eventsByDate[selectedDate] || [])
-    }
-  }, [eventsByDate, selectedDate])
+  const selectedDayEvents = useMemo(
+    () => (selectedDate ? (eventsByDate[selectedDate] || []) : []),
+    [eventsByDate, selectedDate]
+  )
+
+  const selectedDayModalEvents = useMemo(
+    () => (selectedDayDate ? (eventsByDate[selectedDayDate] || []) : []),
+    [eventsByDate, selectedDayDate]
+  )
 
   // Calendar navigation
   const navigateMonth = (direction: 'prev' | 'next') => {
@@ -517,7 +529,6 @@ const CalendarDashboard: React.FC = () => {
     const dayEvents = eventsByDate[dateString] || []
     
     setSelectedDate(dateString)
-    setSelectedDayEvents(dayEvents)
     
     // If date has events, show day events modal, otherwise open event creation modal
     if (dayEvents.length > 0) {
@@ -574,14 +585,10 @@ const CalendarDashboard: React.FC = () => {
         const updated = await updateCalendarEvent(eventData.id, payload)
         const mapped = updated as CalendarEvent
         setLocalEvents(prev => prev.map(event => event.id === mapped.id ? mapped : event))
-        setSelectedDayEvents(prev => prev.map(event => event.id === mapped.id ? mapped : event))
       } else {
         const created = await createCalendarEvent(payload)
         const mapped = created as CalendarEvent
         setLocalEvents(prev => [...prev, mapped])
-        if (mapped.date === selectedDate) {
-          setSelectedDayEvents(prev => [...prev, mapped])
-        }
       }
     } catch (error) {
       console.error('Failed to save event:', error)
@@ -594,7 +601,6 @@ const CalendarDashboard: React.FC = () => {
     try {
       await deleteCalendarEvent(eventId)
       setLocalEvents(prev => prev.filter(event => event.id !== eventId))
-      setSelectedDayEvents(prev => prev.filter(event => event.id !== eventId))
     } catch (error) {
       console.error('Failed to delete event:', error)
       alert('Failed to delete event')
@@ -669,21 +675,114 @@ const CalendarDashboard: React.FC = () => {
   const addEventLabel = isExecutive && calendarScope === 'team' ? 'Assign Event' : 'Add Event'
 
   // --- Calendar sync helpers ---
-  const parseICalDate = (val: string): { date: string; time: string } => {
+  const pad2 = (n: number): string => String(n || 0).padStart(2, '0')
+
+  const normalizeTimeZone = (tz?: string): string | null => {
+    const v = String(tz || '').trim()
+    if (!v) return null
+    if (v.toUpperCase() === 'UTC' || v.toUpperCase() === 'GMT') return 'UTC'
+    return v
+  }
+
+  const formatDateInTimeZone = (date: Date, timeZone: string): { date: string; time: string } => {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(date)
+    const map: Record<string, string> = {}
+    for (const p of parts) {
+      if (p.type !== 'literal') map[p.type] = p.value
+    }
+    return { date: `${map.year}-${map.month}-${map.day}`, time: `${map.hour}:${map.minute}` }
+  }
+
+  const getTimeZoneOffsetMinutes = (timeZone: string, date: Date): number => {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).formatToParts(date)
+    const map: Record<string, number> = {}
+    for (const p of parts) {
+      if (p.type !== 'literal') map[p.type] = Number(p.value)
+    }
+    const asUtc = Date.UTC(map.year, map.month - 1, map.day, map.hour, map.minute, map.second)
+    return (asUtc - date.getTime()) / 60000
+  }
+
+  const zonedTimeToUtc = (
+    parts: { year: number; month: number; day: number; hour: number; minute: number; second: number },
+    timeZone: string
+  ): Date => {
+    const utcGuess = new Date(Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second))
+    const offsetMinutes = getTimeZoneOffsetMinutes(timeZone, utcGuess)
+    return new Date(utcGuess.getTime() - offsetMinutes * 60000)
+  }
+
+  const parseICalDate = (
+    val: string,
+    opts: { tzid?: string; valueType?: string; targetTimeZone?: string } = {}
+  ): { date: string; time: string; isDateOnly: boolean } => {
     // Handles formats like 20250120, 20250120T130000Z, 20250120T130000
-    const m = String(val).trim()
+    const m = String(val || '').trim()
     const datePart = m.slice(0, 8)
     const year = Number(datePart.slice(0, 4))
     const month = Number(datePart.slice(4, 6))
     const day = Number(datePart.slice(6, 8))
-    let hours = 0, minutes = 0
-    if (m.length >= 15 && m[8] === 'T') {
-      hours = Number(m.slice(9, 11))
-      minutes = Number(m.slice(11, 13))
+    const hasTime = m.length >= 15 && m[8] === 'T'
+    const isDateOnly = String(opts.valueType || '').toUpperCase() === 'DATE' || (!hasTime && m.length >= 8)
+    if (!hasTime || isDateOnly) {
+      return { date: `${pad2(year)}-${pad2(month)}-${pad2(day)}`, time: '00:00', isDateOnly: true }
     }
-    const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-    const time = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
-    return { date, time }
+    const hour = Number(m.slice(9, 11))
+    const minute = Number(m.slice(11, 13))
+    const second = Number(m.slice(13, 15))
+    const isUtc = m.endsWith('Z')
+    const targetTz = normalizeTimeZone(opts.targetTimeZone)
+    const sourceTz = normalizeTimeZone(opts.tzid)
+    const fallback = { date: `${pad2(year)}-${pad2(month)}-${pad2(day)}`, time: `${pad2(hour)}:${pad2(minute)}`, isDateOnly: false }
+    if (!targetTz) return fallback
+    try {
+      let instant: Date
+      if (isUtc) {
+        instant = new Date(Date.UTC(year, month - 1, day, hour, minute, second))
+      } else if (sourceTz) {
+        instant = zonedTimeToUtc({ year, month, day, hour, minute, second }, sourceTz)
+      } else {
+        // Floating time: assume it's already in the viewer's timezone
+        return fallback
+      }
+      const formatted = formatDateInTimeZone(instant, targetTz)
+      return { ...formatted, isDateOnly: false }
+    } catch {
+      return fallback
+    }
+  }
+
+  const parseIcsProperty = (line: string): { name: string; value: string; params: Record<string, string> } | null => {
+    const idx = line.indexOf(':')
+    if (idx <= 0) return null
+    const left = line.slice(0, idx)
+    const value = line.slice(idx + 1)
+    const parts = left.split(';')
+    const name = parts[0].toUpperCase()
+    const params: Record<string, string> = {}
+    for (let i = 1; i < parts.length; i++) {
+      const p = parts[i]
+      const eq = p.indexOf('=')
+      if (eq > 0) params[p.slice(0, eq).toUpperCase()] = p.slice(eq + 1)
+    }
+    return { name, value, params }
   }
 
   const parseICS = (text: string, sourceName: string): CalendarEvent[] => {
@@ -707,10 +806,18 @@ const CalendarDashboard: React.FC = () => {
           const uid = cursor['UID'] || Math.random().toString(36).slice(2)
           const summary = cursor['SUMMARY'] || '(No title)'
           const descRaw = (cursor['DESCRIPTION'] || '').replace(/\\n/g, '\n')
-          const dtstart = cursor['DTSTART'] || cursor['DTSTART;VALUE=DATE'] || ''
-          const dtend = cursor['DTEND'] || cursor['DTEND;VALUE=DATE'] || ''
-          const st = dtstart ? parseICalDate(dtstart) : { date: formatDateString(new Date()), time: '00:00' }
-          const et = dtend ? parseICalDate(dtend) : st
+          const dtstart = cursor['DTSTART'] || ''
+          const dtend = cursor['DTEND'] || ''
+          const dtstartTz = cursor['DTSTART_TZID'] || ''
+          const dtendTz = cursor['DTEND_TZID'] || dtstartTz
+          const dtstartValue = cursor['DTSTART_VALUE'] || ''
+          const dtendValue = cursor['DTEND_VALUE'] || dtstartValue
+          const st = dtstart
+            ? parseICalDate(dtstart, { tzid: dtstartTz, valueType: dtstartValue, targetTimeZone: clientTimeZone })
+            : { date: formatDateString(new Date()), time: '00:00', isDateOnly: true }
+          const et = dtend
+            ? parseICalDate(dtend, { tzid: dtendTz, valueType: dtendValue, targetTimeZone: clientTimeZone })
+            : st
           const location = cursor['LOCATION'] || ''
           const urlProp = cursor['URL'] || ''
           // Collect URLs from URL/DESCRIPTION/LOCATION and prefer meeting providers
@@ -726,8 +833,7 @@ const CalendarDashboard: React.FC = () => {
             if (s.includes('meet.google.com')) return 'google-meet'
             return undefined
           }
-          const hasTime = !!(dtstart && !/VALUE=DATE/i.test(dtstart))
-          const isAllDay = !hasTime
+          const isAllDay = st.isDateOnly
           const inferredType: CalendarEvent['type'] = firstUrl ? 'meeting' : (isAllDay ? 'reminder' : 'task')
           events.push({
             id: `ics-${uid}`,
@@ -752,11 +858,14 @@ const CalendarDashboard: React.FC = () => {
         }
         cursor = null
       } else if (cursor) {
-        const idx = l.indexOf(':')
-        if (idx > 0) {
-          const key = l.slice(0, idx).split(';')[0].toUpperCase()
-          const value = l.slice(idx + 1)
-          cursor[key] = value
+        const prop = parseIcsProperty(l)
+        if (prop) {
+          const { name, value, params } = prop
+          cursor[name] = value
+          if (name === 'DTSTART' || name === 'DTEND') {
+            if (params.TZID) cursor[`${name}_TZID`] = params.TZID
+            if (params.VALUE) cursor[`${name}_VALUE`] = params.VALUE
+          }
         }
       }
     }
@@ -780,7 +889,7 @@ const CalendarDashboard: React.FC = () => {
       if (!create.ok) throw new Error(await create.text())
       const created = await create.json()
       // After creation, fetch events from server-side endpoint
-      const evRes = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/sources/${created.id}/events`, { headers: { ...authHeaders() }, cache: 'no-store' })
+      const evRes = await fetch(withTimeZone(`${String(base).replace(/\/+$/, '')}/api/calendar/sources/${created.id}/events`), { headers: { ...authHeaders() }, cache: 'no-store' })
       const events = evRes.ok ? await evRes.json() : []
       const src: CalendarSource = { id: created.id, type: 'ics-url', name: created.name, color: created.color || '#10b981', enabled: !!created.enabled, url: cleaned, events: (events || []).map((e: any) => ({ ...e, sourceName: created.name, sourceType: 'ics-url', sourceColor: created.color || '#10b981' })), lastSyncAt: new Date().toISOString() }
       setSources(prev => [...prev, src])
@@ -823,7 +932,7 @@ const CalendarDashboard: React.FC = () => {
     try {
       if (src.type === 'ics-url') {
         const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
-        const res = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/sources/${src.id}/events`, { headers: { ...authHeaders() }, cache: 'no-store' })
+        const res = await fetch(withTimeZone(`${String(base).replace(/\/+$/, '')}/api/calendar/sources/${src.id}/events`), { headers: { ...authHeaders() }, cache: 'no-store' })
         if (!res.ok) throw new Error(await res.text())
         const events = await res.json()
         const parsed = (events || []).map((ev: any) => ({ ...ev, sourceName: src.name, sourceType: src.type, sourceColor: src.color }))
@@ -1630,7 +1739,7 @@ const CalendarDashboard: React.FC = () => {
                   })}
                 </h2>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                  {selectedDayEvents.length} event{selectedDayEvents.length !== 1 ? 's' : ''}
+                  {selectedDayModalEvents.length} event{selectedDayModalEvents.length !== 1 ? 's' : ''}
                 </p>
               </div>
               <button
@@ -1646,7 +1755,7 @@ const CalendarDashboard: React.FC = () => {
             {/* Events List */}
             <div className="p-6 max-h-96 overflow-y-auto">
               <div className="space-y-3">
-                {selectedDayEvents.map(event => (
+                {selectedDayModalEvents.map(event => (
                   <div
                     key={event.id}
                     className={`bg-gray-50 dark:bg-black/50 rounded-lg p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-black/40 transition-colors ${getAssignedClass(event)}`}
