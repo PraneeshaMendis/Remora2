@@ -590,7 +590,7 @@ const Documents: React.FC = () => {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="input-field text-sm py-2.5 pr-10"
+              className="input-field text-sm py-2.5 pr-10 appearance-none"
             >
               <option value="all">View</option>
               <option value="draft">Draft</option>
@@ -616,7 +616,7 @@ const Documents: React.FC = () => {
             <select
               value={projectFilter}
               onChange={(e) => setProjectFilter(e.target.value)}
-              className="input-field text-sm py-2.5 pr-10"
+              className="input-field text-sm py-2.5 pr-10 appearance-none"
             >
               <option value="all">All Projects</option>
               {projects.map((project) => (
@@ -629,7 +629,7 @@ const Documents: React.FC = () => {
             <select
               value={phaseFilter}
               onChange={(e) => setPhaseFilter(e.target.value)}
-              className="input-field text-sm py-2.5 pr-10"
+              className="input-field text-sm py-2.5 pr-10 appearance-none"
             >
               <option value="all">All Phases</option>
               {filterPhases.map((phase) => (
