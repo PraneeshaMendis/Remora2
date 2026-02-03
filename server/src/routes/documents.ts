@@ -124,7 +124,7 @@ router.post('/upload', upload.array('files'), async (req: Request, res: Response
           include: { reviewer: { include: { role: true } }, createdBy: { include: { role: true } }, project: true, phase: true, task: true },
         })
         created.push(mapDocument(doc))
-        if (reviewerId !== userId) {
+        if (statusDb === 'IN_REVIEW' && reviewerId !== userId) {
           const targetUrl = taskId ? `/projects/${projectId}/tasks/${taskId}` : `/documents?tab=inbox&docId=${doc.id}`
           notifyQueue.push({
             userId: reviewerId,
@@ -164,7 +164,7 @@ router.post('/upload', upload.array('files'), async (req: Request, res: Response
         include: { reviewer: { include: { role: true } }, createdBy: { include: { role: true } }, project: true, phase: true, task: true },
       })
       created.push(mapDocument(doc))
-      if (reviewerId !== userId) {
+      if (statusDb === 'IN_REVIEW' && reviewerId !== userId) {
         const targetUrl = taskId ? `/projects/${projectId}/tasks/${taskId}` : `/documents?tab=inbox&docId=${doc.id}`
         notifyQueue.push({
           userId: reviewerId,
@@ -277,6 +277,30 @@ router.patch('/:id/review', async (req: Request, res: Response) => {
     },
     include: { reviewer: { include: { role: true } }, createdBy: { include: { role: true } }, project: true, phase: true, task: true },
   })
+  const creatorId = updated.createdById as string | null
+  if (creatorId && creatorId !== userId && status !== 'in-review') {
+    const reviewerName = updated.reviewer?.name || 'Reviewer'
+    const statusLabel =
+      status === 'approved' ? 'approved' :
+      status === 'rejected' ? 'rejected' :
+      status === 'needs-changes' ? 'needs changes' : 'updated'
+    const title =
+      status === 'approved' ? 'Document approved' :
+      status === 'rejected' ? 'Document rejected' :
+      status === 'needs-changes' ? 'Changes requested' : 'Document updated'
+    const targetUrl = updated.taskId
+      ? `/projects/${updated.projectId}/tasks/${updated.taskId}`
+      : `/documents?tab=sent&docId=${updated.id}`
+    try {
+      await createNotifications([{
+        userId: creatorId,
+        type: 'DOCUMENT_SHARED',
+        title,
+        message: `${reviewerName} ${statusLabel} "${updated.name}".`,
+        targetUrl,
+      }])
+    } catch {}
+  }
   res.json(mapDocument(updated))
 })
 

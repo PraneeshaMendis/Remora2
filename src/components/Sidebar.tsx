@@ -71,6 +71,13 @@ const Sidebar: React.FC = () => {
       description: 'Project budget view'
     },
     { 
+      name: 'Project Costing', 
+      href: '/project-costing', 
+      icon: Receipt, 
+      roles: ['director', 'manager'],
+      description: 'Costing & adjustments'
+    },
+    { 
       name: 'User Management', 
       href: '/users', 
       icon: UserCog, 

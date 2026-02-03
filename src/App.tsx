@@ -24,6 +24,7 @@ import AdminRegisterUser from './pages/AdminRegisterUser.tsx'
 import PendingApprovals from './pages/PendingApprovals.tsx'
 import Permissions from './pages/Permissions.tsx'
 import BudgetConfig from './pages/BudgetConfig.tsx'
+import ProjectCosting from './pages/ProjectCosting.tsx'
 
 function App() {
   return (
@@ -58,6 +59,7 @@ function App() {
               <Route path="calendar" element={<CalendarDashboard />} />
               <Route path="slips-invoices" element={<SlipsInvoicesPage />} />
               <Route path="budget-config" element={<BudgetConfig />} />
+              <Route path="project-costing" element={<ProjectCosting />} />
             </Route>
           </Routes>
         </div>

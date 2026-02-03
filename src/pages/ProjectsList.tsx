@@ -47,6 +47,23 @@ const ProjectsList: React.FC = () => {
   const [filteredTeamMembers, setFilteredTeamMembers] = useState<typeof teamMembers>([])
   const [originalMemberIds, setOriginalMemberIds] = useState<string[]>([])
 
+  const normalizeStatus = (status?: string) => {
+    const normalized = String(status || '').trim().toLowerCase().replace(/_/g, '-')
+    switch (normalized) {
+      case 'in-progress':
+      case 'active':
+        return 'active'
+      case 'on-hold':
+        return 'on-hold'
+      case 'completed':
+        return 'completed'
+      case 'planning':
+        return 'planning'
+      default:
+        return normalized || 'planning'
+    }
+  }
+
   // Load real users for team assignment
   useEffect(() => {
     ;(async () => {
@@ -148,7 +165,7 @@ const ProjectsList: React.FC = () => {
       id: '1',
       name: 'Mobile App Redesign',
       description: 'Complete redesign of the mobile application with modern UI/UX',
-      status: 'in-progress',
+      status: 'active',
       progress: 60,
       startDate: '2024-01-01',
       dueDate: '2024-02-15',
@@ -178,7 +195,7 @@ const ProjectsList: React.FC = () => {
           id: p.id,
           name: p.title,
           description: p.description,
-          status: (p.status || 'PLANNING').toLowerCase(),
+          status: normalizeStatus(p.status || 'PLANNING'),
           progress: p.progress ?? 0,
           startDate: p.startDate || '',
           dueDate: p.endDate || '',
@@ -203,7 +220,6 @@ const ProjectsList: React.FC = () => {
   const formatDate = (d?: string) => (d ? new Date(d).toLocaleDateString() : '')
 
   const filteredProjects = projects.filter(project => {
-    if (project.status === 'completed') return false
     const matchesSearch = project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          project.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          project.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -415,10 +431,9 @@ const ProjectsList: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'in-progress': return 'badge-info'
-      case 'in-review': return 'badge-warning'
+      case 'active': return 'badge-info'
+      case 'on-hold': return 'badge-warning'
       case 'completed': return 'badge-success'
-      case 'blocked': return 'badge-danger'
       case 'planning': return 'badge-info'
       default: return 'badge-info'
     }
@@ -545,9 +560,9 @@ const ProjectsList: React.FC = () => {
             >
               <option value="all">All Status</option>
               <option value="planning">Planning</option>
-              <option value="in-progress">In Progress</option>
-              <option value="in-review">In Review</option>
-              <option value="blocked">Blocked</option>
+              <option value="active">Active</option>
+              <option value="on-hold">On Hold</option>
+              <option value="completed">Completed</option>
             </select>
           </div>
           <div>

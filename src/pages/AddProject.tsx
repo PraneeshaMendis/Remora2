@@ -134,7 +134,9 @@ const AddProject: React.FC = () => {
     'GRC-Related Services': [
       'Virtual CISO',
       'GDPR Compliance Programs',
-      'ISO 27001:2013',
+      'ISO 27001:2022',
+      'Security Management Services',
+      'Resource Augmentation',
       'Cyber Security Strategy',
       'Threat Intelligence',
       'Data Classification'
