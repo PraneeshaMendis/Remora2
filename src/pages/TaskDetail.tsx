@@ -968,6 +968,11 @@ const TaskDetail: React.FC = () => {
       }
 
       if (!startedAt || !endedAt) return
+      const roundedHours = Math.round((Number(hoursFloat) || 0) * 100) / 100
+      if (roundedHours <= 0) {
+        alert('Please log more than 0 hours.')
+        return
+      }
       const payload = {
         startedAt: startedAt.toISOString(),
         endedAt: endedAt.toISOString(),
@@ -1926,6 +1931,7 @@ const TaskDetail: React.FC = () => {
                     </label>
                     <input
                       type="number"
+                      min="0.25"
                       step="0.25"
                       value={newLogHours}
                       onChange={(e) => setNewLogHours(parseFloat(e.target.value) || 0)}

@@ -39,6 +39,9 @@ router.post('/tasks/:taskId/timelogs', upload.single('file'), async (req: Reques
   const start = new Date(startedAt)
   const end = new Date(endedAt)
   const durationMins = Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000))
+  if (durationMins <= 0) {
+    return res.status(400).json({ error: 'Time log duration must be greater than 0 minutes.' })
+  }
   try {
     const rateSource = await prisma.user.findUnique({ where: { id: String(userId) }, select: { costRate: true } })
     let attachmentId: string | undefined

@@ -25,6 +25,7 @@ import PendingApprovals from './pages/PendingApprovals.tsx'
 import Permissions from './pages/Permissions.tsx'
 import BudgetConfig from './pages/BudgetConfig.tsx'
 import ProjectCosting from './pages/ProjectCosting.tsx'
+import MeetingLogger from './pages/MeetingLogger.tsx'
 
 function App() {
   return (
@@ -40,7 +41,7 @@ function App() {
             <Route path="/invite/accept" element={<AcceptInvite />} />
             
             {/* Protected routes */}
-            <Route path="/" element={<AuthenticatedLayout />}>
+            <Route element={<AuthenticatedLayout />}>
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard" element={<DirectorDashboard />} />
               <Route path="projects" element={<ProjectsList />} />
@@ -60,6 +61,7 @@ function App() {
               <Route path="slips-invoices" element={<SlipsInvoicesPage />} />
               <Route path="budget-config" element={<BudgetConfig />} />
               <Route path="project-costing" element={<ProjectCosting />} />
+              <Route path="meeting-logger" element={<MeetingLogger />} />
             </Route>
           </Routes>
         </div>

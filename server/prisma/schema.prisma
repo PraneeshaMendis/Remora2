@@ -47,6 +47,7 @@ model User {
   documentsCreated  Document[]          @relation("DocumentCreator")
   notifications     Notification[]      @relation("UserNotifications")
   historyEvents     HistoryEvent[]      @relation("HistoryCreatedBy")
+  meetingLogsCreated MeetingLog[]       @relation("MeetingLogCreator")
   calendarAccounts  CalendarAccount[]
   calendarSources   CalendarSource[]
   oauthStates       CalendarOAuthState[]
@@ -286,6 +287,7 @@ model Project {
   endDate        DateTime?
   phases         Phase[]
   memberships    ProjectMembership[]
+  meetingLogs    MeetingLog[]
   attachments    Attachment[]
   documents      Document[]
   receipts       PaymentReceipt[]
@@ -316,6 +318,7 @@ model Phase {
   project     Project   @relation(fields: [projectId], references: [id])
   projectId   String
   tasks       Task[]
+  meetingLogs MeetingLog[]
   documents   Document[]
   invoices    Invoice[]
   receipts    PaymentReceipt[]
@@ -335,6 +338,7 @@ model Task {
   phase       Phase               @relation(fields: [phaseId], references: [id])
   phaseId     String
   assignees   ProjectMembership[] @relation("TaskAssignees")
+  meetingLogs MeetingLog[]
   timeLogs    TimeLog[]
   comments    Comment[]
   documents   Document[]
@@ -342,6 +346,40 @@ model Task {
   additionalCosts AdditionalCost[]
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
+}
+
+enum MeetingType {
+  ONLINE
+  PHYSICAL
+}
+
+model MeetingLog {
+  id                String       @id @default(cuid())
+  title             String
+  meetingDate       DateTime
+  type              MeetingType  @default(ONLINE)
+  project           Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId         String
+  phase             Phase?       @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+  phaseId           String?
+  task              Task?        @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  taskId            String?
+  clParticipantIds  String[]
+  clientParticipants String?
+  durationHours     Float
+  clHeadcount       Int
+  totalEffort       Float
+  discussion        String?
+  createdBy         User?        @relation("MeetingLogCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdById       String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@index([projectId])
+  @@index([phaseId])
+  @@index([taskId])
+  @@index([meetingDate])
+  @@index([createdById])
 }
 
 model TimeLog {

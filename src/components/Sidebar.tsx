@@ -15,7 +15,8 @@ import {
   Calendar,
   Receipt,
   Shield,
-  Wallet
+  Wallet,
+  ClipboardList
 } from 'lucide-react'
 import CyberLabsLogo from './CyberLabsLogo.tsx'
 import SidebarLogoScene from './SidebarLogoScene.tsx'
@@ -55,6 +56,13 @@ const Sidebar: React.FC = () => {
       icon: Calendar, 
       roles: ['admin', 'director', 'manager', 'member', 'client', 'consultant', 'lead'],
       description: 'Schedule & events'
+    },
+    { 
+      name: 'Meeting Logger', 
+      href: '/meeting-logger', 
+      icon: ClipboardList, 
+      roles: ['director', 'manager', 'member', 'client', 'consultant', 'lead'],
+      description: 'Meeting notes & effort'
     },
     { 
       name: 'Slips & Invoices', 

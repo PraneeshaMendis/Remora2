@@ -24,6 +24,16 @@ type RawTimeLog = {
   hourlyRate?: number | null
 }
 
+type MeetingLog = {
+  id: string
+  projectId: string
+  phaseId?: string | null
+  taskId?: string | null
+  clParticipantIds?: string[]
+  clParticipants?: string[]
+  durationHours: number
+}
+
 type ProjectMember = {
   id: string
   name: string
@@ -100,6 +110,7 @@ const BudgetConfig: React.FC = () => {
   const [projectDetail, setProjectDetail] = useState<any | null>(null)
   const [timeLogs, setTimeLogs] = useState<RawTimeLog[]>([])
   const [additionalCosts, setAdditionalCosts] = useState<AdditionalCost[]>([])
+  const [meetingLogs, setMeetingLogs] = useState<MeetingLog[]>([])
   const [rateOverrides, setRateOverrides] = useState<Record<string, string>>({})
   const [selectedPhaseId, setSelectedPhaseId] = useState('all')
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
@@ -159,6 +170,7 @@ const BudgetConfig: React.FC = () => {
       setProjectDetail(null)
       setTimeLogs([])
       setAdditionalCosts([])
+      setMeetingLogs([])
       setSelectedPhaseId('all')
       try {
         const detail = await apiGet(`/projects/${selectedProjectId}`)
@@ -197,6 +209,9 @@ const BudgetConfig: React.FC = () => {
 
         const costList = await apiGet(`/api/additional-costs?projectId=${encodeURIComponent(selectedProjectId)}`).catch(() => [])
         if (active) setAdditionalCosts(Array.isArray(costList) ? costList : [])
+
+        const meetingList = await apiGet(`/api/meeting-logs?projectId=${encodeURIComponent(selectedProjectId)}`).catch(() => [])
+        if (active) setMeetingLogs(Array.isArray(meetingList) ? meetingList : [])
 
       } catch (error) {
         console.error('Failed to load project budget data', error)
@@ -327,6 +342,40 @@ const BudgetConfig: React.FC = () => {
     return timeLogs.filter(log => log.phaseId === selectedPhaseId)
   }, [timeLogs, selectedPhaseId])
 
+  const filteredMeetingLogs = useMemo(() => {
+    if (selectedPhaseId === 'all') return meetingLogs
+    return meetingLogs.filter(log => String(log.phaseId || '') === selectedPhaseId)
+  }, [meetingLogs, selectedPhaseId])
+
+  const meetingHoursByUser = useMemo(() => {
+    const map = new Map<string, number>()
+    const nameToId = new Map<string, string>()
+    memberMap.forEach(member => {
+      nameToId.set(member.name.toLowerCase(), member.id)
+    })
+
+    filteredMeetingLogs.forEach(log => {
+      const duration = Number((log as any)?.durationHours || 0)
+      if (!duration) return
+      const ids = Array.isArray(log.clParticipantIds) ? log.clParticipantIds.filter(Boolean) : []
+      if (ids.length > 0) {
+        ids.forEach(id => {
+          const key = String(id)
+          map.set(key, (map.get(key) || 0) + duration)
+        })
+        return
+      }
+      const names = Array.isArray(log.clParticipants) ? log.clParticipants : []
+      names.forEach(name => {
+        const key = nameToId.get(String(name).toLowerCase())
+        if (!key) return
+        map.set(key, (map.get(key) || 0) + duration)
+      })
+    })
+
+    return map
+  }, [filteredMeetingLogs, memberMap])
+
   const displayLogs = useMemo(() => {
     return filteredLogs
       .map(log => {
@@ -439,6 +488,7 @@ const BudgetConfig: React.FC = () => {
     return Array.from(memberMap.values()).map(member => {
       const labor = laborByUser.get(member.id)?.cost || 0
       const hours = laborByUser.get(member.id)?.hours || 0
+      const meetingHours = meetingHoursByUser.get(member.id) || 0
       const additional = additionalByUser.get(member.id) || 0
       const total = labor + additional
       const baseRate = member.costRate
@@ -450,6 +500,8 @@ const BudgetConfig: React.FC = () => {
         role: member.roleLabel,
         hours: `${Math.round((hours + Number.EPSILON) * 10) / 10}h`,
         hoursValue: Math.round((hours + Number.EPSILON) * 10) / 10,
+        meetingHours: `${Math.round((meetingHours + Number.EPSILON) * 10) / 10}h`,
+        meetingHoursValue: Math.round((meetingHours + Number.EPSILON) * 10) / 10,
         rate,
         labor: formatCurrency(labor, 0),
         laborValue: labor,
@@ -460,7 +512,7 @@ const BudgetConfig: React.FC = () => {
         baseRate,
       }
     })
-  }, [memberMap, laborByUser, additionalByUser, rateOverrides])
+  }, [memberMap, laborByUser, additionalByUser, meetingHoursByUser, rateOverrides])
 
   const additionalCostItems = useMemo(() => {
     return phaseAdditionalCosts.map(cost => {
@@ -790,6 +842,7 @@ const BudgetConfig: React.FC = () => {
                 <th className="pb-3">Member</th>
                 <th className="pb-3">Role</th>
                 <th className="pb-3">Hours</th>
+                <th className="pb-3">M/HOURS</th>
                 <th className="pb-3">Hourly Rate</th>
                 <th className="pb-3">Labor Cost</th>
                 <th className="pb-3">Additional</th>
@@ -799,7 +852,7 @@ const BudgetConfig: React.FC = () => {
             <tbody className="divide-y divide-slate-200/70 dark:divide-white/10">
               {teamBreakdown.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-6 text-center text-sm text-slate-500">
+                  <td colSpan={8} className="py-6 text-center text-sm text-slate-500">
                     {isLoadingProject ? 'Loading team data...' : 'No team data yet.'}
                   </td>
                 </tr>
@@ -819,6 +872,7 @@ const BudgetConfig: React.FC = () => {
                     </td>
                     <td className="py-4 text-slate-500 dark:text-slate-400">{member.role}</td>
                     <td className="py-4 font-semibold text-slate-900 dark:text-white">{member.hours}</td>
+                    <td className="py-4 font-semibold text-slate-900 dark:text-white">{member.meetingHours}</td>
                     <td className="py-4">
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-slate-400">$</span>

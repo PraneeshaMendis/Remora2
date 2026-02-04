@@ -39,6 +39,7 @@ import adminRouter from './routes/admin.ts'
 import settingsRouter from './routes/settings.ts'
 import speechRouter from './routes/speech.ts'
 import chatbotRouter from './routes/chatbot.ts'
+import meetingLogsRouter from './routes/meeting-logs.ts'
 
 const app = express()
 app.disable('x-powered-by')
@@ -136,6 +137,8 @@ app.use('/api/speech', speechRouter)
 app.use('/api/chatbot', loginRateLimiter(), chatbotRouter)
 // Notifications
 app.use('/api/notifications', notificationsRouter)
+// Meeting logs
+app.use('/api/meeting-logs', meetingLogsRouter)
 
 const port = process.env.PORT || 4000
 app.listen(port, () => {
