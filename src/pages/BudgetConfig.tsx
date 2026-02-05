@@ -398,16 +398,40 @@ const BudgetConfig: React.FC = () => {
       })
   }, [filteredLogs, memberMap, rateOverrides])
 
-  const laborByUser = useMemo(() => {
-    const map = new Map<string, { hours: number; cost: number }>()
+  const loggedHoursByUser = useMemo(() => {
+    const map = new Map<string, number>()
     displayLogs.forEach(log => {
-      const current = map.get(log.userId) || { hours: 0, cost: 0 }
-      current.hours += log.hours
-      current.cost += log.cost
-      map.set(log.userId, current)
+      map.set(log.userId, (map.get(log.userId) || 0) + log.hours)
     })
     return map
   }, [displayLogs])
+
+  const loggedCostByUser = useMemo(() => {
+    const map = new Map<string, number>()
+    displayLogs.forEach(log => {
+      map.set(log.userId, (map.get(log.userId) || 0) + log.cost)
+    })
+    return map
+  }, [displayLogs])
+
+  const laborByUser = useMemo(() => {
+    const map = new Map<string, { hours: number; cost: number }>()
+    const userIds = new Set<string>()
+    loggedHoursByUser.forEach((_, userId) => userIds.add(userId))
+    meetingHoursByUser.forEach((_, userId) => userIds.add(userId))
+
+    userIds.forEach(userId => {
+      const loggedHours = loggedHoursByUser.get(userId) || 0
+      const loggedCost = loggedCostByUser.get(userId) || 0
+      const meetingHours = meetingHoursByUser.get(userId) || 0
+      const totalHours = loggedHours + meetingHours
+      const member = memberMap.get(userId)
+      const baseRate = member?.costRate ?? DEFAULT_ROLE_RATES.MEMBER
+      const rate = getEffectiveRate(userId, baseRate)
+      map.set(userId, { hours: totalHours, cost: loggedCost + meetingHours * rate })
+    })
+    return map
+  }, [loggedHoursByUser, loggedCostByUser, meetingHoursByUser, memberMap, rateOverrides])
 
   const projectAdditionalCosts = useMemo(() => {
     if (!selectedProjectId) return []
@@ -486,13 +510,14 @@ const BudgetConfig: React.FC = () => {
 
   const teamBreakdown = useMemo(() => {
     return Array.from(memberMap.values()).map(member => {
-      const labor = laborByUser.get(member.id)?.cost || 0
-      const hours = laborByUser.get(member.id)?.hours || 0
+      const hours = loggedHoursByUser.get(member.id) || 0
       const meetingHours = meetingHoursByUser.get(member.id) || 0
+      const totalHours = hours + meetingHours
       const additional = additionalByUser.get(member.id) || 0
-      const total = labor + additional
       const baseRate = member.costRate
       const rate = getEffectiveRate(member.id, baseRate)
+      const labor = laborByUser.get(member.id)?.cost || 0
+      const total = labor + additional
       return {
         id: member.id,
         initials: getInitials(member.name),
@@ -502,6 +527,8 @@ const BudgetConfig: React.FC = () => {
         hoursValue: Math.round((hours + Number.EPSILON) * 10) / 10,
         meetingHours: `${Math.round((meetingHours + Number.EPSILON) * 10) / 10}h`,
         meetingHoursValue: Math.round((meetingHours + Number.EPSILON) * 10) / 10,
+        totalHours: `${Math.round((totalHours + Number.EPSILON) * 10) / 10}h`,
+        totalHoursValue: Math.round((totalHours + Number.EPSILON) * 10) / 10,
         rate,
         labor: formatCurrency(labor, 0),
         laborValue: labor,
@@ -512,7 +539,7 @@ const BudgetConfig: React.FC = () => {
         baseRate,
       }
     })
-  }, [memberMap, laborByUser, additionalByUser, meetingHoursByUser, rateOverrides])
+  }, [memberMap, loggedHoursByUser, meetingHoursByUser, additionalByUser, laborByUser, rateOverrides])
 
   const additionalCostItems = useMemo(() => {
     return phaseAdditionalCosts.map(cost => {
@@ -843,6 +870,7 @@ const BudgetConfig: React.FC = () => {
                 <th className="pb-3">Role</th>
                 <th className="pb-3">Hours</th>
                 <th className="pb-3">M/HOURS</th>
+                <th className="pb-3">T/HOURS</th>
                 <th className="pb-3">Hourly Rate</th>
                 <th className="pb-3">Labor Cost</th>
                 <th className="pb-3">Additional</th>
@@ -852,7 +880,7 @@ const BudgetConfig: React.FC = () => {
             <tbody className="divide-y divide-slate-200/70 dark:divide-white/10">
               {teamBreakdown.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-6 text-center text-sm text-slate-500">
+                  <td colSpan={9} className="py-6 text-center text-sm text-slate-500">
                     {isLoadingProject ? 'Loading team data...' : 'No team data yet.'}
                   </td>
                 </tr>
@@ -873,6 +901,7 @@ const BudgetConfig: React.FC = () => {
                     <td className="py-4 text-slate-500 dark:text-slate-400">{member.role}</td>
                     <td className="py-4 font-semibold text-slate-900 dark:text-white">{member.hours}</td>
                     <td className="py-4 font-semibold text-slate-900 dark:text-white">{member.meetingHours}</td>
+                    <td className="py-4 font-semibold text-slate-900 dark:text-white">{member.totalHours}</td>
                     <td className="py-4">
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-slate-400">$</span>

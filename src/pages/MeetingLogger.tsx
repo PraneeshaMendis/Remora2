@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { ClipboardList, Users } from 'lucide-react'
 import { getProjects } from '../services/projectsAPI'
 import { apiGet, apiJson } from '../services/api'
+import { useAuth } from '../contexts/AuthContext'
 
 type ProjectOption = {
   id: string
@@ -69,6 +70,10 @@ const formatEffort = (value: number) => {
 }
 
 const MeetingLogger: React.FC = () => {
+  const { user } = useAuth()
+  const isAdminOrExecutive =
+    String(user?.role || '').toLowerCase() === 'admin' ||
+    String(user?.department || '').trim().toLowerCase() === 'executive department'
   const [isFormVisible, setIsFormVisible] = useState(true)
   const [projects, setProjects] = useState<ProjectOption[]>(fallbackProjects)
   const [isLoadingProjects, setIsLoadingProjects] = useState(true)
@@ -92,6 +97,8 @@ const MeetingLogger: React.FC = () => {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [selectedHistoryProjectId, setSelectedHistoryProjectId] = useState('all')
+  const [editingLogId, setEditingLogId] = useState<string | null>(null)
+  const [editingLog, setEditingLog] = useState<MeetingLog | null>(null)
 
   const clHeadcount = selectedParticipants.length
 
@@ -137,6 +144,23 @@ const MeetingLogger: React.FC = () => {
       .map(id => memberById.get(id)?.name)
       .filter((name): name is string => Boolean(name))
   }, [memberById, selectedParticipants])
+
+  useEffect(() => {
+    if (!editingLogId || !editingLog) return
+    if (selectedParticipants.length > 0) return
+    const ids = Array.isArray(editingLog.clParticipantIds) ? editingLog.clParticipantIds : []
+    if (ids.length > 0) {
+      setSelectedParticipants(ids)
+      return
+    }
+    const names = Array.isArray(editingLog.clParticipants) ? editingLog.clParticipants : []
+    if (!names.length) return
+    const nameToId = new Map(projectMembers.map(member => [member.name.toLowerCase(), member.id]))
+    const mapped = names
+      .map(name => nameToId.get(String(name).toLowerCase()))
+      .filter((id): id is string => Boolean(id))
+    if (mapped.length > 0) setSelectedParticipants(mapped)
+  }, [editingLogId, editingLog, projectMembers, selectedParticipants.length])
 
   useEffect(() => {
     let active = true
@@ -231,14 +255,16 @@ const MeetingLogger: React.FC = () => {
   }, [selectedProjectId])
 
   useEffect(() => {
+    if (editingLogId && editingLog?.projectId === selectedProjectId) return
     setSelectedPhaseId('')
     setSelectedTaskId('')
     setSelectedParticipants([])
-  }, [selectedProjectId])
+  }, [selectedProjectId, editingLogId, editingLog])
 
   useEffect(() => {
+    if (editingLogId && editingLog?.phaseId === selectedPhaseId) return
     setSelectedTaskId('')
-  }, [selectedPhaseId])
+  }, [selectedPhaseId, editingLogId, editingLog])
 
   const loadMeetingLogs = async () => {
     setIsLoadingLogs(true)
@@ -282,6 +308,25 @@ const MeetingLogger: React.FC = () => {
     setClientParticipants('')
     setDurationHours('1')
     setDiscussion('')
+    setEditingLogId(null)
+    setEditingLog(null)
+  }
+
+  const startEditing = (log: MeetingLog) => {
+    if (!isAdminOrExecutive) return
+    setEditingLogId(log.id)
+    setEditingLog(log)
+    setIsFormVisible(true)
+    setMeetingTitle(log.title)
+    setMeetingDate(log.date)
+    setMeetingType(log.type)
+    setSelectedProjectId(log.projectId)
+    setSelectedPhaseId(log.phaseId || '')
+    setSelectedTaskId(log.taskId || '')
+    setSelectedParticipants(Array.isArray(log.clParticipantIds) ? log.clParticipantIds : [])
+    setClientParticipants(log.clientParticipants || '')
+    setDurationHours(String(log.durationHours || 0))
+    setDiscussion(log.discussion || '')
   }
 
   const handleLogMeeting = (event: React.FormEvent) => {
@@ -305,14 +350,19 @@ const MeetingLogger: React.FC = () => {
 
     setIsSaving(true)
     setLogsError(null)
-    apiJson('/api/meeting-logs', 'POST', payload)
+    const request = editingLogId
+      ? apiJson(`/api/meeting-logs/${editingLogId}`, 'PATCH', payload)
+      : apiJson('/api/meeting-logs', 'POST', payload)
+    request
       .then((created: MeetingLog) => {
         if (created) {
           const normalized = {
             ...created,
             clParticipants: Array.isArray(created.clParticipants) ? created.clParticipants : [],
           }
-          setMeetingLogs(prev => [normalized, ...prev])
+          setMeetingLogs(prev =>
+            editingLogId ? prev.map(item => (item.id === editingLogId ? normalized : item)) : [normalized, ...prev]
+          )
         } else {
           loadMeetingLogs()
         }
@@ -349,12 +399,12 @@ const MeetingLogger: React.FC = () => {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Meeting Logger</h1>
-          <p className="mt-2 text-gray-600 dark:text-gray-400">
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Meeting Logger</h1>
+          <p className="mt-2 text-slate-600 dark:text-slate-400">
             Capture meeting details, participants, and effort in one place.
           </p>
         </div>
-        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+        <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
           <ClipboardList className="h-4 w-4" />
           <span>{meetingLogs.length} logged meetings</span>
         </div>
@@ -363,8 +413,8 @@ const MeetingLogger: React.FC = () => {
       <div className="card">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Meeting Details</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Meeting Details</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               Log the essentials before adding the discussion notes.
             </p>
           </div>
@@ -381,7 +431,7 @@ const MeetingLogger: React.FC = () => {
           <form onSubmit={handleLogMeeting} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Meeting Title
                 </label>
                 <input
@@ -394,7 +444,7 @@ const MeetingLogger: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Meeting Date
                 </label>
                 <input
@@ -406,7 +456,7 @@ const MeetingLogger: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Meeting Type
                 </label>
                 <div className="flex items-center gap-2">
@@ -419,7 +469,7 @@ const MeetingLogger: React.FC = () => {
                       className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-all duration-200 ${
                         meetingType === type
                           ? 'bg-primary-600 text-white border-primary-600 shadow-sm'
-                          : 'bg-white/80 dark:bg-slate-900/40 text-gray-700 dark:text-gray-200 border-slate-200/70 dark:border-white/10'
+                          : 'bg-white/80 dark:bg-slate-900/40 text-slate-700 dark:text-slate-200 border-slate-200/70 dark:border-white/10'
                       }`}
                     >
                       {type}
@@ -431,7 +481,7 @@ const MeetingLogger: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Project
                 </label>
                 <select
@@ -449,7 +499,7 @@ const MeetingLogger: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Phase (Optional)
                 </label>
                 <select
@@ -473,7 +523,7 @@ const MeetingLogger: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Task (Optional)
                 </label>
                 <select
@@ -500,7 +550,7 @@ const MeetingLogger: React.FC = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Cyber Labs Participants
                 </label>
                 <div className="rounded-2xl border border-slate-200/70 dark:border-white/10 bg-white/70 dark:bg-black/40 px-3 py-2 min-h-[44px]">
@@ -517,12 +567,12 @@ const MeetingLogger: React.FC = () => {
                       ))}
                     </div>
                   ) : (
-                    <span className="text-sm text-gray-400">Select team members...</span>
+                    <span className="text-sm text-slate-400">Select team members...</span>
                   )}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {projectMembers.length === 0 ? (
-                    <span className="text-sm text-gray-400">
+                    <span className="text-sm text-slate-400">
                       {selectedProjectId
                         ? isLoadingProjectDetail
                           ? 'Loading assigned members...'
@@ -540,7 +590,7 @@ const MeetingLogger: React.FC = () => {
                           className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all duration-200 ${
                             isSelected
                               ? 'bg-primary-600 text-white border-primary-600'
-                              : 'bg-white/80 dark:bg-slate-900/40 text-gray-700 dark:text-gray-200 border-slate-200/70 dark:border-white/10'
+                              : 'bg-white/80 dark:bg-slate-900/40 text-slate-700 dark:text-slate-200 border-slate-200/70 dark:border-white/10'
                           }`}
                         >
                           {member.name}
@@ -551,7 +601,7 @@ const MeetingLogger: React.FC = () => {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Client Participants
                 </label>
                 <input
@@ -566,7 +616,7 @@ const MeetingLogger: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Duration (Hrs)
                 </label>
                 <input
@@ -579,7 +629,7 @@ const MeetingLogger: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   CL Headcount
                 </label>
                 <input
@@ -592,15 +642,15 @@ const MeetingLogger: React.FC = () => {
                 />
               </div>
               <div className="rounded-2xl border border-dashed border-slate-200/70 dark:border-white/10 px-4 py-3 bg-slate-50/70 dark:bg-slate-900/40">
-                <div className="text-xs uppercase tracking-wide text-gray-400">Calculated Total Effort</div>
-                <div className="text-lg font-semibold text-gray-900 dark:text-white">
+                <div className="text-xs uppercase tracking-wide text-slate-400">Calculated Total Effort</div>
+                <div className="text-lg font-semibold text-slate-900 dark:text-white">
                   {formatEffort(totalEffort)} Total Man-Hours
                 </div>
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 High-level Discussion
               </label>
               <textarea
@@ -617,15 +667,21 @@ const MeetingLogger: React.FC = () => {
                 onClick={handleClearForm}
                 className="btn-secondary"
               >
-                Clear Form
+                {editingLogId ? 'Cancel Edit' : 'Clear Form'}
               </button>
               <button type="submit" className="btn-primary" disabled={isSaving}>
-                {isSaving ? 'Logging...' : 'Log Meeting'}
+                {isSaving
+                  ? editingLogId
+                    ? 'Updating...'
+                    : 'Logging...'
+                  : editingLogId
+                    ? 'Update Meeting'
+                    : 'Log Meeting'}
               </button>
             </div>
           </form>
         ) : (
-          <div className="rounded-2xl border border-dashed border-slate-200/70 dark:border-white/10 p-6 text-sm text-gray-500 dark:text-gray-400">
+          <div className="rounded-2xl border border-dashed border-slate-200/70 dark:border-white/10 p-6 text-sm text-slate-500 dark:text-slate-400">
             Form hidden. Click "Show Form" to add or edit meeting details.
           </div>
         )}
@@ -634,8 +690,8 @@ const MeetingLogger: React.FC = () => {
       <div className="card">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Meeting History</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Meeting History</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               Review previous meetings and search by title, project, or discussion.
             </p>
           </div>
@@ -661,7 +717,7 @@ const MeetingLogger: React.FC = () => {
                 }}
                 className="input-field"
               />
-              <span className="text-xs text-gray-400">to</span>
+              <span className="text-xs text-slate-400">to</span>
               <input
                 type="date"
                 value={dateTo}
@@ -681,7 +737,7 @@ const MeetingLogger: React.FC = () => {
 
         <div className="overflow-x-auto">
           <table className="min-w-[1200px] w-full text-left text-sm">
-            <thead className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            <thead className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
               <tr>
                 <th className="pb-3 px-4 min-w-[240px]">Meeting &amp; Project</th>
                 <th className="pb-3 px-4 min-w-[160px]">Hierarchy</th>
@@ -695,35 +751,35 @@ const MeetingLogger: React.FC = () => {
             <tbody className="divide-y divide-slate-200/70 dark:divide-white/10">
               {isLoadingLogs ? (
                 <tr>
-                  <td colSpan={7} className="py-6 px-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                  <td colSpan={7} className="py-6 px-4 text-center text-sm text-slate-500 dark:text-slate-400">
                     Loading meeting history...
                   </td>
                 </tr>
               ) : filteredMeetings.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-6 px-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                  <td colSpan={7} className="py-6 px-4 text-center text-sm text-slate-500 dark:text-slate-400">
                     No meetings logged yet.
                   </td>
                 </tr>
               ) : (
                 filteredMeetings.map(log => (
-                  <tr key={log.id} className="text-gray-700 dark:text-gray-200">
+                  <tr key={log.id} className="text-slate-700 dark:text-slate-200">
                     <td className="py-4 px-4">
-                      <div className="font-semibold text-gray-900 dark:text-white">{log.title}</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                      <div className="font-semibold text-slate-900 dark:text-white">{log.title}</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">
                         {log.projectName || 'Unknown Project'} • {log.date} • {log.type}
                       </div>
                     </td>
                     <td className="py-4 px-4">
-                      <div className="font-medium text-gray-800 dark:text-gray-200">
+                      <div className="font-medium text-slate-800 dark:text-slate-200">
                         {log.phase || '—'}
                       </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                      <div className="text-xs text-slate-500 dark:text-slate-400">
                         {log.task || '—'}
                       </div>
                     </td>
                     <td className="py-4 px-4">
-                      <div className="text-sm text-gray-600 dark:text-gray-300">
+                      <div className="text-sm text-slate-600 dark:text-slate-300">
                         {log.discussion ? `${log.discussion.slice(0, 120)}${log.discussion.length > 120 ? '…' : ''}` : '—'}
                       </div>
                     </td>
@@ -739,30 +795,32 @@ const MeetingLogger: React.FC = () => {
                             </span>
                           ))
                         ) : (
-                          <span className="text-xs text-gray-400">—</span>
+                          <span className="text-xs text-slate-400">—</span>
                         )}
                       </div>
                     </td>
-                    <td className="py-4 px-4 text-sm text-gray-600 dark:text-gray-300">
+                    <td className="py-4 px-4 text-sm text-slate-600 dark:text-slate-300">
                       {log.clientParticipants || '—'}
                     </td>
                     <td className="py-4 px-4">
-                      <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                      <div className="text-sm font-semibold text-slate-900 dark:text-white">
                         {formatEffort(log.totalEffort)} hrs
                       </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                      <div className="text-xs text-slate-500 dark:text-slate-400">
                         {formatEffort(log.durationHours)}h x {log.clHeadcount}
                       </div>
                     </td>
                     <td className="py-4 px-4">
                       <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          className="btn-outline btn-compact"
-                          onClick={() => setIsFormVisible(true)}
-                        >
-                          View
-                        </button>
+                        {isAdminOrExecutive && (
+                          <button
+                            type="button"
+                            className="btn-secondary btn-compact"
+                            onClick={() => startEditing(log)}
+                          >
+                            Edit
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="btn-danger btn-compact"

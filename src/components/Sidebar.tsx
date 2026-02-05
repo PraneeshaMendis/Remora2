@@ -114,7 +114,7 @@ const Sidebar: React.FC = () => {
       description: 'Create new user accounts'
     },
     { 
-      name: 'Documents', 
+      name: 'Documents Log', 
       href: '/documents', 
       icon: FileText, 
       roles: ['director', 'manager', 'member', 'client', 'consultant', 'lead'],

@@ -43,6 +43,8 @@ const createSchema = z.object({
   discussion: z.string().optional().nullable(),
 })
 
+const updateSchema = createSchema
+
 const formatDate = (value: Date) => value.toISOString().slice(0, 10)
 
 const mapTypeToEnum = (value: MeetingTypeInput) => (value === 'Physical' ? 'PHYSICAL' : 'ONLINE')
@@ -158,6 +160,60 @@ router.post('/', authRequired, async (req: Request, res: Response) => {
     res.status(201).json(mapMeeting(created, userNameById))
   } catch (e: any) {
     res.status(400).json({ error: e?.message || 'Failed to create meeting log' })
+  }
+})
+
+router.patch('/:id', authRequired, async (req: Request, res: Response) => {
+  const id = String(req.params.id || '')
+  if (!id) return res.status(400).json({ error: 'Meeting log id required' })
+  const parsed = updateSchema.safeParse(req.body)
+  if (!parsed.success) return res.status(400).json(parsed.error.flatten())
+
+  const data = parsed.data
+  const meetingDate = new Date(data.date)
+  if (Number.isNaN(meetingDate.getTime())) {
+    return res.status(400).json({ error: 'Invalid meeting date' })
+  }
+
+  const participantIds = Array.from(new Set((data.clParticipantIds || []).filter(Boolean)))
+  const clHeadcount = participantIds.length
+  const totalEffort = data.durationHours * clHeadcount
+
+  try {
+    const updated = await prisma.meetingLog.update({
+      where: { id },
+      data: {
+        title: data.title.trim(),
+        meetingDate,
+        type: mapTypeToEnum(data.type) as any,
+        projectId: data.projectId,
+        phaseId: data.phaseId || null,
+        taskId: data.taskId || null,
+        clParticipantIds: participantIds,
+        clientParticipants: data.clientParticipants?.trim() || null,
+        durationHours: data.durationHours,
+        clHeadcount,
+        totalEffort,
+        discussion: data.discussion?.trim() || null,
+      },
+      include: {
+        project: { select: { id: true, title: true } },
+        phase: { select: { id: true, name: true } },
+        task: { select: { id: true, title: true } },
+      },
+    })
+
+    const users = participantIds.length
+      ? await prisma.user.findMany({
+          where: { id: { in: participantIds } },
+          select: { id: true, name: true },
+        })
+      : []
+    const userNameById = new Map(users.map(user => [String(user.id), String(user.name || '')]))
+
+    res.json(mapMeeting(updated, userNameById))
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Failed to update meeting log' })
   }
 })
 
