@@ -95,7 +95,7 @@ const CalendarDashboard: React.FC = () => {
   // Combined events from local + enabled sources
   const events: CalendarEvent[] = useMemo(() => {
     const ext = sources
-      .filter(s => s.enabled && (calendarScope === 'mine' || s.type === 'holidays'))
+      .filter(s => s.enabled)
       .flatMap(s => s.events || [])
     const localDecorated = localEvents.map(ev => ({
       ...ev,
@@ -104,7 +104,7 @@ const CalendarDashboard: React.FC = () => {
       sourceColor: ev.sourceColor || '#6b7280', // gray-500
     }))
     return [...localDecorated, ...ext]
-  }, [localEvents, sources, calendarScope])
+  }, [localEvents, sources])
   const [isEventModalOpen, setIsEventModalOpen] = useState(false)
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null)
   const [filterType, setFilterType] = useState<string>('all')
@@ -133,6 +133,7 @@ const CalendarDashboard: React.FC = () => {
       return localStorage.getItem(`calendar.holidayCountry.${uid}`) || 'LK'
     } catch { return 'LK' }
   })
+  const teamTargetUserId = isExecutive && calendarScope === 'team' ? selectedUserId : ''
 
   useEffect(() => {
     if (!isExecutive) {
@@ -171,9 +172,21 @@ const CalendarDashboard: React.FC = () => {
     } catch { return {} }
   }
 
-  const withTimeZone = (url: string): string => {
-    if (!clientTimeZone) return url
-    return `${url}${url.includes('?') ? '&' : '?'}tz=${encodeURIComponent(clientTimeZone)}`
+  const appendQueryParams = (url: string, params: Record<string, string | undefined>) => {
+    const entries = Object.entries(params).filter(([, value]) => value)
+    if (entries.length === 0) return url
+    const qs = entries
+      .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+      .join('&')
+    return `${url}${url.includes('?') ? '&' : '?'}${qs}`
+  }
+
+  const withTimeZone = (url: string, extra?: Record<string, string | undefined>): string => {
+    const params = {
+      ...(extra || {}),
+      ...(clientTimeZone ? { tz: clientTimeZone } : {}),
+    }
+    return appendQueryParams(url, params)
   }
 
   // Remove URLs from descriptions to avoid duplicating Join links in UI
@@ -240,11 +253,18 @@ const CalendarDashboard: React.FC = () => {
   useEffect(() => {
     const loadAccounts = async () => {
       try {
-        // Reset sources when user changes to avoid leaking prior user's state
+        // Reset sources when user or scope changes to avoid leaking prior user's state
         setSources([])
         syncedOnce.current = new Set()
+        if (isExecutive && calendarScope === 'team' && !teamTargetUserId) {
+          return
+        }
         const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
-        const res = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/accounts`, { headers: { 'Content-Type': 'application/json', ...authHeaders() }, cache: 'no-store' })
+        const accountsUrl = appendQueryParams(
+          `${String(base).replace(/\/+$/, '')}/api/calendar/accounts`,
+          { userId: teamTargetUserId || undefined }
+        )
+        const res = await fetch(accountsUrl, { headers: { 'Content-Type': 'application/json', ...authHeaders() }, cache: 'no-store' })
         if (!res.ok) return
         const accounts = await res.json()
         if (!Array.isArray(accounts)) return
@@ -269,7 +289,11 @@ const CalendarDashboard: React.FC = () => {
           return next
         })
         // Load per-user ICS URL sources from backend
-        const res2 = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/sources`, { headers: { ...authHeaders() }, cache: 'no-store' })
+        const sourcesUrl = appendQueryParams(
+          `${String(base).replace(/\/+$/, '')}/api/calendar/sources`,
+          { userId: teamTargetUserId || undefined }
+        )
+        const res2 = await fetch(sourcesUrl, { headers: { ...authHeaders() }, cache: 'no-store' })
         if (res2.ok) {
           const list = await res2.json()
           if (Array.isArray(list)) {
@@ -297,20 +321,27 @@ const CalendarDashboard: React.FC = () => {
       } catch {}
     }
     loadAccounts()
-  }, [user?.id, showHolidays])
+  }, [user?.id, showHolidays, isExecutive, calendarScope, teamTargetUserId])
 
   // Helper: fetch events for a single source (without UI spinners)
   const fetchEventsForSource = async (src: CalendarSource) => {
     try {
       const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
+      const targetUserId = teamTargetUserId || undefined
       if (src.type === 'ics-url') {
-        const res = await fetch(withTimeZone(`${String(base).replace(/\/+$/, '')}/api/calendar/sources/${src.id}/events`), { headers: { ...authHeaders() }, cache: 'no-store' })
+        const res = await fetch(
+          withTimeZone(`${String(base).replace(/\/+$/, '')}/api/calendar/sources/${src.id}/events`, { userId: targetUserId }),
+          { headers: { ...authHeaders() }, cache: 'no-store' }
+        )
         if (!res.ok) return null
         const events = await res.json()
         return (events || []).map((ev: any) => ({ ...ev, sourceName: src.name, sourceType: src.type, sourceColor: src.color }))
       }
       if (src.type === 'google') {
-        const res = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/google/events`, { headers: { ...authHeaders(), 'Cache-Control': 'no-cache' } })
+        const res = await fetch(
+          appendQueryParams(`${String(base).replace(/\/+$/, '')}/api/calendar/google/events`, { userId: targetUserId }),
+          { headers: { ...authHeaders(), 'Cache-Control': 'no-cache' } }
+        )
         if (!res.ok) return null
         const list = await res.json()
         const detectPlatform = (url: string): CalendarEvent['platform'] | undefined => {
@@ -342,7 +373,10 @@ const CalendarDashboard: React.FC = () => {
         }) : []
       }
       if (src.type === 'outlook') {
-        const res = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/microsoft/events`, { headers: { ...authHeaders(), 'Cache-Control': 'no-cache' } })
+        const res = await fetch(
+          appendQueryParams(`${String(base).replace(/\/+$/, '')}/api/calendar/microsoft/events`, { userId: targetUserId }),
+          { headers: { ...authHeaders(), 'Cache-Control': 'no-cache' } }
+        )
         if (!res.ok) return null
         const list = await res.json()
         const detectPlatformMs = (ev: any): CalendarEvent['platform'] | undefined => {
@@ -930,9 +964,13 @@ const CalendarDashboard: React.FC = () => {
     setIsSyncing(true)
     setErrorBanner(null)
     try {
+      const targetUserId = teamTargetUserId || undefined
       if (src.type === 'ics-url') {
         const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
-        const res = await fetch(withTimeZone(`${String(base).replace(/\/+$/, '')}/api/calendar/sources/${src.id}/events`), { headers: { ...authHeaders() }, cache: 'no-store' })
+        const res = await fetch(
+          withTimeZone(`${String(base).replace(/\/+$/, '')}/api/calendar/sources/${src.id}/events`, { userId: targetUserId }),
+          { headers: { ...authHeaders() }, cache: 'no-store' }
+        )
         if (!res.ok) throw new Error(await res.text())
         const events = await res.json()
         const parsed = (events || []).map((ev: any) => ({ ...ev, sourceName: src.name, sourceType: src.type, sourceColor: src.color }))
@@ -940,7 +978,10 @@ const CalendarDashboard: React.FC = () => {
       } else if (src.type === 'google') {
         // Expect backend endpoint: GET /api/calendar/google/events
         const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
-        const res = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/google/events`, { headers: { 'Cache-Control': 'no-cache', ...authHeaders() } })
+        const res = await fetch(
+          appendQueryParams(`${String(base).replace(/\/+$/, '')}/api/calendar/google/events`, { userId: targetUserId }),
+          { headers: { 'Cache-Control': 'no-cache', ...authHeaders() } }
+        )
         if (!res.ok) throw new Error('Google calendar sync endpoint not available. See setup notes below.')
         const list = await res.json()
         const detectPlatform = (url: string): CalendarEvent['platform'] | undefined => {
@@ -993,7 +1034,10 @@ const CalendarDashboard: React.FC = () => {
       } else if (src.type === 'outlook') {
         // Expect backend endpoint: GET /api/calendar/microsoft/events
         const base = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:4000'
-        const res = await fetch(`${String(base).replace(/\/+$/, '')}/api/calendar/microsoft/events`, { headers: { 'Cache-Control': 'no-cache', ...authHeaders() } })
+        const res = await fetch(
+          appendQueryParams(`${String(base).replace(/\/+$/, '')}/api/calendar/microsoft/events`, { userId: targetUserId }),
+          { headers: { 'Cache-Control': 'no-cache', ...authHeaders() } }
+        )
         if (!res.ok) throw new Error('Outlook calendar sync endpoint not available. See setup notes below.')
         const list = await res.json()
         const detectPlatformMs = (ev: any): CalendarEvent['platform'] | undefined => {

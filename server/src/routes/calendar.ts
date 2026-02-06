@@ -213,8 +213,11 @@ async function ensureGoogleToken(account: any, clientId: string, clientSecret: s
 }
 
 router.get('/google/events', async (req: Request, res: Response) => {
-  const userId = (req as any).userId
-  if (!userId) return res.status(401).json({ error: 'x-user-id or Bearer token required' })
+  const requesterId = await resolveUserId(req)
+  if (!requesterId) return res.status(401).json({ error: 'x-user-id or Bearer token required' })
+  const target = await resolveTargetUserId(req, requesterId)
+  if (!target.targetId) return res.status(target.status || 400).json({ error: target.error || 'Invalid target user' })
+  const userId = target.targetId
   const clientId = process.env.GOOGLE_CLIENT_ID
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET
   if (!clientId || !clientSecret) return res.status(500).json({ error: 'Missing Google client credentials' })
@@ -344,8 +347,11 @@ async function ensureMsToken(account: any, tenant: string, clientId: string, cli
 }
 
 router.get('/microsoft/events', async (req: Request, res: Response) => {
-  const userId = (req as any).userId
-  if (!userId) return res.status(401).json({ error: 'x-user-id or Bearer token required' })
+  const requesterId = await resolveUserId(req)
+  if (!requesterId) return res.status(401).json({ error: 'x-user-id or Bearer token required' })
+  const target = await resolveTargetUserId(req, requesterId)
+  if (!target.targetId) return res.status(target.status || 400).json({ error: target.error || 'Invalid target user' })
+  const userId = target.targetId
   const clientId = process.env.MS_CLIENT_ID
   const clientSecret = process.env.MS_CLIENT_SECRET
   const tenant = process.env.MS_TENANT || 'common'
@@ -397,6 +403,22 @@ async function isExecutiveMember(userId: string): Promise<boolean> {
   if (dept === 'executive department') return true
   const role = String(user.role?.name || '').trim().toLowerCase()
   return role === 'admin'
+}
+
+async function resolveTargetUserId(req: Request, requesterId: string): Promise<{ targetId: string | null; status?: number; error?: string }> {
+  const requested = String(req.query.userId || '').trim()
+  if (!requested || requested === requesterId) {
+    return { targetId: requesterId }
+  }
+  const allowed = await isExecutiveMember(requesterId)
+  if (!allowed) {
+    return { targetId: null, status: 403, error: 'Executive access required' }
+  }
+  const exists = await prisma.user.findUnique({ where: { id: requested } })
+  if (!exists) {
+    return { targetId: null, status: 404, error: 'User not found' }
+  }
+  return { targetId: requested }
 }
 
 function mapEventForClient(ev: any) {
@@ -614,8 +636,11 @@ router.delete('/events/:id', async (req: Request, res: Response) => {
 
 // List linked calendar accounts for the current user
 router.get('/accounts', async (req: Request, res: Response) => {
-  const userId = await resolveUserId(req)
-  if (!userId) return res.status(401).json({ error: 'User not found; ensure you are logged in or DEV_USER_ID is valid.' })
+  const requesterId = await resolveUserId(req)
+  if (!requesterId) return res.status(401).json({ error: 'User not found; ensure you are logged in or DEV_USER_ID is valid.' })
+  const target = await resolveTargetUserId(req, requesterId)
+  if (!target.targetId) return res.status(target.status || 400).json({ error: target.error || 'Invalid target user' })
+  const userId = target.targetId
   const accts = await prisma.calendarAccount.findMany({
     where: { userId },
     select: { id: true, provider: true, email: true, updatedAt: true, createdAt: true, expiresAt: true },
@@ -626,8 +651,11 @@ router.get('/accounts', async (req: Request, res: Response) => {
 
 // --- Per-user ICS URL sources (persisted) ---
 router.get('/sources', async (req: Request, res: Response) => {
-  const userId = await resolveUserId(req)
-  if (!userId) return res.status(401).json({ error: 'User not found; ensure you are logged in or DEV_USER_ID is valid.' })
+  const requesterId = await resolveUserId(req)
+  if (!requesterId) return res.status(401).json({ error: 'User not found; ensure you are logged in or DEV_USER_ID is valid.' })
+  const target = await resolveTargetUserId(req, requesterId)
+  if (!target.targetId) return res.status(target.status || 400).json({ error: target.error || 'Invalid target user' })
+  const userId = target.targetId
   const sources = await prisma.calendarSource.findMany({ where: { userId }, orderBy: { createdAt: 'desc' } })
   // Never expose URL to client
   res.json(sources.map(s => ({ id: s.id, type: s.type, name: s.name, color: s.color, enabled: s.enabled, createdAt: s.createdAt, updatedAt: s.updatedAt })))
@@ -691,8 +719,11 @@ router.delete('/sources/:id', async (req: Request, res: Response) => {
 
 // Fetch and parse events for a given ICS source (server-side fetch; never expose URL)
 router.get('/sources/:id/events', async (req: Request, res: Response) => {
-  const userId = await resolveUserId(req)
-  if (!userId) return res.status(401).json({ error: 'User not found; ensure you are logged in or DEV_USER_ID is valid.' })
+  const requesterId = await resolveUserId(req)
+  if (!requesterId) return res.status(401).json({ error: 'User not found; ensure you are logged in or DEV_USER_ID is valid.' })
+  const target = await resolveTargetUserId(req, requesterId)
+  if (!target.targetId) return res.status(target.status || 400).json({ error: target.error || 'Invalid target user' })
+  const userId = target.targetId
   const id = req.params.id
   const src = await prisma.calendarSource.findUnique({ where: { id } })
   if (!src || src.userId !== userId) return res.status(404).json({ error: 'Not found' })
