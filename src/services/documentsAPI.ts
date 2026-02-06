@@ -55,6 +55,15 @@ export async function listSent() {
   return res.json()
 }
 
+export async function listAllDocuments(status?: string) {
+  const params = new URLSearchParams()
+  if (status) params.set('status', status)
+  params.set('_ts', String(Date.now()))
+  const res = await fetch(`${API_BASE}/api/documents?${params.toString()}`, { headers: { ...authHeaders() } })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
 export async function getDocument(id: string) {
   const res = await fetch(`${API_BASE}/api/documents/${id}?_ts=${Date.now()}`, { headers: { ...authHeaders() } })
   if (!res.ok) throw new Error(await res.text())

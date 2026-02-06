@@ -67,6 +67,32 @@ function mapDocument(d: any) {
   }
 }
 
+// List all documents (optionally filter by status)
+router.get('/', async (req: Request, res: Response) => {
+  const userId = (req as any).userId as string | null
+  if (!userId) return res.status(401).json({ error: 'Login required' })
+
+  const rawStatus = String(req.query.status || '').trim().toLowerCase()
+  const mapStatusFilter = (value: string): any | undefined => {
+    if (!value) return undefined
+    if (value === 'approved') return 'APPROVED'
+    if (value === 'rejected') return 'REJECTED'
+    if (value === 'needs-changes' || value === 'needs_changes' || value === 'needs changes') return 'NEEDS_CHANGES'
+    if (value === 'in-review' || value === 'in_review' || value === 'in review' || value === 'pending') return 'IN_REVIEW'
+    if (value === 'draft') return 'DRAFT'
+    return undefined
+  }
+
+  const statusFilter = mapStatusFilter(rawStatus)
+  const where = statusFilter ? { status: statusFilter } : {}
+  const rows = await db.document.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+    include: { reviewer: { include: { role: true } }, createdBy: { include: { role: true } }, project: true, phase: true, task: true },
+  })
+  res.json(rows.map(mapDocument))
+})
+
 // Upload one or multiple documents and assign a reviewer
 router.post('/upload', upload.array('files'), async (req: Request, res: Response) => {
   const userId = (req as any).userId as string | null

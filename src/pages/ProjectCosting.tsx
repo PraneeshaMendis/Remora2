@@ -168,6 +168,78 @@ const ProjectCosting: React.FC = () => {
 
   useEffect(() => {
     if (!selectedProjectId) {
+      setIndustrySensitivity('standard')
+      setProjectUrgency(1)
+      setContingencyPct(15)
+      setProfitPct(15)
+      setTaxPct(15)
+      return
+    }
+    try {
+      const raw = localStorage.getItem(`projectCosting.settings.${selectedProjectId}`)
+      if (!raw) {
+        setIndustrySensitivity('standard')
+        setProjectUrgency(1)
+        setContingencyPct(15)
+        setProfitPct(15)
+        setTaxPct(15)
+        return
+      }
+      const parsed = JSON.parse(raw || '{}') as Partial<{
+        industrySensitivity: 'standard' | 'high' | 'critical'
+        projectUrgency: number
+        contingencyPct: number
+        profitPct: number
+        taxPct: number
+      }>
+      setIndustrySensitivity(parsed.industrySensitivity || 'standard')
+      setProjectUrgency(
+        typeof parsed.projectUrgency === 'number' && !Number.isNaN(parsed.projectUrgency)
+          ? parsed.projectUrgency
+          : 1
+      )
+      setContingencyPct(
+        typeof parsed.contingencyPct === 'number' && !Number.isNaN(parsed.contingencyPct)
+          ? parsed.contingencyPct
+          : 15
+      )
+      setProfitPct(
+        typeof parsed.profitPct === 'number' && !Number.isNaN(parsed.profitPct)
+          ? parsed.profitPct
+          : 15
+      )
+      setTaxPct(
+        typeof parsed.taxPct === 'number' && !Number.isNaN(parsed.taxPct)
+          ? parsed.taxPct
+          : 15
+      )
+    } catch {
+      setIndustrySensitivity('standard')
+      setProjectUrgency(1)
+      setContingencyPct(15)
+      setProfitPct(15)
+      setTaxPct(15)
+    }
+  }, [selectedProjectId])
+
+  useEffect(() => {
+    if (!selectedProjectId) return
+    try {
+      localStorage.setItem(
+        `projectCosting.settings.${selectedProjectId}`,
+        JSON.stringify({
+          industrySensitivity,
+          projectUrgency,
+          contingencyPct,
+          profitPct,
+          taxPct,
+        })
+      )
+    } catch {}
+  }, [selectedProjectId, industrySensitivity, projectUrgency, contingencyPct, profitPct, taxPct])
+
+  useEffect(() => {
+    if (!selectedProjectId) {
       setMemberHours({})
       return
     }

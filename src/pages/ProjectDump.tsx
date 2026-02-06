@@ -1,19 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { 
-  HiSortAscending, 
-  HiSortDescending,
-  HiEye
-} from 'react-icons/hi'
-import { 
-  Calendar, 
-  Users, 
-  Target, 
-  CheckCircle2, 
+import { HiSortAscending, HiSortDescending, HiEye } from 'react-icons/hi'
+import {
+  Calendar,
+  Users,
+  Target,
+  CheckCircle2,
   ArrowUpDown,
   Filter,
   Search,
-  ChevronDown
+  ChevronDown,
 } from 'lucide-react'
 import { getProjects } from '../services/projectsAPI'
 import { apiGet, apiJson } from '../services/api'
@@ -27,14 +23,14 @@ interface ProjectMember {
   department: string
 }
 
-interface CompletedProject {
+interface DumpedProject {
   id: string
   title: string
   description: string
   startDate: string
   endDate: string
   completedAt: string
-  status: 'completed'
+  status: 'cancelled'
   progress: 100
   priority: 'low' | 'medium' | 'high' | 'critical'
   team: ProjectMember[]
@@ -58,7 +54,7 @@ interface CompletedProject {
   duration: number
 }
 
-const CompletedProjects: React.FC = () => {
+const ProjectDump: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [sortBy, setSortBy] = useState<'endDate' | 'name' | 'tasks'>('endDate')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
@@ -67,7 +63,7 @@ const CompletedProjects: React.FC = () => {
   const [managerFilter, setManagerFilter] = useState<string>('all')
   const [priorityFilter, setPriorityFilter] = useState<'all' | 'low' | 'medium' | 'high' | 'critical'>('all')
   const [showFilters, setShowFilters] = useState(false)
-  const [completedProjects, setCompletedProjects] = useState<CompletedProject[]>([])
+  const [dumpedProjects, setDumpedProjects] = useState<DumpedProject[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [movingProjectId, setMovingProjectId] = useState<string | null>(null)
@@ -145,9 +141,9 @@ const CompletedProjects: React.FC = () => {
       setLoadError(null)
       try {
         const list = await getProjects()
-        const completedList = (list || []).filter((p: any) => String(p?.status || '').toUpperCase() === 'COMPLETED')
+        const dumpedList = (list || []).filter((p: any) => String(p?.status || '').toUpperCase() === 'CANCELLED')
         const details = await Promise.all(
-          completedList.map((p: any) => apiGet(`/projects/${p.id}`).catch(() => null))
+          dumpedList.map((p: any) => apiGet(`/projects/${p.id}`).catch(() => null))
         )
         const mapped = details.filter(Boolean).map((detail: any) => {
           const memberships = Array.isArray(detail?.memberships) ? detail.memberships : []
@@ -185,7 +181,7 @@ const CompletedProjects: React.FC = () => {
             startDate,
             endDate,
             completedAt: endDate,
-            status: 'completed',
+            status: 'cancelled',
             progress: 100,
             priority: 'medium',
             team,
@@ -207,11 +203,11 @@ const CompletedProjects: React.FC = () => {
             totalPhases: phases.length,
             uniqueAssignees: assigneeIds.size || team.length,
             duration: 0,
-          } as CompletedProject
+          } as DumpedProject
         })
-        if (active) setCompletedProjects(mapped)
+        if (active) setDumpedProjects(mapped)
       } catch (e) {
-        if (active) setLoadError('Failed to load completed projects.')
+        if (active) setLoadError('Failed to load dumped projects.')
       } finally {
         if (active) setIsLoading(false)
       }
@@ -227,7 +223,7 @@ const CompletedProjects: React.FC = () => {
     setMovingProjectId(projectId)
     try {
       await apiJson(`/projects/${projectId}`, 'PATCH', { status: 'IN_PROGRESS' })
-      setCompletedProjects(prev => prev.filter(p => p.id !== projectId))
+      setDumpedProjects(prev => prev.filter(p => p.id !== projectId))
     } catch (e: any) {
       console.error('Failed to move project to active', e)
       alert(e?.message || 'Failed to move project to active')
@@ -236,22 +232,21 @@ const CompletedProjects: React.FC = () => {
     }
   }
 
-  // Filter and sort projects
   const filteredAndSortedProjects = useMemo(() => {
-    let filtered = completedProjects.filter(project => {
+    let filtered = dumpedProjects.filter(project => {
       const matchesSearch = project.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            project.manager.name.toLowerCase().includes(searchTerm.toLowerCase())
-      
-      const matchesYear = yearFilter === 'all' || 
+
+      const matchesYear = yearFilter === 'all' ||
                          new Date(project.endDate).getFullYear().toString() === yearFilter
-      
-      const matchesDepartment = departmentFilter === 'all' || 
+
+      const matchesDepartment = departmentFilter === 'all' ||
                                project.department === departmentFilter
-      
-      const matchesManager = managerFilter === 'all' || 
+
+      const matchesManager = managerFilter === 'all' ||
                             project.manager.id === managerFilter
-      
-      const matchesPriority = priorityFilter === 'all' || 
+
+      const matchesPriority = priorityFilter === 'all' ||
                              project.priority === priorityFilter
 
       return matchesSearch && matchesYear && matchesDepartment && matchesManager && matchesPriority
@@ -259,7 +254,7 @@ const CompletedProjects: React.FC = () => {
 
     return filtered.sort((a, b) => {
       let comparison = 0
-      
+
       switch (sortBy) {
         case 'endDate':
           comparison = new Date(a.endDate).getTime() - new Date(b.endDate).getTime()
@@ -271,24 +266,24 @@ const CompletedProjects: React.FC = () => {
           comparison = a.totalTasks - b.totalTasks
           break
       }
-      
+
       return sortOrder === 'asc' ? comparison : -comparison
     })
-  }, [completedProjects, searchTerm, sortBy, sortOrder, yearFilter, departmentFilter, managerFilter, priorityFilter])
+  }, [dumpedProjects, searchTerm, sortBy, sortOrder, yearFilter, departmentFilter, managerFilter, priorityFilter])
 
   const getUniqueYears = () => {
-    const years = [...new Set(completedProjects.map(p => new Date(p.endDate).getFullYear()))]
+    const years = [...new Set(dumpedProjects.map(p => new Date(p.endDate).getFullYear()))]
     return years.sort((a, b) => b - a)
   }
 
   const getUniqueDepartments = () => {
-    const departments = [...new Set(completedProjects.map(p => p.department))]
+    const departments = [...new Set(dumpedProjects.map(p => p.department))]
     return departments.sort()
   }
 
   const getUniqueManagers = () => {
     const managerMap = new Map<string, ProjectMember>()
-    completedProjects.forEach(project => {
+    dumpedProjects.forEach(project => {
       const mgr = project.manager
       if (mgr?.id && !managerMap.has(mgr.id)) managerMap.set(mgr.id, mgr)
     })
@@ -300,7 +295,7 @@ const CompletedProjects: React.FC = () => {
     const end = new Date(endDate)
     const diffTime = Math.abs(end.getTime() - start.getTime())
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-    
+
     if (diffDays < 30) {
       return `${diffDays} days`
     } else if (diffDays < 365) {
@@ -316,13 +311,13 @@ const CompletedProjects: React.FC = () => {
     <div className="space-y-6 pb-10">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">Completed Projects</h1>
+          <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">Project Dump</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Manage your finished projects portfolio.
+            Projects moved out of the active portfolio.
           </p>
         </div>
         <span className="inline-flex items-center rounded-full border border-slate-200/70 dark:border-white/10 bg-white/70 dark:bg-black/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-300">
-          Archive
+          Dump
         </span>
       </div>
 
@@ -430,11 +425,11 @@ const CompletedProjects: React.FC = () => {
         <div className={`${cardBase} p-5`}>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Total Completed</p>
-              <p className="text-3xl font-semibold text-slate-900 dark:text-white mt-2">{completedProjects.length}</p>
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Total Dumped</p>
+              <p className="text-3xl font-semibold text-slate-900 dark:text-white mt-2">{dumpedProjects.length}</p>
             </div>
             <div className="h-12 w-12 rounded-xl border border-slate-200/70 dark:border-white/10 bg-slate-50 dark:bg-black/40 flex items-center justify-center">
-              <CheckCircle2 className="h-6 w-6 text-emerald-500" />
+              <CheckCircle2 className="h-6 w-6 text-rose-500" />
             </div>
           </div>
         </div>
@@ -444,7 +439,7 @@ const CompletedProjects: React.FC = () => {
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Team Members</p>
               <p className="text-3xl font-semibold text-slate-900 dark:text-white mt-2">
-                {new Set(completedProjects.flatMap(p => p.team.map(m => m.id))).size}
+                {new Set(dumpedProjects.flatMap(p => p.team.map(m => m.id))).size}
               </p>
             </div>
             <div className="h-12 w-12 rounded-xl border border-slate-200/70 dark:border-white/10 bg-slate-50 dark:bg-black/40 flex items-center justify-center">
@@ -458,7 +453,7 @@ const CompletedProjects: React.FC = () => {
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Total Phases</p>
               <p className="text-3xl font-semibold text-slate-900 dark:text-white mt-2">
-                {completedProjects.reduce((sum, p) => sum + p.totalPhases, 0)}
+                {dumpedProjects.reduce((sum, p) => sum + p.totalPhases, 0)}
               </p>
             </div>
             <div className="h-12 w-12 rounded-xl border border-slate-200/70 dark:border-white/10 bg-slate-50 dark:bg-black/40 flex items-center justify-center">
@@ -496,7 +491,7 @@ const CompletedProjects: React.FC = () => {
                   <span className="text-slate-400">•</span>
                   <div className="flex items-center gap-2">
                     <Calendar className="h-4 w-4" />
-                    <span>Completed {new Date(project.endDate).toLocaleDateString('en-GB')}</span>
+                    <span>Dumped {new Date(project.endDate).toLocaleDateString('en-GB')}</span>
                   </div>
                 </div>
               </div>
@@ -580,16 +575,16 @@ const CompletedProjects: React.FC = () => {
             <CheckCircle2 className="h-12 w-12 text-slate-400" />
           </div>
           <h3 className="text-lg font-medium text-slate-900 dark:text-white mb-2">
-            No completed projects found
+            No dumped projects found
           </h3>
           <p className="text-slate-600 dark:text-slate-400 mb-6">
             {isLoading
-              ? 'Loading completed projects...'
+              ? 'Loading dumped projects...'
               : loadError
                 ? loadError
                 : (searchTerm || yearFilter !== 'all' || departmentFilter !== 'all' || managerFilter !== 'all'
                   ? 'Try adjusting your search or filter criteria.'
-                  : 'Mark projects as completed from the Active Projects view to see them here.')
+                  : 'Use the Delete Project action to move projects here.')
             }
           </p>
           <Link
@@ -603,12 +598,11 @@ const CompletedProjects: React.FC = () => {
 
       {filteredAndSortedProjects.length > 0 && (
         <div className="text-center text-sm text-slate-600 dark:text-slate-400">
-          Showing {filteredAndSortedProjects.length} of {completedProjects.length} completed projects
+          Showing {filteredAndSortedProjects.length} of {dumpedProjects.length} dumped projects
         </div>
       )}
     </div>
   )
-
 }
 
-export default CompletedProjects
+export default ProjectDump

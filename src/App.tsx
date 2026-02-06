@@ -15,9 +15,11 @@ import GlobalTasks from './pages/GlobalTasks'
 import TaskDetail from './pages/TaskDetail.tsx'
 import Users from './pages/Users.tsx'
 import Documents from './pages/Documents.tsx'
+import Deliverables from './pages/Deliverables.tsx'
 import Profile from './pages/Profile.tsx'
 import CompletedProjects from './pages/CompletedProjects.tsx'
 import CompletedProjectDetail from './pages/CompletedProjectDetail.tsx'
+import ProjectDump from './pages/ProjectDump.tsx'
 import CalendarDashboard from './pages/CalendarDashboard.tsx'
 import SlipsInvoicesPage from './pages/SlipsInvoicesPage.tsx'
 import AdminRegisterUser from './pages/AdminRegisterUser.tsx'
@@ -54,9 +56,11 @@ function App() {
               <Route path="admin/permissions" element={<Permissions />} />
               <Route path="admin/register-user" element={<AdminRegisterUser />} />
               <Route path="documents" element={<Documents />} />
+              <Route path="deliverables" element={<Deliverables />} />
               <Route path="profile" element={<Profile />} />
               <Route path="completed-projects" element={<CompletedProjects />} />
               <Route path="completed-projects/:id" element={<CompletedProjectDetail />} />
+              <Route path="project-dump" element={<ProjectDump />} />
               <Route path="calendar" element={<CalendarDashboard />} />
               <Route path="slips-invoices" element={<SlipsInvoicesPage />} />
               <Route path="budget-config" element={<BudgetConfig />} />

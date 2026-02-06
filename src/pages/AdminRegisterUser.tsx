@@ -5,7 +5,8 @@ const AdminRegisterUser: React.FC = () => {
   const [roles, setRoles] = useState<string[]>([])
   const [departments, setDepartments] = useState<string[]>([])
   const [form, setForm] = useState({
-    name: '',
+    firstName: '',
+    lastName: '',
     email: '',
     password: '',
     roleName: '',
@@ -18,7 +19,8 @@ const AdminRegisterUser: React.FC = () => {
 
   // Invite form
   const [invite, setInvite] = useState({
-    name: '',
+    firstName: '',
+    lastName: '',
     email: '',
     roleName: '',
     departmentName: '',
@@ -43,9 +45,10 @@ const AdminRegisterUser: React.FC = () => {
     setMsg('')
     setLoading(true)
     try {
-      const res = await registerUserByAdmin(form)
+      const fullName = `${form.firstName} ${form.lastName}`.trim()
+      const res = await registerUserByAdmin({ ...form, name: fullName })
       setMsg(`Created: ${res.name} (${res.email}) — ${res.role} @ ${res.department}`)
-      setForm({ name: '', email: '', password: '', roleName: '', departmentName: '', verify: true, active: true })
+      setForm({ firstName: '', lastName: '', email: '', password: '', roleName: '', departmentName: '', verify: true, active: true })
     } catch (err: any) {
       setMsg(String(err?.message || 'Failed to register'))
     } finally {
@@ -58,14 +61,15 @@ const AdminRegisterUser: React.FC = () => {
     setInviteMsg('')
     setInviting(true)
     try {
+      const fullName = `${invite.firstName} ${invite.lastName}`.trim()
       const res = await inviteUser({
-        name: invite.name,
+        name: fullName,
         email: invite.email,
         roleName: invite.roleName || undefined,
         departmentName: invite.departmentName,
       })
       setInviteMsg(`Invite sent to ${res.email}${res.verifyUrl ? ` — Dev link: ${res.verifyUrl}` : ''}`)
-      setInvite({ name: '', email: '', roleName: '', departmentName: '' })
+      setInvite({ firstName: '', lastName: '', email: '', roleName: '', departmentName: '' })
     } catch (err: any) {
       setInviteMsg(String(err?.message || 'Failed to send invite'))
     } finally {
@@ -87,9 +91,15 @@ const AdminRegisterUser: React.FC = () => {
         {msg && (
           <div className="text-sm p-2 rounded bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200">{msg}</div>
         )}
-        <div>
-          <label className="block text-sm mb-1">Name</label>
-          <input className="input-field" value={form.name} onChange={e=>setForm({...form, name: e.target.value})} required />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm mb-1">First Name</label>
+            <input className="input-field" value={form.firstName} onChange={e=>setForm({...form, firstName: e.target.value})} required />
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Last Name</label>
+            <input className="input-field" value={form.lastName} onChange={e=>setForm({...form, lastName: e.target.value})} required />
+          </div>
         </div>
         <div>
           <label className="block text-sm mb-1">Email</label>
@@ -135,9 +145,15 @@ const AdminRegisterUser: React.FC = () => {
         {inviteMsg && (
           <div className="text-sm p-2 rounded bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200">{inviteMsg}</div>
         )}
-        <div>
-          <label className="block text-sm mb-1">Name</label>
-          <input className="input-field" value={invite.name} onChange={e=>setInvite({...invite, name: e.target.value})} required />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm mb-1">First Name</label>
+            <input className="input-field" value={invite.firstName} onChange={e=>setInvite({...invite, firstName: e.target.value})} required />
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Last Name</label>
+            <input className="input-field" value={invite.lastName} onChange={e=>setInvite({...invite, lastName: e.target.value})} required />
+          </div>
         </div>
         <div>
           <label className="block text-sm mb-1">Email</label>

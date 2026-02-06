@@ -225,7 +225,7 @@ const AcceptInvite = () => {
                 </div>
                 <div>
                   <Label htmlFor="phone">Phone (Optional)</Label>
-                  <Input id="phone" type="tel" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} placeholder="+1 (555) 000-0000" className="mt-1.5" />
+                  <Input id="phone" type="tel" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} placeholder="" className="mt-1.5" />
                 </div>
                 <div className="flex justify-end pt-4">
                   <Button type="button" onClick={handleNextStep} size="lg" className="bg-gradient-primary">Continue</Button>

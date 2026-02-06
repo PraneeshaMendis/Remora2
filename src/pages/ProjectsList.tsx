@@ -6,6 +6,133 @@ import { getProjects } from '../services/projectsAPI'
 import { listUsers as fetchUsers } from '../services/usersAPI.ts'
 import { apiGet, apiJson } from '../services/api.ts'
 
+type ProjectWithMemberships = Project & { memberships?: any[] }
+
+type ProjectCostingSettings = {
+  industrySensitivity: 'standard' | 'high' | 'critical'
+  projectUrgency: number
+  contingencyPct: number
+  profitPct: number
+  taxPct: number
+}
+
+type ExpenseItem = {
+  amount?: string | number
+}
+
+const DEFAULT_ROLE_RATES: Record<string, number> = {
+  DIRECTOR: 150,
+  MANAGER: 120,
+  CONSULTANT: 140,
+  LEAD: 110,
+  ENGINEER: 90,
+  OPS: 70,
+  CLIENT: 0,
+  MEMBER: 80,
+}
+
+const DEFAULT_COSTING_SETTINGS: ProjectCostingSettings = {
+  industrySensitivity: 'standard',
+  projectUrgency: 1,
+  contingencyPct: 15,
+  profitPct: 15,
+  taxPct: 15,
+}
+
+const formatCurrency = (value: number, decimals = 0) =>
+  new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(value)
+
+const safeNumber = (value: unknown) => {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+const readLocalStorage = <T,>(key: string, fallback: T): T => {
+  if (typeof window === 'undefined' || !window.localStorage) return fallback
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return fallback
+    const parsed = JSON.parse(raw)
+    return parsed ?? fallback
+  } catch {
+    return fallback
+  }
+}
+
+const getProjectRevenue = (project: ProjectWithMemberships) => {
+  const hoursMap = readLocalStorage<Record<string, string>>(
+    `projectCosting.hours.${project.id}`,
+    {}
+  )
+  const expenses = readLocalStorage<ExpenseItem[]>(
+    `projectCosting.expenses.${project.id}`,
+    []
+  )
+  const settings = readLocalStorage<ProjectCostingSettings>(
+    `projectCosting.settings.${project.id}`,
+    DEFAULT_COSTING_SETTINGS
+  )
+
+  const totalHours = Object.values(hoursMap).reduce((sum, hours) => {
+    const value = safeNumber(hours)
+    return value > 0 ? sum + value : sum
+  }, 0)
+
+  const expenseTotal = expenses.reduce((sum, item) => {
+    const value = safeNumber(item?.amount)
+    return value > 0 ? sum + value : sum
+  }, 0)
+
+  const hasBudget = totalHours > 0 || expenseTotal > 0
+  if (!hasBudget) {
+    return { hasBudget: false, total: 0 }
+  }
+
+  const membershipRates = new Map<string, number>()
+  const memberships = Array.isArray(project.memberships) ? project.memberships : []
+  memberships.forEach((membership: any) => {
+    const user = membership?.user
+    const userId = String(user?.id || membership?.userId || '').trim()
+    if (!userId) return
+    const roleKey = String(membership?.role || user?.role?.name || user?.role || '').toUpperCase()
+    const userRate = typeof user?.costRate === 'number' ? user.costRate : null
+    const fallbackRate = DEFAULT_ROLE_RATES[roleKey] ?? DEFAULT_ROLE_RATES.MEMBER
+    const resolvedRate = userRate && userRate > 0 ? userRate : fallbackRate
+    membershipRates.set(userId, resolvedRate)
+  })
+
+  const laborCost = Object.entries(hoursMap).reduce((sum, [memberId, hours]) => {
+    const value = safeNumber(hours)
+    if (value <= 0) return sum
+    const rate = membershipRates.get(String(memberId)) ?? DEFAULT_ROLE_RATES.MEMBER
+    return sum + value * rate
+  }, 0)
+
+  const baseCost = laborCost + expenseTotal
+  const industrySensitivity = settings?.industrySensitivity || 'standard'
+  const urgencyValue = Math.max(1, Math.min(safeNumber(settings?.projectUrgency) || 1, 2))
+  const contingencyPct = Math.max(0, safeNumber(settings?.contingencyPct))
+  const profitPct = Math.max(0, safeNumber(settings?.profitPct))
+  const taxPct = Math.max(0, safeNumber(settings?.taxPct))
+
+  const industryMultiplier =
+    industrySensitivity === 'standard' ? 1 : industrySensitivity === 'high' ? 1.15 : 1.3
+  const riskMultiplier = Math.round(industryMultiplier * urgencyValue * 100) / 100
+  const riskAdjustment = baseCost * (riskMultiplier - 1)
+  const contingencyAmount = (baseCost + riskAdjustment) * (contingencyPct / 100)
+  const profitAmount = (baseCost + riskAdjustment + contingencyAmount) * (profitPct / 100)
+  const preTaxTotal = baseCost + riskAdjustment + contingencyAmount + profitAmount
+  const taxAmount = preTaxTotal * (taxPct / 100)
+  const totalInvestment = preTaxTotal + taxAmount
+
+  return { hasBudget: true, total: totalInvestment }
+}
+
 const ProjectsList: React.FC = () => {
   const navigate = useNavigate()
   const [searchTerm, setSearchTerm] = useState('')
@@ -13,7 +140,8 @@ const ProjectsList: React.FC = () => {
   const [priorityFilter, setPriorityFilter] = useState('all')
   const [isViewModalOpen, setIsViewModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null)
+  const [selectedProject, setSelectedProject] = useState<ProjectWithMemberships | null>(null)
+  const [dumpingProjectId, setDumpingProjectId] = useState<string | null>(null)
   const [drafts, setDrafts] = useState<any[]>([])
   const [showDrafts, setShowDrafts] = useState(false)
   const [editData, setEditData] = useState({
@@ -157,10 +285,10 @@ const ProjectsList: React.FC = () => {
   const USE_MOCK = (import.meta as any).env?.VITE_USE_MOCK === 'true'
 
   // Real projects from API; start empty
-  const [projects, setProjects] = useState<Project[]>([])
+  const [projects, setProjects] = useState<ProjectWithMemberships[]>([])
 
   // Optional mock fallback if desired
-  const mockProjects: Project[] = [
+  const mockProjects: ProjectWithMemberships[] = [
     {
       id: '1',
       name: 'Mobile App Redesign',
@@ -200,6 +328,7 @@ const ProjectsList: React.FC = () => {
           startDate: p.startDate || '',
           dueDate: p.endDate || '',
           team: Array.isArray(p.memberships) ? p.memberships.map((m: any) => m.user?.name).filter(Boolean) : [],
+          memberships: Array.isArray(p.memberships) ? p.memberships : [],
           tags: [],
           priority: 'medium',
           phases: [],
@@ -208,8 +337,8 @@ const ProjectsList: React.FC = () => {
           allocatedHours: p.allocatedHours ?? 0,
           loggedHours: p.usedHours ?? 0,
           remainingHours: p.leftHours ?? Math.max((p.allocatedHours ?? 0) - (p.usedHours ?? 0), 0),
-        })) as Project[]
-        setProjects(mapped)
+        })) as ProjectWithMemberships[]
+        setProjects(mapped.filter(p => p.status !== 'cancelled'))
       })
       .catch((err: any) => {
         console.error('Failed to load projects', err)
@@ -229,12 +358,12 @@ const ProjectsList: React.FC = () => {
     return matchesSearch && matchesStatus && matchesPriority
   })
 
-  const handleViewProject = (project: Project) => {
+  const handleViewProject = (project: ProjectWithMemberships) => {
     setSelectedProject(project)
     setIsViewModalOpen(true)
   }
 
-  const handleEditProject = (project: Project) => {
+  const handleEditProject = (project: ProjectWithMemberships) => {
     setSelectedProject(project)
     setEditData({
       title: project.name,
@@ -319,7 +448,7 @@ const ProjectsList: React.FC = () => {
 
       // Update the projects state
       setProjects(prevProjects => 
-        prevProjects.map((project: Project) => 
+        prevProjects.map((project: ProjectWithMemberships) => 
           project.id === selectedProject.id ? updatedProject : project
         )
       )
@@ -333,6 +462,24 @@ const ProjectsList: React.FC = () => {
       setIsEditModalOpen(false)
       setSelectedProject(null)
       handleCloseModals()
+    }
+  }
+
+  const handleMoveToDump = async () => {
+    if (!selectedProject) return
+    const ok = window.confirm('Move this project to Project Dump? This will remove it from the active list.')
+    if (!ok) return
+    setDumpingProjectId(selectedProject.id)
+    try {
+      await apiJson(`/projects/${selectedProject.id}`, 'PATCH', { status: 'CANCELLED' })
+      setProjects(prev => prev.filter(p => p.id !== selectedProject.id))
+      setIsEditModalOpen(false)
+      setSelectedProject(null)
+    } catch (e: any) {
+      console.error('Failed to move project to dump', e)
+      alert(e?.message || 'Failed to move project to dump')
+    } finally {
+      setDumpingProjectId(null)
     }
   }
 
@@ -674,12 +821,14 @@ const ProjectsList: React.FC = () => {
           </div>
         ) : (
           <div className="space-y-4">
-            {filteredProjects.map((project) => (
-              <Link
-                key={project.id}
-                to={`/projects/${project.id}`}
-                className="block"
-              >
+            {filteredProjects.map((project) => {
+              const revenue = getProjectRevenue(project)
+              return (
+                <Link
+                  key={project.id}
+                  to={`/projects/${project.id}`}
+                  className="block"
+                >
                 <div className="card dark:bg-black/60 dark:border-white/10 hover:shadow-lg transition-shadow duration-200 cursor-pointer group border border-gray-200 dark:border-white/10">
                   {/* Project Header */}
                   <div className="flex items-start justify-between mb-4">
@@ -773,7 +922,9 @@ const ProjectsList: React.FC = () => {
                         <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
-                        <span className="text-gray-600 dark:text-gray-400">$60,000</span>
+                        <span className="text-gray-600 dark:text-gray-400">
+                          {revenue.hasBudget ? formatCurrency(revenue.total, 0) : 'Budget not set'}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -806,8 +957,9 @@ const ProjectsList: React.FC = () => {
                     </div>
                   </div>
                 </div>
-              </Link>
-            ))}
+                </Link>
+              )
+            })}
           </div>
         )}
       </div>
@@ -1400,20 +1552,30 @@ const ProjectsList: React.FC = () => {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex justify-end space-x-3 mt-8 pt-6 border-t border-gray-200 dark:border-white/10">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mt-8 pt-6 border-t border-gray-200 dark:border-white/10">
                 <button
                   type="button"
-                  onClick={handleCloseModals}
-                  className="btn-secondary"
+                  onClick={handleMoveToDump}
+                  disabled={dumpingProjectId === selectedProject.id}
+                  className="btn-danger"
                 >
-                  Cancel
+                  {dumpingProjectId === selectedProject.id ? 'Moving...' : 'Delete Project'}
                 </button>
-                <button
-                  onClick={handleSaveEdit}
-                  className="btn-primary"
-                >
-                  Save Changes
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleCloseModals}
+                    className="btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveEdit}
+                    className="btn-primary"
+                  >
+                    Save Changes
+                  </button>
+                </div>
               </div>
             </div>
           </div>

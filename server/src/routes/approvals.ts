@@ -1,17 +1,13 @@
 import { Router } from 'express'
 import { z } from 'zod'
-import { requireSuperAdmin } from '../middleware/super-admin.ts'
+import { requireSuperAdmin, isSuperAdminByUserId } from '../middleware/super-admin.ts'
 import { emailEnabled, renderApprovedEmail, sendMail } from '../utils/mailer.ts'
 import { prisma } from '../prisma.ts'
 
 const router = Router()
 
 async function isSuperAdmin(userId: string | null) {
-  if (!userId) return false
-  const adminEmail = String(process.env.SUPERADMIN_EMAIL || '').trim().toLowerCase()
-  if (!adminEmail) return false
-  const u = await prisma.user.findUnique({ where: { id: userId } })
-  return !!u && String(u.email).toLowerCase() === adminEmail
+  return isSuperAdminByUserId(userId)
 }
 
 async function isDeptLead(userId: string | null, deptId: string | null) {

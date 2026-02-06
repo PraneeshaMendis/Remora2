@@ -24,7 +24,8 @@ const Users: React.FC = () => {
   })
   const [isManageDepartmentsOpen, setIsManageDepartmentsOpen] = useState(false)
   const [newDepartmentName, setNewDepartmentName] = useState('')
-  const isAdmin = String(user?.role || '').toLowerCase() === 'admin' || !!user?.isSuperAdmin
+  const isExecutive = String(user?.department || '').trim().toLowerCase() === 'executive department'
+  const isAdmin = String(user?.role || '').toLowerCase() === 'admin' || !!user?.isSuperAdmin || isExecutive
   const permanentDepartments = new Set([
     'executive department',
     'grc department',

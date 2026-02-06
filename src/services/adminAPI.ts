@@ -1,7 +1,13 @@
 import { apiJson, apiGet } from './api'
 
 export function getAdminCatalog() {
-  return apiGet('/api/admin/catalog')
+  return Promise.all([
+    apiGet('/api/roles').catch(() => []),
+    apiGet('/api/departments').catch(() => []),
+  ]).then(([roles, departments]) => ({
+    roles: (roles || []).map((r: any) => String(r?.name || r)).filter(Boolean),
+    departments: (departments || []).map((d: any) => String(d?.name || d)).filter(Boolean),
+  }))
 }
 
 export function registerUserByAdmin(body: { name: string; email: string; password: string; roleName: string; departmentName: string; verify?: boolean; active?: boolean }) {
