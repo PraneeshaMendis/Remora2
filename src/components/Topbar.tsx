@@ -228,10 +228,16 @@ const Topbar: React.FC = () => {
       </div>
 
       <div className="flex items-center gap-3">
-        {user?.role === 'admin' && (
+        {user && (user.role === 'admin' || user.isSuperAdmin) ? (
           <span className="badge badge-info" title="Super Admin">
             Super Admin
           </span>
+        ) : (
+          user && (
+            <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 dark:bg-black/40 dark:text-gray-300">
+              {user.name || user.email || 'User'}
+            </span>
+          )
         )}
         <button
           type="button"

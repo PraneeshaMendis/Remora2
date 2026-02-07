@@ -4,9 +4,83 @@ import { prisma } from '../prisma.ts'
 import { authRequired } from '../middleware/auth-required.ts'
 import { createNotifications } from '../utils/notifications.ts'
 import { renderInvoiceEmailHtml } from '../utils/invoice-template.ts'
+import puppeteer from 'puppeteer-core'
+import fs from 'fs'
+import PDFDocument from 'pdfkit'
 
 const db: any = prisma
 const router = Router()
+
+function resolveChromeExecutable() {
+  const candidates = [
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    process.env.CHROME_BIN,
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/snap/bin/chromium',
+  ].filter(Boolean) as string[]
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) return candidate
+    } catch {}
+  }
+  return null
+}
+
+async function renderInvoicePdfFallback(mapped: ReturnType<typeof mapInvoice>, html: string): Promise<Buffer> {
+  return new Promise((resolve) => {
+    const doc = new PDFDocument({ size: 'A4', margin: 40 })
+    const chunks: Buffer[] = []
+    doc.on('data', (chunk) => chunks.push(chunk))
+    doc.on('end', () => resolve(Buffer.concat(chunks)))
+
+    const title = `Invoice ${mapped.invoiceNo || ''}`.trim()
+    doc.fontSize(20).fillColor('#0b1220').text(title, { align: 'left' })
+    doc.moveDown(0.5)
+
+    doc.fontSize(10).fillColor('#4b5563')
+    doc.text(`Project: ${mapped.projectName || '-'}`)
+    doc.text(`Phase: ${mapped.phaseName || '-'}`)
+    if (mapped.clientCompanyName) doc.text(`Company: ${mapped.clientCompanyName}`)
+    if (mapped.clientName) doc.text(`Client: ${mapped.clientName}`)
+    if (mapped.clientDesignation) doc.text(`Designation: ${mapped.clientDesignation}`)
+    if (mapped.clientPhone) doc.text(`Phone: ${mapped.clientPhone}`)
+    if (mapped.clientAddress) doc.text(`Address: ${mapped.clientAddress}`)
+    if (mapped.issueDate) doc.text(`Issue Date: ${new Date(mapped.issueDate).toLocaleDateString()}`)
+    if (mapped.dueDate) doc.text(`Due Date: ${new Date(mapped.dueDate).toLocaleDateString()}`)
+
+    doc.moveDown()
+    doc.fontSize(12).fillColor('#111827').text('Invoice Details', { underline: true })
+    doc.moveDown(0.5)
+
+    const currency = mapped.currency || 'USD'
+    const formatter = new Intl.NumberFormat('en-US', { style: 'currency', currency })
+    doc.fontSize(10).fillColor('#111827')
+    doc.text(`Subtotal: ${formatter.format(Number(mapped.subtotal || 0))}`)
+    doc.text(`Tax: ${formatter.format(Number(mapped.taxAmount || 0))}`)
+    doc.text(`VAT: ${formatter.format(Number(mapped.vatAmount || 0))}`)
+    doc.text(`Total: ${formatter.format(Number(mapped.total || 0))}`)
+
+    doc.moveDown()
+    doc.fontSize(9).fillColor('#4b5563')
+    doc.text('Payment Instructions:', { continued: false })
+    doc.text('Please reply with your payment receipt or bank transfer confirmation.')
+
+    doc.end()
+  })
+}
+
+function isProbablyPdf(buffer: Buffer | null): boolean {
+  if (!buffer || buffer.length < 1000) return false
+  const header = buffer.subarray(0, 4).toString('latin1')
+  if (header !== '%PDF') return false
+  const tail = buffer.subarray(Math.max(0, buffer.length - 1024)).toString('latin1')
+  return tail.includes('%%EOF')
+}
 
 async function isExecutiveMember(userId: string): Promise<boolean> {
   const user = await prisma.user.findUnique({
@@ -242,6 +316,46 @@ router.get('/:id/template', authRequired, async (req: Request, res: Response) =>
   if (!inv) return res.status(404).json({ error: 'Not found' })
   const mapped = mapInvoice(inv)
   const html = renderInvoiceEmailHtml({ ...mapped, description: 'Project work' })
+  const format = String(req.query.format || '').toLowerCase()
+  if (format === 'pdf') {
+    try {
+      const executablePath = resolveChromeExecutable()
+      let pdfBuffer: Buffer | null = null
+      if (executablePath) {
+        try {
+          const browser = await puppeteer.launch({
+            executablePath,
+            args: ['--no-sandbox', '--disable-setuid-sandbox'],
+          })
+          const page = await browser.newPage()
+          await page.setViewport({ width: 680, height: 960 })
+          await page.emulateMediaType('screen')
+          await page.setContent(html, { waitUntil: 'load' })
+          const pdfData = await page.pdf({
+            format: 'A4',
+            printBackground: true,
+            margin: { top: '24px', right: '16px', bottom: '24px', left: '16px' },
+          })
+          pdfBuffer = Buffer.from(pdfData)
+          await page.close()
+          await browser.close()
+        } catch {
+          pdfBuffer = null
+        }
+      }
+
+      if (!isProbablyPdf(pdfBuffer)) {
+        pdfBuffer = await renderInvoicePdfFallback(mapped, html)
+      }
+
+      const filename = `${mapped.invoiceNo || 'invoice'}.pdf`
+      res.setHeader('Content-Type', 'application/pdf')
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+      return res.send(pdfBuffer)
+    } catch (e: any) {
+      return res.status(500).json({ error: e?.message || 'Failed to generate PDF' })
+    }
+  }
   res.setHeader('Content-Type', 'text/html; charset=utf-8')
   res.send(html)
 })

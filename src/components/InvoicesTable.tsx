@@ -768,17 +768,25 @@ const InvoiceDrawer: React.FC<{
       return
     }
     try {
-      const res = await slipsInvoicesAPI.getInvoiceTemplate(invoice.id)
-      if (!res.success || !res.data?.html) {
+      const res = await slipsInvoicesAPI.getInvoiceTemplatePdf(invoice.id)
+      if (!res.success || !res.data) {
         throw new Error(res.message || 'Failed to download invoice template')
       }
-      const blob = new Blob([res.data.html], { type: 'text/html' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${invoice.invoiceNo || 'invoice'}.html`
-      a.click()
-      URL.revokeObjectURL(url)
+      const filename = `${invoice.invoiceNo || 'invoice'}.pdf`
+      const url = URL.createObjectURL(res.data)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      link.target = '_blank'
+      link.rel = 'noopener'
+      link.style.display = 'none'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      // Delay revoke to allow the browser to start the download or open the blob tab
+      setTimeout(() => {
+        URL.revokeObjectURL(url)
+      }, 15000)
     } catch (err: any) {
       setError(err?.message || 'Failed to download invoice template')
     }

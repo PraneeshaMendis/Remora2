@@ -637,6 +637,26 @@ class SlipsInvoicesMockAPI {
     }
   }
 
+  async getInvoiceTemplatePdf(invoiceId: string): Promise<ApiResponse<Blob>> {
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/invoices/${invoiceId}/template?format=pdf`)
+      if (!res.ok) throw new Error(await res.text())
+      const buffer = await res.arrayBuffer()
+      if (!buffer || buffer.byteLength < 500) {
+        throw new Error('Generated PDF is empty. Please try again.')
+      }
+      const header = new TextDecoder().decode(buffer.slice(0, 8))
+      if (!header.startsWith('%PDF')) {
+        const preview = new TextDecoder().decode(buffer.slice(0, 200)).replace(/\s+/g, ' ').slice(0, 160)
+        throw new Error(preview || 'Invalid PDF generated. Please restart the server and try again.')
+      }
+      const blob = new Blob([buffer], { type: 'application/pdf' })
+      return { success: true, data: blob }
+    } catch (e: any) {
+      return { success: false, message: e?.message || 'Failed to download invoice template', data: new Blob() }
+    }
+  }
+
   async ingestBankEmailsFromGmail(): Promise<ApiResponse<{ count: number }>> {
     try {
       const r = await fetch(`${API_BASE}/api/gmail/bank-credits`, { headers: { 'x-user-id': localStorage.getItem('userId') || '' } })

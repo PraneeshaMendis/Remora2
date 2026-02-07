@@ -17,6 +17,157 @@ type ProjectMetrics = {
   documents: ProjectDocumentMetric[]
 }
 
+type PortfolioContributor = {
+  id: string
+  name: string
+  hours: number
+}
+
+type PortfolioTask = {
+  id: string
+  title: string
+  status: Task['status']
+  startDate?: string
+  dueDate?: string
+  totalHours: number
+  logCount: number
+  contributions: PortfolioContributor[]
+}
+
+type PortfolioPhase = {
+  id: string
+  name: string
+  startDate?: string
+  endDate?: string
+  statusLabel: string
+  progress: number
+  totalHours: number
+  tasks: PortfolioTask[]
+}
+
+type PortfolioProject = {
+  id: string
+  name: string
+  leadName: string
+  status: Project['status']
+  startDate?: string
+  endDate?: string
+  totalHours: number
+  team: Array<{ id: string; name: string }>
+  phases: PortfolioPhase[]
+}
+
+const roundHours = (value: number) => {
+  return Math.round((value + Number.EPSILON) * 10) / 10
+}
+
+const formatHours = (value: number) => {
+  const safeValue = Number.isFinite(value) ? roundHours(value) : 0
+  return `${Number.isInteger(safeValue) ? safeValue : safeValue.toFixed(1)}h`
+}
+
+const toReadableStatus = (value: string) => {
+  return String(value || '')
+    .split(/[-_]/g)
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+const getTaskStatusMeta = (status: Task['status']) => {
+  switch (status) {
+    case 'completed':
+    case 'done':
+      return {
+        label: 'Completed',
+        className: 'border border-emerald-200 bg-emerald-100/80 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/20 dark:text-emerald-300',
+      }
+    case 'in-progress':
+      return {
+        label: 'In Progress',
+        className: 'border border-blue-200 bg-blue-100/80 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/20 dark:text-blue-300',
+      }
+    case 'blocked':
+      return {
+        label: 'On Hold',
+        className: 'border border-slate-300 bg-slate-100/90 text-slate-700 dark:border-white/20 dark:bg-white/10 dark:text-gray-300',
+      }
+    case 'in-review':
+      return {
+        label: 'In Review',
+        className: 'border border-violet-200 bg-violet-100/80 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/20 dark:text-violet-300',
+      }
+    case 'planning':
+    default:
+      return {
+        label: 'Planning',
+        className: 'border border-amber-200 bg-amber-100/80 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/20 dark:text-amber-300',
+      }
+  }
+}
+
+const getProjectStatusMeta = (status: Project['status']) => {
+  switch (status) {
+    case 'completed':
+      return 'border border-emerald-200 bg-emerald-100/80 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/20 dark:text-emerald-300'
+    case 'blocked':
+      return 'border border-rose-200 bg-rose-100/80 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/20 dark:text-rose-300'
+    case 'in-review':
+      return 'border border-violet-200 bg-violet-100/80 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/20 dark:text-violet-300'
+    case 'in-progress':
+      return 'border border-blue-200 bg-blue-100/80 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/20 dark:text-blue-300'
+    case 'planning':
+    default:
+      return 'border border-slate-300 bg-slate-100/90 text-slate-700 dark:border-white/20 dark:bg-white/10 dark:text-gray-300'
+  }
+}
+
+const getPhaseStatusLabel = (phaseTasks: PortfolioTask[]) => {
+  if (phaseTasks.length === 0) return 'No Tasks'
+  const completed = phaseTasks.filter(task => task.status === 'completed' || task.status === 'done').length
+  if (completed === phaseTasks.length) return 'Completed'
+  if (phaseTasks.some(task => task.status === 'in-progress')) return 'In Progress'
+  if (phaseTasks.some(task => task.status === 'blocked')) return 'On Hold'
+  return 'Planning'
+}
+
+const toInputDateStartTs = (value?: string) => {
+  if (!value) return null
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return null
+  parsed.setHours(0, 0, 0, 0)
+  return parsed.getTime()
+}
+
+const toInputDateEndTs = (value?: string) => {
+  if (!value) return null
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return null
+  parsed.setHours(23, 59, 59, 999)
+  return parsed.getTime()
+}
+
+const overlapsFilterRange = (
+  itemStartDate: string | undefined,
+  itemEndDate: string | undefined,
+  filterStartTs: number | null,
+  filterEndTs: number | null
+) => {
+  if (filterStartTs === null && filterEndTs === null) return true
+  const startTs = toTimestamp(itemStartDate)
+  const endTs = toTimestamp(itemEndDate)
+  if (startTs === null && endTs === null) return false
+
+  const effectiveStart = startTs ?? endTs ?? 0
+  const effectiveEnd = endTs ?? startTs ?? effectiveStart
+  const normalizedStart = Math.min(effectiveStart, effectiveEnd)
+  const normalizedEnd = Math.max(effectiveStart, effectiveEnd)
+  const rangeStart = filterStartTs ?? Number.NEGATIVE_INFINITY
+  const rangeEnd = filterEndTs ?? Number.POSITIVE_INFINITY
+
+  return normalizedEnd >= rangeStart && normalizedStart <= rangeEnd
+}
+
 const mapProjectStatus = (status?: string): Project['status'] => {
   const normalized = String(status || '').toUpperCase()
   switch (normalized) {
@@ -164,6 +315,11 @@ const DirectorDashboard: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
   const [teamMembers, setTeamMembers] = useState<Array<{ id: string; name: string; email: string }>>([])
+  const [portfolioProjects, setPortfolioProjects] = useState<PortfolioProject[]>([])
+  const [portfolioDateFrom, setPortfolioDateFrom] = useState('')
+  const [portfolioDateTo, setPortfolioDateTo] = useState('')
+  const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({})
+  const [expandedPhases, setExpandedPhases] = useState<Record<string, boolean>>({})
   const [metricsByProjectId, setMetricsByProjectId] = useState<Record<string, ProjectMetrics>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -183,13 +339,39 @@ const DirectorDashboard: React.FC = () => {
         const details = await Promise.all(
           projectIds.map(id => apiGet(`/projects/${id}`).catch(() => null))
         )
+        const validDetails = details.filter(Boolean) as any[]
+
+        const uniqueTaskIds = Array.from(
+          new Set(
+            validDetails.flatMap((detail: any) => {
+              const phases = Array.isArray(detail?.phases) ? detail.phases : []
+              return phases.flatMap((phase: any) => {
+                const phaseTasks = Array.isArray(phase?.tasks) ? phase.tasks : []
+                return phaseTasks
+                  .map((task: any) => String(task?.id || ''))
+                  .filter(Boolean)
+              })
+            })
+          )
+        )
+
+        const logsByTaskId = new Map<string, any[]>()
+        if (uniqueTaskIds.length) {
+          const logResponses = await Promise.all(
+            uniqueTaskIds.map(async taskId => {
+              const logs = await apiGet(`/timelogs/tasks/${taskId}/timelogs`).catch(() => [])
+              return { taskId, logs: Array.isArray(logs) ? logs : [] }
+            })
+          )
+          logResponses.forEach(({ taskId, logs }) => {
+            logsByTaskId.set(taskId, logs)
+          })
+        }
 
         const memberMap = new Map<string, { id: string; name: string; email: string }>()
         const allTasks: Task[] = []
 
-        const mappedProjects = details
-          .filter(Boolean)
-          .map((detail: any) => {
+        const mappedProjects = validDetails.map((detail: any) => {
             const memberships = Array.isArray(detail?.memberships) ? detail.memberships : []
             const teamIds = memberships
               .map((m: any) => String(m?.user?.id || m?.userId || ''))
@@ -265,10 +447,143 @@ const DirectorDashboard: React.FC = () => {
             } as Project
           })
 
+        const portfolioData: PortfolioProject[] = validDetails.map((detail: any) => {
+          const projectId = String(detail?.id || '')
+          const projectDates = deriveProjectDates(detail)
+          const memberships = Array.isArray(detail?.memberships) ? detail.memberships : []
+          const teamById = new Map<string, { id: string; name: string }>()
+          memberships.forEach((member: any) => {
+            const memberId = String(member?.user?.id || member?.userId || '')
+            if (!memberId) return
+            teamById.set(memberId, {
+              id: memberId,
+              name: String(member?.user?.name || memberMap.get(memberId)?.name || 'Unknown'),
+            })
+          })
+          const team = Array.from(teamById.values())
+
+          const leadMembership = memberships.find((member: any) => {
+            const role = String(member?.role || '').toUpperCase()
+            return ['DIRECTOR', 'MANAGER', 'LEAD'].includes(role)
+          })
+          const leadName = String(
+            leadMembership?.user?.name ||
+            leadMembership?.user?.email ||
+            team[0]?.name ||
+            'Unassigned'
+          )
+
+          const phases = Array.isArray(detail?.phases) ? detail.phases : []
+          const portfolioPhases: PortfolioPhase[] = phases.map((phase: any) => {
+            const phaseTasks = Array.isArray(phase?.tasks) ? phase.tasks : []
+            const tasksForPhase: PortfolioTask[] = phaseTasks.map((task: any) => {
+              const taskId = String(task?.id || '')
+              const logs = logsByTaskId.get(taskId) || []
+              const contributionByUser = new Map<string, PortfolioContributor>()
+
+              logs.forEach((log: any) => {
+                const userId = String(log?.userId || log?.user?.id || '')
+                if (!userId) return
+                const hours = roundHours(Number(log?.durationMins || 0) / 60)
+                const existing = contributionByUser.get(userId)
+                if (existing) {
+                  existing.hours = roundHours(existing.hours + hours)
+                  return
+                }
+                contributionByUser.set(userId, {
+                  id: userId,
+                  name: String(log?.userName || log?.user?.name || memberMap.get(userId)?.name || 'Unknown'),
+                  hours,
+                })
+              })
+
+              const assignees = Array.isArray(task?.assignees) ? task.assignees : []
+              assignees.forEach((assignee: any) => {
+                const userId = String(assignee?.user?.id || assignee?.userId || '')
+                if (!userId || contributionByUser.has(userId)) return
+                contributionByUser.set(userId, {
+                  id: userId,
+                  name: String(assignee?.user?.name || memberMap.get(userId)?.name || 'Unknown'),
+                  hours: 0,
+                })
+              })
+
+              const contributions = Array.from(contributionByUser.values()).sort((a, b) => {
+                if (b.hours !== a.hours) return b.hours - a.hours
+                return a.name.localeCompare(b.name)
+              })
+
+              const totalHours = roundHours(
+                logs.reduce((sum: number, log: any) => sum + (Number(log?.durationMins || 0) / 60), 0)
+              )
+
+              return {
+                id: taskId,
+                title: String(task?.title || ''),
+                status: mapTaskStatus(task?.status),
+                startDate: task?.startDate ? new Date(task.startDate).toISOString() : '',
+                dueDate: task?.dueDate ? new Date(task.dueDate).toISOString() : '',
+                totalHours,
+                logCount: logs.length,
+                contributions,
+              }
+            })
+
+            const phaseTotal = roundHours(
+              tasksForPhase.reduce((sum, task) => sum + task.totalHours, 0)
+            )
+            const completedTasks = tasksForPhase.filter(task => task.status === 'completed' || task.status === 'done').length
+            const phaseProgress = tasksForPhase.length
+              ? Math.round((completedTasks / tasksForPhase.length) * 100)
+              : 0
+
+            return {
+              id: String(phase?.id || ''),
+              name: String(phase?.name || 'Untitled Phase'),
+              startDate: phase?.startDate ? new Date(phase.startDate).toISOString() : '',
+              endDate: phase?.endDate ? new Date(phase.endDate).toISOString() : '',
+              statusLabel: getPhaseStatusLabel(tasksForPhase),
+              progress: phaseProgress,
+              totalHours: phaseTotal,
+              tasks: tasksForPhase,
+            }
+          })
+
+          const taskHoursTotal = roundHours(
+            portfolioPhases.reduce((sum, phase) => sum + phase.totalHours, 0)
+          )
+          const fallbackLoggedHours = Number(detail?.usedHours ?? detail?.loggedHours ?? 0)
+
+          return {
+            id: projectId,
+            name: String(detail?.title || 'Untitled Project'),
+            leadName,
+            status: mapProjectStatus(detail?.status),
+            startDate: projectDates.startDate,
+            endDate: projectDates.dueDate,
+            totalHours: taskHoursTotal > 0 ? taskHoursTotal : fallbackLoggedHours,
+            team,
+            phases: portfolioPhases,
+          }
+        })
+
+        const initialExpandedProjects: Record<string, boolean> = {}
+        const initialExpandedPhases: Record<string, boolean> = {}
+        portfolioData.forEach((project, projectIndex) => {
+          initialExpandedProjects[project.id] = projectIndex === 0
+          project.phases.forEach((phase, phaseIndex) => {
+            const phaseId = phase.id || String(phaseIndex)
+            initialExpandedPhases[`${project.id}:${phaseId}`] = projectIndex === 0 && phaseIndex === 0
+          })
+        })
+
         if (active) {
           setProjects(mappedProjects)
           setTasks(allTasks)
           setTeamMembers(Array.from(memberMap.values()))
+          setPortfolioProjects(portfolioData)
+          setExpandedProjects(initialExpandedProjects)
+          setExpandedPhases(initialExpandedPhases)
         }
       } catch (error) {
         console.error('Error loading dashboard data:', error)
@@ -610,6 +925,55 @@ const DirectorDashboard: React.FC = () => {
 
   // Use all projects instead of just recent ones
   const displayProjects = projects
+  const isPortfolioDateFilterActive = Boolean(portfolioDateFrom || portfolioDateTo)
+  const filteredPortfolioProjects = useMemo(() => {
+    const rawStartTs = toInputDateStartTs(portfolioDateFrom)
+    const rawEndTs = toInputDateEndTs(portfolioDateTo)
+    const filterStartTs = rawStartTs !== null && rawEndTs !== null ? Math.min(rawStartTs, rawEndTs) : rawStartTs
+    const filterEndTs = rawStartTs !== null && rawEndTs !== null ? Math.max(rawStartTs, rawEndTs) : rawEndTs
+    const hasFilter = filterStartTs !== null || filterEndTs !== null
+    if (!hasFilter) return portfolioProjects
+
+    return portfolioProjects
+      .map(project => {
+        const filteredPhases = project.phases
+          .map(phase => {
+            const phaseMatches = overlapsFilterRange(phase.startDate, phase.endDate, filterStartTs, filterEndTs)
+            const filteredTasks = phase.tasks.filter(task =>
+              overlapsFilterRange(task.startDate, task.dueDate, filterStartTs, filterEndTs)
+            )
+
+            if (!phaseMatches && filteredTasks.length === 0) return null
+
+            const filteredHours = roundHours(filteredTasks.reduce((sum, task) => sum + task.totalHours, 0))
+            const completedTasks = filteredTasks.filter(task => task.status === 'completed' || task.status === 'done').length
+            const filteredProgress = filteredTasks.length
+              ? Math.round((completedTasks / filteredTasks.length) * 100)
+              : phase.progress
+
+            return {
+              ...phase,
+              statusLabel: filteredTasks.length ? getPhaseStatusLabel(filteredTasks) : phase.statusLabel,
+              progress: filteredProgress,
+              totalHours: filteredTasks.length ? filteredHours : phase.totalHours,
+              tasks: filteredTasks,
+            }
+          })
+          .filter(Boolean) as PortfolioPhase[]
+
+        const projectMatches = overlapsFilterRange(project.startDate, project.endDate, filterStartTs, filterEndTs)
+        if (!projectMatches && filteredPhases.length === 0) return null
+
+        const phaseHours = roundHours(filteredPhases.reduce((sum, phase) => sum + phase.totalHours, 0))
+
+        return {
+          ...project,
+          totalHours: filteredPhases.length ? phaseHours : project.totalHours,
+          phases: filteredPhases,
+        }
+      })
+      .filter(Boolean) as PortfolioProject[]
+  }, [portfolioProjects, portfolioDateFrom, portfolioDateTo])
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -630,6 +994,21 @@ const DirectorDashboard: React.FC = () => {
       case 'low': return 'text-green-600 dark:text-green-400'
       default: return 'text-gray-600 dark:text-gray-400'
     }
+  }
+
+  const toggleProjectExpansion = (projectId: string) => {
+    setExpandedProjects(prev => ({
+      ...prev,
+      [projectId]: !prev[projectId],
+    }))
+  }
+
+  const togglePhaseExpansion = (projectId: string, phaseId: string) => {
+    const key = `${projectId}:${phaseId}`
+    setExpandedPhases(prev => ({
+      ...prev,
+      [key]: !prev[key],
+    }))
   }
 
   if (isLoading) {
@@ -704,7 +1083,7 @@ const DirectorDashboard: React.FC = () => {
         ))}
       </div>
 
-      {/* Charts and Projects Grid */}
+      {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Status Distribution Chart */}
         <div className={`${cardBase} p-6`}>
@@ -745,6 +1124,244 @@ const DirectorDashboard: React.FC = () => {
             Last 7 days
           </div>
         </div>
+      </div>
+
+      {/* Project Portfolio Tracker */}
+      <div className={`${cardBase} overflow-hidden`}>
+        <div className="border-b border-slate-200/80 dark:border-white/10 px-6 py-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">Project Portfolio Tracker</h3>
+            <div className="flex flex-wrap items-center gap-2 text-[11px]">
+              <span className="font-medium text-slate-500 dark:text-gray-400">From</span>
+              <input
+                type="date"
+                value={portfolioDateFrom}
+                onChange={event => setPortfolioDateFrom(event.target.value)}
+                max={portfolioDateTo || undefined}
+                className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none transition focus:border-slate-300 dark:border-white/15 dark:bg-black/40 dark:text-gray-200 dark:focus:border-white/25"
+              />
+              <span className="font-medium text-slate-500 dark:text-gray-400">To</span>
+              <input
+                type="date"
+                value={portfolioDateTo}
+                onChange={event => setPortfolioDateTo(event.target.value)}
+                min={portfolioDateFrom || undefined}
+                className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none transition focus:border-slate-300 dark:border-white/15 dark:bg-black/40 dark:text-gray-200 dark:focus:border-white/25"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setPortfolioDateFrom('')
+                  setPortfolioDateTo('')
+                }}
+                disabled={!isPortfolioDateFilterActive}
+                className="h-8 rounded-lg border border-slate-200 px-3 font-semibold text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/15 dark:text-gray-300 dark:hover:bg-white/5"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        </div>
+        {filteredPortfolioProjects.length === 0 ? (
+          <div className="px-6 py-12 text-xs text-slate-500 dark:text-gray-400">
+            {isPortfolioDateFilterActive
+              ? 'No projects, phases, or tasks found in the selected date range.'
+              : 'No project, phase, or task data available.'}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <div className="min-w-[980px]">
+              <div className="grid grid-cols-[minmax(0,2.4fr)_1fr_1.5fr_140px] px-6 py-5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-400">
+                <div>Project / Phase / Task</div>
+                <div>Status</div>
+                <div>Team Contribution</div>
+                <div className="text-right">Total Hours</div>
+              </div>
+
+              <div className="divide-y divide-slate-200/80 dark:divide-white/10">
+                {filteredPortfolioProjects.map((project, projectIndex) => {
+                  const projectExpanded = expandedProjects[project.id] ?? projectIndex === 0
+                  return (
+                    <div key={project.id || `project-${projectIndex}`} className="bg-white/70 dark:bg-transparent">
+                      <div className="grid grid-cols-[minmax(0,2.4fr)_1fr_1.5fr_140px] items-center gap-4 px-6 py-6">
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleProjectExpansion(project.id)}
+                            className="h-9 w-9 shrink-0 rounded-xl border border-slate-200 bg-slate-100 text-slate-600 transition hover:bg-slate-200 dark:border-white/15 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10"
+                          >
+                            <svg
+                              className={`mx-auto h-4 w-4 transition-transform ${projectExpanded ? 'rotate-90' : ''}`}
+                              viewBox="0 0 20 20"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth={2}
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M7 4l6 6-6 6" />
+                            </svg>
+                          </button>
+                          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300">
+                            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5A2.5 2.5 0 0 1 5.5 5h13A2.5 2.5 0 0 1 21 7.5V18a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7.5Z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5V4a3 3 0 0 1 6 0v1" />
+                            </svg>
+                          </div>
+                          <div>
+                            <p className="text-base font-semibold text-gray-900 dark:text-white">{project.name}</p>
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-400">
+                              Lead: {project.leadName}
+                            </p>
+                          </div>
+                        </div>
+                        <div>
+                          <span className={`inline-flex rounded-full px-3 py-1 text-[11px] font-semibold ${getProjectStatusMeta(project.status)}`}>
+                            {toReadableStatus(project.status)}
+                          </span>
+                        </div>
+                        <div className="flex items-center">
+                          {project.team.length === 0 ? (
+                            <span className="text-[11px] text-slate-500 dark:text-gray-400">No team assigned</span>
+                          ) : (
+                            <div className="flex -space-x-2">
+                              {project.team.slice(0, 4).map(member => (
+                                <div
+                                  key={member.id}
+                                  title={member.name}
+                                  className="h-8 w-8 rounded-full border border-white bg-slate-200 text-[11px] font-semibold text-slate-700 flex items-center justify-center dark:border-black dark:bg-white/20 dark:text-white"
+                                >
+                                  {getInitials(member.name)}
+                                </div>
+                              ))}
+                              {project.team.length > 4 && (
+                                <div className="h-8 w-8 rounded-full border border-white bg-slate-300 text-[11px] font-semibold text-slate-700 flex items-center justify-center dark:border-black dark:bg-white/15 dark:text-gray-200">
+                                  +{project.team.length - 4}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-right text-base font-semibold text-slate-700 dark:text-gray-100">
+                          {formatHours(project.totalHours)}
+                        </div>
+                      </div>
+
+                      {projectExpanded && (
+                        <div className="border-t border-slate-200/80 bg-slate-50/60 dark:border-white/10 dark:bg-black/20">
+                          {project.phases.length === 0 ? (
+                            <div className="px-6 py-4 text-xs text-slate-500 dark:text-gray-400">
+                              {isPortfolioDateFilterActive ? 'No phases in this date range.' : 'No phases found for this project.'}
+                            </div>
+                          ) : (
+                            project.phases.map((phase, phaseIndex) => {
+                              const phaseKey = `${project.id}:${phase.id || phaseIndex}`
+                              const phaseExpanded = expandedPhases[phaseKey] ?? (projectIndex === 0 && phaseIndex === 0)
+                              return (
+                                <div key={phase.id || phaseKey} className="border-b border-slate-200/70 dark:border-white/10 last:border-b-0">
+                                  <div className="grid grid-cols-[minmax(0,2.4fr)_1fr_1.5fr_140px] items-center gap-4 px-6 py-4">
+                                    <div className="flex items-center gap-3 pl-10">
+                                      <button
+                                        type="button"
+                                        onClick={() => togglePhaseExpansion(project.id, phase.id || String(phaseIndex))}
+                                        className="h-8 w-8 shrink-0 rounded-lg border border-transparent text-slate-500 transition hover:border-slate-200 hover:bg-slate-100 dark:text-gray-400 dark:hover:border-white/10 dark:hover:bg-white/5"
+                                      >
+                                        <svg
+                                          className={`mx-auto h-4 w-4 transition-transform ${phaseExpanded ? 'rotate-90' : ''}`}
+                                          viewBox="0 0 20 20"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          strokeWidth={2}
+                                        >
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M7 4l6 6-6 6" />
+                                        </svg>
+                                      </button>
+                                      <p className="text-sm font-medium text-slate-700 dark:text-gray-200">{phase.name}</p>
+                                    </div>
+                                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-400">
+                                      {phase.statusLabel}
+                                    </div>
+                                    <div className="flex items-center">
+                                      <div className="h-2 w-36 rounded-full bg-slate-200 dark:bg-white/10">
+                                        <div
+                                          className="h-2 rounded-full bg-slate-400 dark:bg-white/30"
+                                          style={{ width: `${Math.max(0, Math.min(100, phase.progress))}%` }}
+                                        />
+                                      </div>
+                                      <span className="ml-3 text-[11px] font-medium text-slate-500 dark:text-gray-400">{phase.progress}%</span>
+                                    </div>
+                                    <div className="text-right text-sm font-semibold text-slate-600 dark:text-gray-200">
+                                      {formatHours(phase.totalHours)}
+                                    </div>
+                                  </div>
+
+                                  {phaseExpanded && (
+                                    <div className="divide-y divide-slate-200/70 dark:divide-white/10">
+                                      {phase.tasks.length === 0 ? (
+                                        <div className="px-6 py-4 pl-24 text-xs text-slate-500 dark:text-gray-400">
+                                          {isPortfolioDateFilterActive ? 'No tasks in this date range.' : 'No tasks in this phase.'}
+                                        </div>
+                                      ) : (
+                                        phase.tasks.map((task, taskIndex) => {
+                                          const taskStatusMeta = getTaskStatusMeta(task.status)
+                                          return (
+                                            <div key={task.id || `${phaseKey}-task-${taskIndex}`} className="grid grid-cols-[minmax(0,2.4fr)_1fr_1.5fr_140px] items-center gap-4 px-6 py-4">
+                                              <div className="flex items-center gap-3 pl-16">
+                                                <div className="h-8 w-px bg-slate-300 dark:bg-white/15" />
+                                                <p className="text-sm text-slate-700 dark:text-gray-200">{task.title || 'Untitled task'}</p>
+                                              </div>
+                                              <div>
+                                                <span className={`inline-flex rounded-full px-3 py-1 text-[11px] font-semibold ${taskStatusMeta.className}`}>
+                                                  {taskStatusMeta.label}
+                                                </span>
+                                              </div>
+                                              <div className="flex flex-wrap items-center gap-2">
+                                                {task.contributions.length === 0 ? (
+                                                  <span className="text-[11px] text-slate-500 dark:text-gray-400">No contributions logged</span>
+                                                ) : (
+                                                  task.contributions.slice(0, 3).map(contribution => (
+                                                    <span
+                                                      key={`${task.id || taskIndex}-${contribution.id}`}
+                                                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 dark:border-white/15 dark:bg-white/5 dark:text-gray-300"
+                                                    >
+                                                      <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                                                        <circle cx="10" cy="6" r="3.2" />
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.2 16.2a5.8 5.8 0 0 1 11.6 0" />
+                                                      </svg>
+                                                      <span>{contribution.name}</span>
+                                                      <span className="font-semibold">{formatHours(contribution.hours)}</span>
+                                                    </span>
+                                                  ))
+                                                )}
+                                                {task.contributions.length > 3 && (
+                                                  <span className="text-[11px] font-semibold text-slate-500 dark:text-gray-400">
+                                                    +{task.contributions.length - 3} more
+                                                  </span>
+                                                )}
+                                              </div>
+                                              <div className="text-right">
+                                                <p className="text-sm font-semibold text-slate-700 dark:text-gray-100">{formatHours(task.totalHours)}</p>
+                                                <p className="text-[11px] text-slate-500 dark:text-gray-400">
+                                                  {task.logCount} {task.logCount === 1 ? 'log' : 'logs'}
+                                                </p>
+                                              </div>
+                                            </div>
+                                          )
+                                        })
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Projects Grid */}

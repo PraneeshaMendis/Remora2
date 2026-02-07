@@ -410,7 +410,7 @@ const MeetingLogger: React.FC = () => {
         </div>
       </div>
 
-      <div className="card">
+      <div className="card dark:bg-black/60 dark:border-white/10">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
           <div>
             <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Meeting Details</h2>
@@ -687,7 +687,7 @@ const MeetingLogger: React.FC = () => {
         )}
       </div>
 
-      <div className="card">
+      <div className="card dark:bg-black/60 dark:border-white/10">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
           <div>
             <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Meeting History</h2>
@@ -737,7 +737,7 @@ const MeetingLogger: React.FC = () => {
 
         <div className="overflow-x-auto">
           <table className="min-w-[1200px] w-full text-left text-sm">
-            <thead className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            <thead className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400 bg-slate-50/80 dark:bg-slate-900/40">
               <tr>
                 <th className="pb-3 px-4 min-w-[240px]">Meeting &amp; Project</th>
                 <th className="pb-3 px-4 min-w-[160px]">Hierarchy</th>
@@ -763,7 +763,7 @@ const MeetingLogger: React.FC = () => {
                 </tr>
               ) : (
                 filteredMeetings.map(log => (
-                  <tr key={log.id} className="text-slate-700 dark:text-slate-200">
+                  <tr key={log.id} className="text-slate-700 dark:text-slate-200 hover:bg-slate-50/70 dark:hover:bg-white/5 transition-colors">
                     <td className="py-4 px-4">
                       <div className="font-semibold text-slate-900 dark:text-white">{log.title}</div>
                       <div className="text-xs text-slate-500 dark:text-slate-400">
