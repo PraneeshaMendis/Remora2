@@ -25,8 +25,8 @@ const AuthenticatedLayout: React.FC = () => {
     <div className="min-h-screen bg-background app-bg">
       <div className="flex">
         <Sidebar />
-        <main className="flex-1">
-          <div className="px-4 pt-4">
+        <main className="flex-1 min-w-0">
+          <div className="px-4 pt-4 pb-24 lg:pb-0">
             <div className="flex justify-end mb-3">
               <Topbar />
             </div>

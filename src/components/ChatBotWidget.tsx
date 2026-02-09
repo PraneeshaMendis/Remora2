@@ -31,14 +31,14 @@ const ChatBotWidget: React.FC = () => {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50">
+    <div className="fixed right-4 z-50 bottom-24 lg:bottom-4">
       {!open && (
-        <button onClick={() => setOpen(true)} className="rounded-full bg-blue-600 text-white w-14 h-14 shadow-lg hover:bg-blue-700">
-          <span className="text-xl">💬</span>
+        <button onClick={() => setOpen(true)} className="rounded-full bg-blue-600 text-white w-12 h-12 sm:w-14 sm:h-14 shadow-lg hover:bg-blue-700">
+          <span className="text-lg sm:text-xl">💬</span>
         </button>
       )}
       {open && (
-        <div className="w-80 h-96 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col">
+        <div className="w-[calc(100vw-1.5rem)] max-w-xs sm:w-80 h-[70vh] max-h-[26rem] sm:h-96 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col">
           <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <div className="text-sm font-semibold text-gray-900 dark:text-white">AI Assistant</div>
             <button onClick={() => setOpen(false)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">✕</button>
@@ -70,4 +70,3 @@ const ChatBotWidget: React.FC = () => {
 }
 
 export default ChatBotWidget
-

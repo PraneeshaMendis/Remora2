@@ -358,6 +358,53 @@
   .field-label {
     @apply text-[13px] font-medium text-gray-700 dark:text-gray-300;
   }
+
+  @media (max-width: 768px) {
+    .btn {
+      @apply px-3 py-1.5 text-xs rounded-lg gap-1.5;
+    }
+
+    .btn-icon {
+      @apply h-9 w-9;
+    }
+
+    .input-field {
+      @apply px-2.5 py-1.5 rounded-xl text-sm;
+    }
+
+    .input-lg,
+    .select-lg {
+      @apply h-10 px-3 text-xs;
+    }
+
+    .card {
+      @apply p-4 rounded-xl;
+    }
+
+    .modal-panel {
+      @apply rounded-2xl;
+    }
+
+    .modal-header {
+      @apply px-4 py-3;
+    }
+
+    .modal-title {
+      @apply text-base;
+    }
+
+    .modal-body {
+      @apply px-4 py-4 space-y-4;
+    }
+
+    .modal-footer {
+      @apply px-4 py-3 gap-2;
+    }
+
+    .field-label {
+      @apply text-xs;
+    }
+  }
 }
 
 @layer utilities {
@@ -436,5 +483,11 @@
   }
   .sidebar-logo-shell::before {
     animation: none;
+  }
+}
+
+@media (max-width: 768px) {
+  html {
+    font-size: 15px;
   }
 }
