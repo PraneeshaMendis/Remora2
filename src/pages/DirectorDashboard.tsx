@@ -82,6 +82,33 @@ type TaskHealthRow = {
   recommendedAction: string
 }
 
+type TaskDeliveryItem = {
+  id: string
+  project: string
+  phase: string
+  task: string
+  dueDate: string
+  dueTs: number
+  daysLeft: number
+  priority: Task['priority']
+  status: string
+  actual: number
+  health: TaskHealthRow['health']
+  riskScore: number
+  action: string
+}
+
+type TaskDeliveryProjectGroup = {
+  project: string
+  tasks: TaskDeliveryItem[]
+  total: number
+  onTrack: number
+  atRisk: number
+  critical: number
+  averageCompletion: number
+  urgency: 'URGENT ACTION' | 'WATCH LIST' | 'STABLE'
+}
+
 const roundHours = (value: number) => {
   return Math.round((value + Number.EPSILON) * 10) / 10
 }
@@ -392,6 +419,9 @@ const DirectorDashboard: React.FC = () => {
   const [metricsByProjectId, setMetricsByProjectId] = useState<Record<string, ProjectMetrics>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [taskDeliverySearch, setTaskDeliverySearch] = useState('')
+  const [taskDeliveryHealthFilter, setTaskDeliveryHealthFilter] = useState<'all' | TaskHealthRow['health']>('all')
+  const [taskDeliveryExpandedProjects, setTaskDeliveryExpandedProjects] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     let active = true
@@ -1197,15 +1227,150 @@ const DirectorDashboard: React.FC = () => {
     })
   }, [portfolioProjects, portfolioFilterRange])
 
-  const taskHealthSummary = useMemo(() => {
-    const summary = { total: taskHealthRows.length, onTrack: 0, atRisk: 0, critical: 0 }
-    taskHealthRows.forEach(row => {
-      if (row.health === 'critical') summary.critical += 1
-      else if (row.health === 'at-risk') summary.atRisk += 1
-      else summary.onTrack += 1
-    })
-    return summary
+  const taskDeliveryItems = useMemo<TaskDeliveryItem[]>(() => {
+    return taskHealthRows.map((row, index) => ({
+      id: `${row.projectName}::${row.phaseName}::${row.taskName}::${row.dueTs}::${index}`,
+      project: row.projectName,
+      phase: row.phaseName,
+      task: row.taskName,
+      dueDate: row.dueDate,
+      dueTs: row.dueTs,
+      daysLeft: row.daysToDue,
+      priority: row.priority,
+      status: row.completedLate ? 'Completed Late' : toReadableStatus(row.status),
+      actual: row.actualProgress,
+      health: row.health,
+      riskScore: clamp(Math.round(row.riskScore), 0, 100),
+      action: row.recommendedAction,
+    }))
   }, [taskHealthRows])
+
+  const taskDeliveryFilteredItems = useMemo(() => {
+    const query = taskDeliverySearch.trim().toLowerCase()
+    return taskDeliveryItems.filter(item => {
+      if (taskDeliveryHealthFilter !== 'all' && item.health !== taskDeliveryHealthFilter) return false
+      if (!query) return true
+      return (
+        item.task.toLowerCase().includes(query) ||
+        item.project.toLowerCase().includes(query) ||
+        item.phase.toLowerCase().includes(query)
+      )
+    })
+  }, [taskDeliveryItems, taskDeliverySearch, taskDeliveryHealthFilter])
+
+  const taskDeliveryGroups = useMemo<TaskDeliveryProjectGroup[]>(() => {
+    const grouped = new Map<string, TaskDeliveryProjectGroup>()
+    const healthOrder: Record<TaskHealthRow['health'], number> = {
+      critical: 0,
+      'at-risk': 1,
+      'on-track': 2,
+    }
+
+    taskDeliveryFilteredItems.forEach(item => {
+      const existing = grouped.get(item.project)
+      if (!existing) {
+        grouped.set(item.project, {
+          project: item.project,
+          tasks: [item],
+          total: 1,
+          onTrack: item.health === 'on-track' ? 1 : 0,
+          atRisk: item.health === 'at-risk' ? 1 : 0,
+          critical: item.health === 'critical' ? 1 : 0,
+          averageCompletion: item.actual,
+          urgency: item.health === 'critical' ? 'URGENT ACTION' : item.health === 'at-risk' ? 'WATCH LIST' : 'STABLE',
+        })
+        return
+      }
+
+      existing.tasks.push(item)
+      existing.total += 1
+      if (item.health === 'critical') existing.critical += 1
+      else if (item.health === 'at-risk') existing.atRisk += 1
+      else existing.onTrack += 1
+    })
+
+    return Array.from(grouped.values())
+      .map(group => {
+        const averageCompletion = group.total
+          ? Math.round(group.tasks.reduce((sum, item) => sum + item.actual, 0) / group.total)
+          : 0
+        const urgency: TaskDeliveryProjectGroup['urgency'] = group.critical > 0
+          ? 'URGENT ACTION'
+          : group.atRisk > 0
+            ? 'WATCH LIST'
+            : 'STABLE'
+
+        const tasks = [...group.tasks].sort((a, b) => {
+          const healthDiff = healthOrder[a.health] - healthOrder[b.health]
+          if (healthDiff !== 0) return healthDiff
+          if (a.daysLeft !== b.daysLeft) return a.daysLeft - b.daysLeft
+          return b.riskScore - a.riskScore
+        })
+
+        return {
+          ...group,
+          tasks,
+          averageCompletion,
+          urgency,
+        }
+      })
+      .sort((a, b) => {
+        if (a.critical !== b.critical) return b.critical - a.critical
+        if (a.atRisk !== b.atRisk) return b.atRisk - a.atRisk
+        return a.project.localeCompare(b.project)
+      })
+  }, [taskDeliveryFilteredItems])
+
+  const taskDeliverySummary = useMemo(() => {
+    return taskDeliveryFilteredItems.reduce(
+      (summary, item) => {
+        summary.total += 1
+        if (item.health === 'critical') summary.critical += 1
+        else if (item.health === 'at-risk') summary.atRisk += 1
+        else summary.onTrack += 1
+        return summary
+      },
+      { total: 0, onTrack: 0, atRisk: 0, critical: 0 },
+    )
+  }, [taskDeliveryFilteredItems])
+
+  const taskDeliveryLastUpdated = useMemo(() => {
+    if (!taskDeliveryItems.length) return 'No data'
+    return new Date().toLocaleString()
+  }, [taskDeliveryItems])
+
+  useEffect(() => {
+    setTaskDeliveryExpandedProjects(prev => {
+      const next: Record<string, boolean> = {}
+      taskDeliveryGroups.forEach((group, index) => {
+        next[group.project] = prev[group.project] ?? index === 0
+      })
+      return next
+    })
+  }, [taskDeliveryGroups])
+
+  const toggleTaskDeliveryProject = (projectName: string) => {
+    setTaskDeliveryExpandedProjects(prev => ({
+      ...prev,
+      [projectName]: !prev[projectName],
+    }))
+  }
+
+  const expandAllTaskDeliveryProjects = () => {
+    const next: Record<string, boolean> = {}
+    taskDeliveryGroups.forEach(group => {
+      next[group.project] = true
+    })
+    setTaskDeliveryExpandedProjects(next)
+  }
+
+  const collapseAllTaskDeliveryProjects = () => {
+    const next: Record<string, boolean> = {}
+    taskDeliveryGroups.forEach(group => {
+      next[group.project] = false
+    })
+    setTaskDeliveryExpandedProjects(next)
+  }
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -1598,114 +1763,279 @@ const DirectorDashboard: React.FC = () => {
 
       {/* Task Delivery Health */}
       <div className={`${cardBase} overflow-hidden`}>
-        <div className="border-b border-slate-200/80 dark:border-white/10 px-6 py-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <h3 className="text-base font-semibold text-gray-900 dark:text-white">Task Delivery Health</h3>
-            <div className="flex flex-wrap items-center gap-2 text-[11px]">
-              <span className="rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 font-semibold text-slate-600 dark:border-white/15 dark:bg-white/5 dark:text-gray-300">
-                Total: {taskHealthSummary.total}
-              </span>
-              <span className="rounded-full border border-emerald-200 bg-emerald-100/80 px-2.5 py-1 font-semibold text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/20 dark:text-emerald-300">
-                On Track: {taskHealthSummary.onTrack}
-              </span>
-              <span className="rounded-full border border-amber-200 bg-amber-100/80 px-2.5 py-1 font-semibold text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/20 dark:text-amber-300">
-                At Risk: {taskHealthSummary.atRisk}
-              </span>
-              <span className="rounded-full border border-rose-200 bg-rose-100/80 px-2.5 py-1 font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/20 dark:text-rose-300">
-                Critical: {taskHealthSummary.critical}
-              </span>
+        <div className="border-b border-slate-200/80 bg-slate-50/80 px-6 py-5 dark:border-white/10 dark:bg-white/[0.02]">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+            <div>
+              <h3 className="text-base font-semibold text-slate-900 dark:text-white">Task Delivery Health</h3>
+              <p className="mt-1 text-xs text-slate-600 dark:text-gray-400">
+                Consolidated delivery risk view grouped by project.
+              </p>
+            </div>
+            <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600 dark:border-white/15 dark:bg-black/40 dark:text-gray-300">
+              <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                <circle cx="10" cy="10" r="7" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6v4l2.5 1.5" />
+              </svg>
+              Last Updated: {taskDeliveryLastUpdated}
+            </span>
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            <div className="rounded-2xl border border-blue-200 bg-white px-4 py-3 dark:border-blue-500/30 dark:bg-black/30">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-400">Global Tasks</p>
+                <svg className="h-4 w-4 text-blue-600 dark:text-blue-400" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h12M4 10h12M4 14h12" />
+                </svg>
+              </div>
+              <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-white">{taskDeliverySummary.total}</p>
+            </div>
+            <div className="rounded-2xl border border-emerald-200 bg-white px-4 py-3 dark:border-emerald-500/30 dark:bg-black/30">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-400">On Track</p>
+                <svg className="h-4 w-4 text-emerald-600 dark:text-emerald-400" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m5 10 3 3 7-7" />
+                </svg>
+              </div>
+              <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-white">{taskDeliverySummary.onTrack}</p>
+            </div>
+            <div className="rounded-2xl border border-amber-200 bg-white px-4 py-3 dark:border-amber-500/30 dark:bg-black/30">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-400">At Risk</p>
+                <svg className="h-4 w-4 text-amber-600 dark:text-amber-400" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 5v5m0 3h.01" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.7 14.5 8.8 5.8a1.4 1.4 0 0 1 2.4 0l5.1 8.7a1.4 1.4 0 0 1-1.2 2.1H4.9a1.4 1.4 0 0 1-1.2-2.1Z" />
+                </svg>
+              </div>
+              <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-white">{taskDeliverySummary.atRisk}</p>
+            </div>
+            <div className="rounded-2xl border border-rose-200 bg-white px-4 py-3 dark:border-rose-500/30 dark:bg-black/30">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-400">Critical</p>
+                <svg className="h-4 w-4 text-rose-600 dark:text-rose-400" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 4v7m0 4h.01" />
+                  <circle cx="10" cy="10" r="7" />
+                </svg>
+              </div>
+              <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-white">{taskDeliverySummary.critical}</p>
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-2">
+              <div className="relative w-full sm:w-80">
+                <svg
+                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={1.8}
+                >
+                  <circle cx="9" cy="9" r="6" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m13.5 13.5 3 3" />
+                </svg>
+                <input
+                  type="text"
+                  value={taskDeliverySearch}
+                  onChange={event => setTaskDeliverySearch(event.target.value)}
+                  placeholder="Search tasks or projects"
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-900 outline-none transition focus:border-slate-300 dark:border-white/15 dark:bg-black/40 dark:text-white dark:focus:border-white/25"
+                />
+              </div>
+              <select
+                value={taskDeliveryHealthFilter}
+                onChange={event => setTaskDeliveryHealthFilter(event.target.value as 'all' | TaskHealthRow['health'])}
+                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none transition focus:border-slate-300 dark:border-white/15 dark:bg-black/40 dark:text-gray-200 dark:focus:border-white/25"
+              >
+                <option value="all">Health Status: All</option>
+                <option value="on-track">Health Status: On Track</option>
+                <option value="at-risk">Health Status: At Risk</option>
+                <option value="critical">Health Status: Critical</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={expandAllTaskDeliveryProjects}
+                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold uppercase tracking-wide text-slate-600 transition hover:bg-slate-100 dark:border-white/15 dark:bg-black/40 dark:text-gray-300 dark:hover:bg-white/5"
+              >
+                Expand All
+              </button>
+              <button
+                type="button"
+                onClick={collapseAllTaskDeliveryProjects}
+                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold uppercase tracking-wide text-slate-600 transition hover:bg-slate-100 dark:border-white/15 dark:bg-black/40 dark:text-gray-300 dark:hover:bg-white/5"
+              >
+                Collapse All
+              </button>
             </div>
           </div>
         </div>
-        {taskHealthRows.length === 0 ? (
+
+        {taskDeliveryGroups.length === 0 ? (
           <div className="px-6 py-12 text-xs text-slate-500 dark:text-gray-400">
-            {isPortfolioDateFilterActive
-              ? 'No due tasks found for this date range.'
-              : 'No due-dated tasks available to evaluate health.'}
+            No tasks matched the current search or health filter.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-[1040px] w-full text-[11px]">
-              <thead className="bg-slate-50/70 dark:bg-white/[0.02]">
-                <tr className="text-left font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-400">
-                  <th className="px-4 py-3">Project</th>
-                  <th className="px-4 py-3">Phase</th>
-                  <th className="px-4 py-3">Task</th>
-                  <th className="px-4 py-3">Due Date</th>
-                  <th className="px-4 py-3">Days Left</th>
-                  <th className="px-4 py-3">Priority</th>
-                  <th className="px-4 py-3">Current Status</th>
-                  <th className="px-4 py-3">Health</th>
-                  <th className="px-4 py-3 text-right">Risk Score</th>
-                  <th className="px-4 py-3">Recommended Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200/70 dark:divide-white/10">
-                {taskHealthRows.map((row, index) => {
-                  const healthMeta = getHealthMeta(row.health)
-                  const statusMeta = row.completedLate
-                    ? {
-                        label: 'Completed Late',
-                        className: 'border border-amber-200 bg-amber-100/80 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/20 dark:text-amber-300',
-                      }
-                    : getTaskStatusMeta(row.status)
-                  const priorityClass = row.priority === 'critical'
-                    ? 'border border-rose-200 bg-rose-100/80 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/20 dark:text-rose-300'
-                    : row.priority === 'high'
-                      ? 'border border-orange-200 bg-orange-100/80 text-orange-700 dark:border-orange-500/30 dark:bg-orange-500/20 dark:text-orange-300'
-                      : row.priority === 'medium'
-                        ? 'border border-amber-200 bg-amber-100/80 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/20 dark:text-amber-300'
-                        : 'border border-emerald-200 bg-emerald-100/80 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/20 dark:text-emerald-300'
-                  const daysLabel = row.isCompleted
-                    ? row.completedLate
-                      ? `${Math.abs(row.daysToDue)}d late`
-                      : row.daysToDue > 0
-                        ? `${row.daysToDue}d early`
-                        : 'On due date'
-                    : row.daysToDue < 0
-                      ? `${Math.abs(row.daysToDue)}d overdue`
-                      : `${row.daysToDue}d left`
-                  const daysTextClass = row.isCompleted
-                    ? row.completedLate
-                      ? 'text-rose-600 dark:text-rose-300'
-                      : 'text-emerald-600 dark:text-emerald-300'
-                    : row.daysToDue < 0
-                      ? 'text-rose-600 dark:text-rose-300'
-                      : 'text-slate-600 dark:text-gray-300'
+          <div className="space-y-4 p-4 sm:p-6">
+            {taskDeliveryGroups.map(group => {
+              const isExpanded = taskDeliveryExpandedProjects[group.project] ?? false
+              const urgencyClass = group.urgency === 'URGENT ACTION'
+                ? 'border-rose-200 bg-rose-100/80 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/20 dark:text-rose-300'
+                : group.urgency === 'WATCH LIST'
+                  ? 'border-amber-200 bg-amber-100/80 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/20 dark:text-amber-300'
+                  : 'border-emerald-200 bg-emerald-100/80 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/20 dark:text-emerald-300'
+              const progressBarClass = group.urgency === 'URGENT ACTION'
+                ? 'bg-rose-500'
+                : group.urgency === 'WATCH LIST'
+                  ? 'bg-amber-500'
+                  : 'bg-emerald-500'
 
-                  return (
-                    <tr key={`${row.projectName}-${row.phaseName}-${row.taskName}-${index}`} className="text-slate-700 dark:text-gray-200">
-                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{row.projectName}</td>
-                      <td className="px-4 py-3">{row.phaseName}</td>
-                      <td className="px-4 py-3">{row.taskName}</td>
-                      <td className="px-4 py-3">{row.dueDate}</td>
-                      <td className="px-4 py-3">
-                        <span className={daysTextClass}>
-                          {daysLabel}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex rounded-full px-2.5 py-1 font-semibold ${priorityClass}`}>
-                          {row.priority.toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex rounded-full px-2.5 py-1 font-semibold ${statusMeta.className}`}>
-                          {statusMeta.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex rounded-full px-2.5 py-1 font-semibold ${healthMeta.className}`}>
-                          {healthMeta.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold">{row.riskScore}</td>
-                      <td className="px-4 py-3">{row.recommendedAction}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+              return (
+                <div key={group.project} className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-black/30">
+                  <button
+                    type="button"
+                    onClick={() => toggleTaskDeliveryProject(group.project)}
+                    className="w-full px-4 py-4 text-left transition hover:bg-slate-50/80 dark:hover:bg-white/[0.03]"
+                  >
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h4 className="text-base font-semibold text-slate-900 dark:text-white">{group.project}</h4>
+                          <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:border-white/15 dark:bg-white/10 dark:text-gray-300">
+                            {group.total} Tasks
+                          </span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px]">
+                          <span className="inline-flex items-center gap-1 text-slate-600 dark:text-gray-300">
+                            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                            On Track {group.onTrack}
+                          </span>
+                          <span className="inline-flex items-center gap-1 text-slate-600 dark:text-gray-300">
+                            <span className="h-2 w-2 rounded-full bg-amber-500" />
+                            At Risk {group.atRisk}
+                          </span>
+                          <span className="inline-flex items-center gap-1 text-slate-600 dark:text-gray-300">
+                            <span className="h-2 w-2 rounded-full bg-rose-500" />
+                            Critical {group.critical}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-2 xl:w-[360px]">
+                        <div className="flex items-center justify-between text-[11px] font-medium text-slate-600 dark:text-gray-300">
+                          <span>Average Completion</span>
+                          <span>{group.averageCompletion}%</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-slate-200 dark:bg-white/10">
+                          <div
+                            className={`h-2 rounded-full ${progressBarClass}`}
+                            style={{ width: `${Math.max(0, Math.min(100, group.averageCompletion))}%` }}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${urgencyClass}`}>
+                            {group.urgency}
+                          </span>
+                          <span className="text-slate-500 dark:text-gray-400">
+                            <svg
+                              className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                              viewBox="0 0 20 20"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth={2}
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M7 4l6 6-6 6" />
+                            </svg>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+
+                  {isExpanded && (
+                    <div className="border-t border-slate-200/80 dark:border-white/10">
+                      <div className="overflow-x-auto">
+                        <table className="min-w-[980px] w-full text-[11px]">
+                          <thead className="bg-slate-50/80 dark:bg-white/[0.02]">
+                            <tr className="text-left font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-400">
+                              <th className="px-4 py-3">Task Details</th>
+                              <th className="px-4 py-3">Timeline</th>
+                              <th className="px-4 py-3">Health Status</th>
+                              <th className="px-4 py-3 text-right">Risk Score</th>
+                              <th className="px-4 py-3">Recommendation</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200/70 dark:divide-white/10">
+                            {group.tasks.map(item => {
+                              const healthMeta = getHealthMeta(item.health)
+                              const priorityClass = item.priority === 'critical'
+                                ? 'border-rose-200 bg-rose-100/80 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/20 dark:text-rose-300'
+                                : item.priority === 'high'
+                                  ? 'border-orange-200 bg-orange-100/80 text-orange-700 dark:border-orange-500/30 dark:bg-orange-500/20 dark:text-orange-300'
+                                  : item.priority === 'medium'
+                                    ? 'border-amber-200 bg-amber-100/80 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/20 dark:text-amber-300'
+                                    : 'border-emerald-200 bg-emerald-100/80 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/20 dark:text-emerald-300'
+                              const isLate = item.daysLeft < 0
+                              const timelineText = isLate
+                                ? item.status === 'Completed Late'
+                                  ? `${Math.abs(item.daysLeft)}d late`
+                                  : `${Math.abs(item.daysLeft)}d overdue`
+                                : item.daysLeft === 0
+                                  ? 'Due today'
+                                  : `${item.daysLeft}d left`
+                              const riskClass = item.riskScore >= 70
+                                ? 'border-rose-200 bg-rose-100/80 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/20 dark:text-rose-300'
+                                : item.riskScore >= 40
+                                  ? 'border-amber-200 bg-amber-100/80 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/20 dark:text-amber-300'
+                                  : 'border-emerald-200 bg-emerald-100/80 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/20 dark:text-emerald-300'
+
+                              return (
+                                <tr key={item.id} className="text-slate-700 dark:text-gray-200">
+                                  <td className="px-4 py-3 align-top">
+                                    <p className="text-sm font-semibold text-slate-900 dark:text-white">{item.task}</p>
+                                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+                                      <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-slate-600 dark:border-white/15 dark:bg-white/10 dark:text-gray-300">
+                                        Phase: {item.phase}
+                                      </span>
+                                      <span className={`rounded-full border px-2 py-0.5 font-semibold ${priorityClass}`}>
+                                        {item.priority.toUpperCase()}
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3 align-top">
+                                    <p className="text-sm font-medium text-slate-900 dark:text-white">{item.dueDate}</p>
+                                    <p className={`mt-1 text-[11px] font-semibold ${isLate ? 'text-rose-600 dark:text-rose-300' : 'text-slate-600 dark:text-gray-300'}`}>
+                                      {timelineText}
+                                    </p>
+                                  </td>
+                                  <td className="px-4 py-3 align-top">
+                                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${healthMeta.className}`}>
+                                      {healthMeta.label}
+                                    </span>
+                                    <p className="mt-1 text-[11px] text-slate-500 dark:text-gray-400">{item.status}</p>
+                                  </td>
+                                  <td className="px-4 py-3 text-right align-top">
+                                    <span className={`inline-flex min-w-[60px] justify-center rounded-full border px-2.5 py-1 font-semibold ${riskClass}`}>
+                                      {item.riskScore}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 align-top">
+                                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-700 dark:border-white/15 dark:bg-black/40 dark:text-gray-300">
+                                      {item.action}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
