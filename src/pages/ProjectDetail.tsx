@@ -86,6 +86,7 @@ interface Task {
   priority: 'low' | 'medium' | 'high' | 'critical'
   startDate?: string
   dueDate: string
+  completedAt?: string
   assignee?: ProjectMember
   assignees?: ProjectMember[]
   phaseId: string
@@ -160,6 +161,21 @@ const ProjectDetail: React.FC = () => {
   const [editingTask, setEditingTask] = useState<Task | null>(null)
 
   const formatDate = (d?: string) => (d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '')
+  const toDateInputValue = (d?: string) => {
+    if (!d) return ''
+    const parsed = new Date(d)
+    if (isNaN(parsed.getTime())) return ''
+    const year = parsed.getFullYear()
+    const month = String(parsed.getMonth() + 1).padStart(2, '0')
+    const day = String(parsed.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+  const toIsoFromDateInput = (d?: string) => {
+    if (!d) return undefined
+    const parsed = new Date(`${d}T12:00:00`)
+    if (isNaN(parsed.getTime())) return undefined
+    return parsed.toISOString()
+  }
   const isExecutive = String(user?.department || '').trim().toLowerCase() === 'executive department'
   
   // Helper: reload project from API
@@ -186,6 +202,7 @@ const ProjectDetail: React.FC = () => {
         priority: 'medium',
         startDate: t.startDate ? new Date(t.startDate).toISOString().split('T')[0] : '',
         dueDate: t.dueDate || '',
+        completedAt: t.completedAt || undefined,
         assignee: { id: '', name: '', email: '', role: '', department: '' },
         phaseId: p.id,
         createdAt: '',
@@ -550,8 +567,12 @@ const ProjectDetail: React.FC = () => {
   }
 
   // Task management functions
-  const updateTaskStatus = (phaseId: string, taskId: string, newStatus: string) => {
+  const updateTaskStatus = (phaseId: string, taskId: string, newStatus: string, completedDateInput?: string) => {
     if (!project) return
+    const currentTask = project.phases.find(p => p.id === phaseId)?.tasks.find(t => t.id === taskId)
+    const completedAt = newStatus === 'completed'
+      ? (toIsoFromDateInput(completedDateInput) || currentTask?.completedAt || new Date().toISOString())
+      : undefined
 
     setProject(prevProject => {
       if (!prevProject) return null
@@ -567,6 +588,7 @@ const ProjectDetail: React.FC = () => {
                   return {
                     ...task,
                     status: newStatus as 'not-started' | 'in-progress' | 'completed' | 'on-hold',
+                    completedAt,
                     updatedAt: new Date().toISOString()
                   }
                 }
@@ -593,10 +615,16 @@ const ProjectDetail: React.FC = () => {
         const apiStatus = toApiStatus(newStatus)
         if (!apiStatus) return
         const base = (import.meta as any).env.VITE_API_URL || 'http://localhost:4000'
+        const payload: any = { status: apiStatus }
+        if (newStatus === 'completed') {
+          payload.completedAt = completedAt || new Date().toISOString()
+        } else {
+          payload.completedAt = null
+        }
         const res = await fetch(`${base}/tasks/${taskId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: apiStatus })
+          body: JSON.stringify(payload)
         })
         if (!res.ok) {
           // On failure, reload to sync actual state
@@ -1237,29 +1265,62 @@ const ProjectDetail: React.FC = () => {
                   {/* Tasks List */}
                   <div className="space-y-3">
                     {filteredTasks(phase).map((task) => (
-                      <Link 
-                        key={task.id} 
-                        to={`/projects/${id}/tasks/${task.id}`}
-                        state={{
-                          task: {
-                            id: task.id,
-                            title: task.title,
-                            description: task.description,
-                            status: task.status,
-                            priority: task.priority,
-                            dueDate: task.dueDate,
-                            projectId: id,
-                            assignees: task.assignees && task.assignees.length > 0 
-                              ? task.assignees.map(a => a.name) 
-                              : (task.assignee ? [task.assignee.name] : []),
-                            isDone: task.status === 'completed',
-                            createdAt: task.createdAt,
-                            updatedAt: task.updatedAt,
-                            progress: task.status === 'completed' ? 100 : task.status === 'in-progress' ? 65 : 0,
-                            phaseId: phase.id
-                          },
-                          projectName: project?.title || 'Project',
-                          phaseName: phase.title
+                      <div
+                        key={task.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => navigate(`/projects/${id}/tasks/${task.id}`, {
+                          state: {
+                            task: {
+                              id: task.id,
+                              title: task.title,
+                              description: task.description,
+                              status: task.status,
+                              priority: task.priority,
+                              dueDate: task.dueDate,
+                              completedAt: task.completedAt,
+                              projectId: id,
+                              assignees: task.assignees && task.assignees.length > 0
+                                ? task.assignees.map(a => a.name)
+                                : (task.assignee ? [task.assignee.name] : []),
+                              isDone: task.status === 'completed',
+                              createdAt: task.createdAt,
+                              updatedAt: task.updatedAt,
+                              progress: task.status === 'completed' ? 100 : task.status === 'in-progress' ? 65 : 0,
+                              phaseId: phase.id
+                            },
+                            projectName: project?.title || 'Project',
+                            phaseName: phase.title
+                          }
+                        })}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            navigate(`/projects/${id}/tasks/${task.id}`, {
+                              state: {
+                                task: {
+                                  id: task.id,
+                                  title: task.title,
+                                  description: task.description,
+                                  status: task.status,
+                                  priority: task.priority,
+                                  dueDate: task.dueDate,
+                                  completedAt: task.completedAt,
+                                  projectId: id,
+                                  assignees: task.assignees && task.assignees.length > 0
+                                    ? task.assignees.map(a => a.name)
+                                    : (task.assignee ? [task.assignee.name] : []),
+                                  isDone: task.status === 'completed',
+                                  createdAt: task.createdAt,
+                                  updatedAt: task.updatedAt,
+                                  progress: task.status === 'completed' ? 100 : task.status === 'in-progress' ? 65 : 0,
+                                  phaseId: phase.id
+                                },
+                                projectName: project?.title || 'Project',
+                                phaseName: phase.title
+                              }
+                            })
+                          }
                         }}
                         className="block bg-gray-50 dark:bg-gray-700 rounded-xl p-4 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors duration-200 cursor-pointer"
                       >
@@ -1290,9 +1351,32 @@ const ProjectDetail: React.FC = () => {
                                 <span>Due {new Date(task.dueDate).toLocaleDateString()}</span>
                               </div>
                             </div>
+                            {task.status === 'completed' && (
+                              <div
+                                className="mt-2 flex items-center space-x-2 text-xs text-gray-500 dark:text-gray-400"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                }}
+                                onMouseDown={(e) => {
+                                  e.stopPropagation()
+                                }}
+                              >
+                                <CalendarDays className="h-3 w-3" />
+                                <span>Completed</span>
+                                <input
+                                  type="date"
+                                  value={toDateInputValue(task.completedAt)}
+                                  onChange={(e) => {
+                                    e.stopPropagation()
+                                    updateTaskStatus(phase.id, task.id, 'completed', e.target.value)
+                                  }}
+                                  className="text-xs border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:border-transparent"
+                                />
+                              </div>
+                            )}
                           </div>
                           
-                          <div className="flex items-center space-x-3" onClick={(e) => e.preventDefault()}>
+                          <div className="flex items-center space-x-3" onClick={(e) => e.stopPropagation()}>
                             {/* Status Dropdown */}
                             <select
                               value={task.status}
@@ -1339,7 +1423,7 @@ const ProjectDetail: React.FC = () => {
                             </button>
                           </div>
                         </div>
-                      </Link>
+                      </div>
                     ))}
                   </div>
                 </div>

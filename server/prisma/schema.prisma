@@ -335,6 +335,7 @@ model Task {
   priority    Priority            @default(MEDIUM)
   startDate   DateTime?
   dueDate     DateTime?
+  completedAt DateTime?
   phase       Phase               @relation(fields: [phaseId], references: [id])
   phaseId     String
   assignees   ProjectMembership[] @relation("TaskAssignees")

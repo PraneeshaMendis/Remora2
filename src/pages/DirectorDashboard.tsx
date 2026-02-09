@@ -27,8 +27,14 @@ type PortfolioTask = {
   id: string
   title: string
   status: Task['status']
+  priority: Task['priority']
+  progress: number
   startDate?: string
   dueDate?: string
+  completedAt?: string
+  createdAt?: string
+  updatedAt?: string
+  assigneeCount: number
   totalHours: number
   logCount: number
   contributions: PortfolioContributor[]
@@ -55,6 +61,25 @@ type PortfolioProject = {
   totalHours: number
   team: Array<{ id: string; name: string }>
   phases: PortfolioPhase[]
+}
+
+type TaskHealthRow = {
+  projectName: string
+  phaseName: string
+  taskName: string
+  dueDate: string
+  dueTs: number
+  daysToDue: number
+  isCompleted: boolean
+  completedLate: boolean
+  status: Task['status']
+  priority: Task['priority']
+  plannedProgress: number
+  actualProgress: number
+  variance: number
+  health: 'on-track' | 'at-risk' | 'critical'
+  riskScore: number
+  recommendedAction: string
 }
 
 const roundHours = (value: number) => {
@@ -168,6 +193,44 @@ const overlapsFilterRange = (
   return normalizedEnd >= rangeStart && normalizedStart <= rangeEnd
 }
 
+const clamp = (value: number, min: number, max: number) => {
+  return Math.min(max, Math.max(min, value))
+}
+
+const statusProgress = (status: Task['status']) => {
+  switch (status) {
+    case 'completed':
+    case 'done':
+      return 100
+    case 'in-progress':
+      return 50
+    case 'in-review':
+      return 70
+    default:
+      return 0
+  }
+}
+
+const getHealthMeta = (health: 'on-track' | 'at-risk' | 'critical') => {
+  switch (health) {
+    case 'critical':
+      return {
+        label: 'Critical',
+        className: 'border border-rose-200 bg-rose-100/80 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/20 dark:text-rose-300',
+      }
+    case 'at-risk':
+      return {
+        label: 'At Risk',
+        className: 'border border-amber-200 bg-amber-100/80 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/20 dark:text-amber-300',
+      }
+    default:
+      return {
+        label: 'On Track',
+        className: 'border border-emerald-200 bg-emerald-100/80 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/20 dark:text-emerald-300',
+      }
+  }
+}
+
 const mapProjectStatus = (status?: string): Project['status'] => {
   const normalized = String(status || '').toUpperCase()
   switch (normalized) {
@@ -265,6 +328,12 @@ const getInitials = (name: string) => {
 const toTimestamp = (value?: string) => {
   const ts = Date.parse(value || '')
   return Number.isNaN(ts) ? null : ts
+}
+
+const toUtcDateKey = (value?: string) => {
+  const ts = toTimestamp(value)
+  if (ts === null) return null
+  return new Date(ts).toISOString().slice(0, 10)
 }
 
 const calcPercentChange = (current: number, previous: number) => {
@@ -399,6 +468,7 @@ const DirectorDashboard: React.FC = () => {
                 const status = mapTaskStatus(task?.status)
                 const createdAt = String(task?.createdAt || new Date().toISOString())
                 const updatedAt = String(task?.updatedAt || createdAt)
+                const completedAt = task?.completedAt ? new Date(task.completedAt).toISOString() : undefined
                 return {
                   id: String(task?.id || ''),
                   title: String(task?.title || ''),
@@ -413,7 +483,7 @@ const DirectorDashboard: React.FC = () => {
                   isDone: status === 'completed',
                   createdAt,
                   updatedAt,
-                  completedAt: status === 'completed' ? updatedAt : undefined,
+                  completedAt: status === 'completed' ? (completedAt || updatedAt) : undefined,
                   progress: status === 'completed' ? 100 : status === 'in-progress' ? 50 : 0,
                 }
               })
@@ -478,6 +548,7 @@ const DirectorDashboard: React.FC = () => {
             const phaseTasks = Array.isArray(phase?.tasks) ? phase.tasks : []
             const tasksForPhase: PortfolioTask[] = phaseTasks.map((task: any) => {
               const taskId = String(task?.id || '')
+              const mappedTaskStatus = mapTaskStatus(task?.status)
               const logs = logsByTaskId.get(taskId) || []
               const contributionByUser = new Map<string, PortfolioContributor>()
 
@@ -516,13 +587,24 @@ const DirectorDashboard: React.FC = () => {
               const totalHours = roundHours(
                 logs.reduce((sum: number, log: any) => sum + (Number(log?.durationMins || 0) / 60), 0)
               )
+              const createdAt = String(task?.createdAt || '')
+              const updatedAt = String(task?.updatedAt || task?.createdAt || '')
+              const completedAt = task?.completedAt ? new Date(task.completedAt).toISOString() : undefined
 
               return {
                 id: taskId,
                 title: String(task?.title || ''),
-                status: mapTaskStatus(task?.status),
+                status: mappedTaskStatus,
+                priority: mapPriority(task?.priority),
+                progress: statusProgress(mappedTaskStatus),
                 startDate: task?.startDate ? new Date(task.startDate).toISOString() : '',
                 dueDate: task?.dueDate ? new Date(task.dueDate).toISOString() : '',
+                completedAt: mappedTaskStatus === 'completed' || mappedTaskStatus === 'done'
+                  ? (completedAt || updatedAt)
+                  : undefined,
+                createdAt,
+                updatedAt,
+                assigneeCount: assignees.length,
                 totalHours,
                 logCount: logs.length,
                 contributions,
@@ -925,13 +1007,21 @@ const DirectorDashboard: React.FC = () => {
 
   // Use all projects instead of just recent ones
   const displayProjects = projects
-  const isPortfolioDateFilterActive = Boolean(portfolioDateFrom || portfolioDateTo)
-  const filteredPortfolioProjects = useMemo(() => {
+  const portfolioFilterRange = useMemo(() => {
     const rawStartTs = toInputDateStartTs(portfolioDateFrom)
     const rawEndTs = toInputDateEndTs(portfolioDateTo)
-    const filterStartTs = rawStartTs !== null && rawEndTs !== null ? Math.min(rawStartTs, rawEndTs) : rawStartTs
-    const filterEndTs = rawStartTs !== null && rawEndTs !== null ? Math.max(rawStartTs, rawEndTs) : rawEndTs
-    const hasFilter = filterStartTs !== null || filterEndTs !== null
+    const startTs = rawStartTs !== null && rawEndTs !== null ? Math.min(rawStartTs, rawEndTs) : rawStartTs
+    const endTs = rawStartTs !== null && rawEndTs !== null ? Math.max(rawStartTs, rawEndTs) : rawEndTs
+    return {
+      startTs,
+      endTs,
+      hasFilter: startTs !== null || endTs !== null,
+    }
+  }, [portfolioDateFrom, portfolioDateTo])
+  const isPortfolioDateFilterActive = portfolioFilterRange.hasFilter
+
+  const filteredPortfolioProjects = useMemo(() => {
+    const { startTs: filterStartTs, endTs: filterEndTs, hasFilter } = portfolioFilterRange
     if (!hasFilter) return portfolioProjects
 
     return portfolioProjects
@@ -973,7 +1063,149 @@ const DirectorDashboard: React.FC = () => {
         }
       })
       .filter(Boolean) as PortfolioProject[]
-  }, [portfolioProjects, portfolioDateFrom, portfolioDateTo])
+  }, [portfolioProjects, portfolioFilterRange])
+
+  const taskHealthRows = useMemo(() => {
+    const now = Date.now()
+    const dayMs = 24 * 60 * 60 * 1000
+    const { startTs: filterStartTs, endTs: filterEndTs, hasFilter } = portfolioFilterRange
+    const rangeStart = filterStartTs ?? Number.NEGATIVE_INFINITY
+    const rangeEnd = filterEndTs ?? Number.POSITIVE_INFINITY
+    const rows: TaskHealthRow[] = []
+
+    portfolioProjects.forEach(project => {
+      project.phases.forEach(phase => {
+        phase.tasks.forEach(task => {
+          const dueTs = toTimestamp(task.dueDate)
+          if (dueTs === null) return
+
+          const isCompleted = task.status === 'completed' || task.status === 'done'
+          const completedTs = isCompleted
+            ? (toTimestamp(task.completedAt) ?? toTimestamp(task.updatedAt))
+            : null
+          const dueDateKey = toUtcDateKey(task.dueDate)
+          const completedDateKey = toUtcDateKey(task.completedAt || task.updatedAt)
+          const completedLate = Boolean(
+            isCompleted &&
+            dueDateKey &&
+            completedDateKey &&
+            completedDateKey > dueDateKey
+          )
+          const isOverdue = dueTs < now && !isCompleted
+          const inSelectedRange = dueTs >= rangeStart && dueTs <= rangeEnd
+
+          if (hasFilter && !inSelectedRange && !isOverdue) return
+
+          const taskStartTs = toTimestamp(task.startDate || task.createdAt)
+          const actualProgress = clamp(
+            Number.isFinite(task.progress) ? task.progress : statusProgress(task.status),
+            0,
+            100,
+          )
+
+          let plannedProgress = 0
+          if (isCompleted) {
+            plannedProgress = 100
+          } else if (taskStartTs !== null && taskStartTs < dueTs) {
+            if (now <= taskStartTs) {
+              plannedProgress = 0
+            } else if (now >= dueTs) {
+              plannedProgress = 100
+            } else {
+              plannedProgress = clamp(
+                Math.round(((now - taskStartTs) / (dueTs - taskStartTs)) * 100),
+                0,
+                100,
+              )
+            }
+          } else {
+            plannedProgress = now >= dueTs ? 100 : 0
+          }
+
+          const progressGap = plannedProgress - actualProgress
+          const updatedTs = toTimestamp(task.updatedAt)
+          let riskScore = 0
+
+          if (!isCompleted) {
+            if (isOverdue) riskScore += 40
+            if (task.status === 'blocked') riskScore += 30
+            if (task.priority === 'critical') riskScore += 20
+            else if (task.priority === 'high') riskScore += 10
+            if (task.assigneeCount === 0) riskScore += 15
+            if (progressGap > 25) riskScore += 10
+            if (dueTs >= now && dueTs - now <= 2 * dayMs) riskScore += 10
+            if (updatedTs === null || now - updatedTs > 7 * dayMs) riskScore += 5
+          } else if (completedLate) {
+            riskScore = 35
+          }
+
+          const health: TaskHealthRow['health'] = isCompleted
+            ? (completedLate ? 'at-risk' : 'on-track')
+            : riskScore >= 60
+              ? 'critical'
+              : riskScore >= 30
+                ? 'at-risk'
+                : 'on-track'
+
+          const recommendedAction = isCompleted
+            ? (completedLate ? 'Completed late - review delay cause' : 'Completed')
+            : task.status === 'blocked'
+              ? 'Unblock dependency'
+              : isOverdue
+                ? 'Escalate and recover plan'
+                : task.assigneeCount === 0
+                  ? 'Assign immediately'
+                  : health === 'critical'
+                    ? 'Prioritize immediately'
+                    : health === 'at-risk'
+                      ? 'Review in standup'
+                      : 'Continue as planned'
+
+          rows.push({
+            projectName: project.name,
+            phaseName: phase.name,
+            taskName: task.title || 'Untitled task',
+            dueDate: formatDate(task.dueDate),
+            dueTs,
+            daysToDue: Math.ceil((dueTs - (completedTs ?? now)) / dayMs),
+            isCompleted,
+            completedLate,
+            status: task.status,
+            priority: task.priority,
+            plannedProgress,
+            actualProgress,
+            variance: actualProgress - plannedProgress,
+            health,
+            riskScore,
+            recommendedAction,
+          })
+        })
+      })
+    })
+
+    const healthOrder: Record<TaskHealthRow['health'], number> = {
+      critical: 0,
+      'at-risk': 1,
+      'on-track': 2,
+    }
+
+    return rows.sort((a, b) => {
+      const healthDiff = healthOrder[a.health] - healthOrder[b.health]
+      if (healthDiff !== 0) return healthDiff
+      if (a.dueTs !== b.dueTs) return a.dueTs - b.dueTs
+      return b.riskScore - a.riskScore
+    })
+  }, [portfolioProjects, portfolioFilterRange])
+
+  const taskHealthSummary = useMemo(() => {
+    const summary = { total: taskHealthRows.length, onTrack: 0, atRisk: 0, critical: 0 }
+    taskHealthRows.forEach(row => {
+      if (row.health === 'critical') summary.critical += 1
+      else if (row.health === 'at-risk') summary.atRisk += 1
+      else summary.onTrack += 1
+    })
+    return summary
+  }, [taskHealthRows])
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -1360,6 +1592,120 @@ const DirectorDashboard: React.FC = () => {
                 })}
               </div>
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Task Delivery Health */}
+      <div className={`${cardBase} overflow-hidden`}>
+        <div className="border-b border-slate-200/80 dark:border-white/10 px-6 py-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">Task Delivery Health</h3>
+            <div className="flex flex-wrap items-center gap-2 text-[11px]">
+              <span className="rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 font-semibold text-slate-600 dark:border-white/15 dark:bg-white/5 dark:text-gray-300">
+                Total: {taskHealthSummary.total}
+              </span>
+              <span className="rounded-full border border-emerald-200 bg-emerald-100/80 px-2.5 py-1 font-semibold text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/20 dark:text-emerald-300">
+                On Track: {taskHealthSummary.onTrack}
+              </span>
+              <span className="rounded-full border border-amber-200 bg-amber-100/80 px-2.5 py-1 font-semibold text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/20 dark:text-amber-300">
+                At Risk: {taskHealthSummary.atRisk}
+              </span>
+              <span className="rounded-full border border-rose-200 bg-rose-100/80 px-2.5 py-1 font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/20 dark:text-rose-300">
+                Critical: {taskHealthSummary.critical}
+              </span>
+            </div>
+          </div>
+        </div>
+        {taskHealthRows.length === 0 ? (
+          <div className="px-6 py-12 text-xs text-slate-500 dark:text-gray-400">
+            {isPortfolioDateFilterActive
+              ? 'No due tasks found for this date range.'
+              : 'No due-dated tasks available to evaluate health.'}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-[1040px] w-full text-[11px]">
+              <thead className="bg-slate-50/70 dark:bg-white/[0.02]">
+                <tr className="text-left font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-400">
+                  <th className="px-4 py-3">Project</th>
+                  <th className="px-4 py-3">Phase</th>
+                  <th className="px-4 py-3">Task</th>
+                  <th className="px-4 py-3">Due Date</th>
+                  <th className="px-4 py-3">Days Left</th>
+                  <th className="px-4 py-3">Priority</th>
+                  <th className="px-4 py-3">Current Status</th>
+                  <th className="px-4 py-3">Health</th>
+                  <th className="px-4 py-3 text-right">Risk Score</th>
+                  <th className="px-4 py-3">Recommended Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200/70 dark:divide-white/10">
+                {taskHealthRows.map((row, index) => {
+                  const healthMeta = getHealthMeta(row.health)
+                  const statusMeta = row.completedLate
+                    ? {
+                        label: 'Completed Late',
+                        className: 'border border-amber-200 bg-amber-100/80 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/20 dark:text-amber-300',
+                      }
+                    : getTaskStatusMeta(row.status)
+                  const priorityClass = row.priority === 'critical'
+                    ? 'border border-rose-200 bg-rose-100/80 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/20 dark:text-rose-300'
+                    : row.priority === 'high'
+                      ? 'border border-orange-200 bg-orange-100/80 text-orange-700 dark:border-orange-500/30 dark:bg-orange-500/20 dark:text-orange-300'
+                      : row.priority === 'medium'
+                        ? 'border border-amber-200 bg-amber-100/80 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/20 dark:text-amber-300'
+                        : 'border border-emerald-200 bg-emerald-100/80 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/20 dark:text-emerald-300'
+                  const daysLabel = row.isCompleted
+                    ? row.completedLate
+                      ? `${Math.abs(row.daysToDue)}d late`
+                      : row.daysToDue > 0
+                        ? `${row.daysToDue}d early`
+                        : 'On due date'
+                    : row.daysToDue < 0
+                      ? `${Math.abs(row.daysToDue)}d overdue`
+                      : `${row.daysToDue}d left`
+                  const daysTextClass = row.isCompleted
+                    ? row.completedLate
+                      ? 'text-rose-600 dark:text-rose-300'
+                      : 'text-emerald-600 dark:text-emerald-300'
+                    : row.daysToDue < 0
+                      ? 'text-rose-600 dark:text-rose-300'
+                      : 'text-slate-600 dark:text-gray-300'
+
+                  return (
+                    <tr key={`${row.projectName}-${row.phaseName}-${row.taskName}-${index}`} className="text-slate-700 dark:text-gray-200">
+                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{row.projectName}</td>
+                      <td className="px-4 py-3">{row.phaseName}</td>
+                      <td className="px-4 py-3">{row.taskName}</td>
+                      <td className="px-4 py-3">{row.dueDate}</td>
+                      <td className="px-4 py-3">
+                        <span className={daysTextClass}>
+                          {daysLabel}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex rounded-full px-2.5 py-1 font-semibold ${priorityClass}`}>
+                          {row.priority.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex rounded-full px-2.5 py-1 font-semibold ${statusMeta.className}`}>
+                          {statusMeta.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex rounded-full px-2.5 py-1 font-semibold ${healthMeta.className}`}>
+                          {healthMeta.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold">{row.riskScore}</td>
+                      <td className="px-4 py-3">{row.recommendedAction}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

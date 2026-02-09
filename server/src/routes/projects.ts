@@ -328,13 +328,14 @@ router.post('/:id/phases/:phaseId/tasks', async (req: Request, res: Response) =>
     startDate: z.string().optional(), // Accepts ISO strings or YYYY-MM-DD
     dueDate: z.string().optional(), // Accepts ISO strings or YYYY-MM-DD
     status: z.enum(['NOT_STARTED', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED']).optional().default('NOT_STARTED'),
+    completedAt: z.string().nullable().optional(),
     assigneeUserIds: z.array(z.string()).optional().default([]),
     priority: z.enum(['LOW','MEDIUM','HIGH','CRITICAL']).optional(),
   })
 
   const parsed = schema.safeParse(req.body)
   if (!parsed.success) return res.status(400).json(parsed.error.flatten())
-  const { title, description, startDate, dueDate, status, assigneeUserIds, priority } = parsed.data as any
+  const { title, description, startDate, dueDate, status, completedAt, assigneeUserIds, priority } = parsed.data as any
 
   try {
     // Ensure phase belongs to project
@@ -357,6 +358,19 @@ router.post('/:id/phases/:phaseId/tasks', async (req: Request, res: Response) =>
         return res.status(400).json({ error: 'Invalid dueDate format' })
       }
       due = asDate
+    }
+
+    let completedAtDate: Date | null = null
+    if (status === 'COMPLETED') {
+      if (completedAt) {
+        const asCompletedDate = new Date(completedAt)
+        if (isNaN(asCompletedDate.getTime())) {
+          return res.status(400).json({ error: 'Invalid completedAt format' })
+        }
+        completedAtDate = asCompletedDate
+      } else {
+        completedAtDate = new Date()
+      }
     }
 
     // Map provided userIds to membership ids for this project
@@ -392,6 +406,7 @@ router.post('/:id/phases/:phaseId/tasks', async (req: Request, res: Response) =>
         status: status as any,
         startDate: start,
         dueDate: due,
+        completedAt: completedAtDate,
         priority: (priority || 'MEDIUM') as any,
         phaseId,
         assignees: (existingMemberships.length || createdMemberships.length)

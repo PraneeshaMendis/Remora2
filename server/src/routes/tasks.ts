@@ -11,14 +11,41 @@ router.post('/phases/:phaseId/tasks', async (req: Request, res: Response) => {
   const schema = z.object({
     title: z.string(),
     description: z.string().default(''),
+    status: z.nativeEnum(TaskStatus).optional().default(TaskStatus.NOT_STARTED),
     startDate: z.string().optional(),
     dueDate: z.string().optional(),
+    completedAt: z.string().nullable().optional(),
     priority: z.enum(['LOW','MEDIUM','HIGH','CRITICAL']).optional(),
   })
   const parsed = schema.safeParse(req.body)
   if (!parsed.success) return res.status(400).json(parsed.error.flatten())
-  const { title, description, startDate, dueDate, priority } = parsed.data as any
-  const task = await prisma.task.create({ data: ({ title, description, priority: (priority || 'MEDIUM') as any, startDate: startDate ? new Date(startDate) : null, dueDate: dueDate ? new Date(dueDate) : null, phaseId } as any) })
+  const { title, description, status, startDate, dueDate, completedAt, priority } = parsed.data as any
+
+  let completedAtDate: Date | null = null
+  if (status === TaskStatus.COMPLETED) {
+    if (completedAt) {
+      const parsedCompletedAt = new Date(completedAt)
+      if (isNaN(parsedCompletedAt.getTime())) {
+        return res.status(400).json({ error: 'Invalid completedAt format' })
+      }
+      completedAtDate = parsedCompletedAt
+    } else {
+      completedAtDate = new Date()
+    }
+  }
+
+  const task = await prisma.task.create({
+    data: ({
+      title,
+      description,
+      status,
+      priority: (priority || 'MEDIUM') as any,
+      startDate: startDate ? new Date(startDate) : null,
+      dueDate: dueDate ? new Date(dueDate) : null,
+      completedAt: completedAtDate,
+      phaseId,
+    } as any),
+  })
   res.status(201).json(task)
 })
 
@@ -55,12 +82,14 @@ router.patch('/:id', async (req: Request, res: Response) => {
     status: z.nativeEnum(TaskStatus).optional(),
     startDate: z.string().nullable().optional(),
     dueDate: z.string().nullable().optional(),
+    completedAt: z.string().nullable().optional(),
     priority: z.enum(['LOW','MEDIUM','HIGH','CRITICAL']).optional(),
     assigneeUserIds: z.array(z.string()).optional(),
   })
   const parsed = schema.safeParse(req.body)
   if (!parsed.success) return res.status(400).json(parsed.error.flatten())
   const { assigneeUserIds, ...rest } = parsed.data as any
+  const hasCompletedAtInput = Object.prototype.hasOwnProperty.call(parsed.data, 'completedAt')
   let taskMeta: { title: string; phaseName: string; projectId: string } | null = null
   let existingAssignees: string[] = []
   if (assigneeUserIds !== undefined) {
@@ -81,6 +110,26 @@ router.patch('/:id', async (req: Request, res: Response) => {
   }
   if (data.dueDate !== undefined) {
     data.dueDate = data.dueDate ? new Date(data.dueDate) : null
+  }
+  if (hasCompletedAtInput) {
+    if (data.completedAt) {
+      const parsedCompletedAt = new Date(data.completedAt)
+      if (isNaN(parsedCompletedAt.getTime())) {
+        return res.status(400).json({ error: 'Invalid completedAt format' })
+      }
+      data.completedAt = parsedCompletedAt
+    } else {
+      data.completedAt = null
+    }
+  }
+  if (data.status !== undefined) {
+    if (data.status === TaskStatus.COMPLETED) {
+      if (!data.completedAt) {
+        data.completedAt = new Date()
+      }
+    } else {
+      data.completedAt = null
+    }
   }
   if (taskMeta && data.title) {
     taskMeta.title = data.title
