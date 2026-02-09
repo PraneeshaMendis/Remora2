@@ -421,12 +421,22 @@ async function resolveTargetUserId(req: Request, requesterId: string): Promise<{
   return { targetId: requested }
 }
 
+function formatLocalDate(value: Date | string): string {
+  const dt = value instanceof Date ? value : new Date(value)
+  return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`
+}
+
+function formatLocalTime(value: Date | string): string {
+  const dt = value instanceof Date ? value : new Date(value)
+  return `${pad2(dt.getHours())}:${pad2(dt.getMinutes())}`
+}
+
 function mapEventForClient(ev: any) {
   const startAt = new Date(ev.startAt)
   const endAt = new Date(ev.endAt)
-  const date = startAt.toISOString().slice(0, 10)
-  const startTime = startAt.toISOString().slice(11, 16)
-  const endTime = endAt.toISOString().slice(11, 16)
+  const date = formatLocalDate(startAt)
+  const startTime = formatLocalTime(startAt)
+  const endTime = formatLocalTime(endAt)
   const isAssigned = ev.createdById !== ev.userId
   const platform = ev.platform
     ? String(ev.platform).toLowerCase().replace('_', '-') 
@@ -695,7 +705,7 @@ router.post('/events', async (req: Request, res: Response) => {
           userId: targetId,
           type: 'CALENDAR_EVENT',
           title: 'New calendar event',
-          message: `${creator} assigned "${created.title}" on ${created.startAt.toISOString().slice(0, 10)} ${created.startAt.toISOString().slice(11, 16)}.`,
+          message: `${creator} assigned "${created.title}" on ${formatLocalDate(created.startAt)} ${formatLocalTime(created.startAt)}.`,
           targetUrl: '/calendar',
         }])
       } catch {}
@@ -724,13 +734,13 @@ router.patch('/events/:id', async (req: Request, res: Response) => {
   let startAt = existing.startAt
   let endAt = existing.endAt
   if (data.date || data.startTime) {
-    const date = data.date || existing.startAt.toISOString().slice(0, 10)
-    const time = data.startTime || existing.startAt.toISOString().slice(11, 16)
+    const date = data.date || formatLocalDate(existing.startAt)
+    const time = data.startTime || formatLocalTime(existing.startAt)
     startAt = toDateTime(date, time)
   }
   if (data.date || data.endTime) {
-    const date = data.date || existing.endAt.toISOString().slice(0, 10)
-    const time = data.endTime || existing.endAt.toISOString().slice(11, 16)
+    const date = data.date || formatLocalDate(existing.endAt)
+    const time = data.endTime || formatLocalTime(existing.endAt)
     endAt = toDateTime(date, time)
   }
   if (isNaN(startAt.getTime()) || isNaN(endAt.getTime())) {

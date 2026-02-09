@@ -30,6 +30,10 @@ function toAbsoluteClientUrl(targetUrl?: string | null) {
   return `${base}${path}`
 }
 
+function getBrandAssetBaseUrl() {
+  return String(process.env.FRONTEND_BASE_URL || 'http://localhost:5173').replace(/\/+$/, '')
+}
+
 function shouldSendEmail(n: NotificationInput) {
   const type = String(n.type || '').trim().toUpperCase()
   if (!type) return false
@@ -46,26 +50,185 @@ function renderNotificationEmail(input: { title: string; message: string; target
   const safeTitle = escapeHtml(title)
   const safeMessage = escapeHtml(message)
   const safeUser = userName ? escapeHtml(userName) : ''
-  const appName = escapeHtml(String(process.env.MAIL_FROM_NAME || 'Gen4 Labs'))
-  const html = `
-    <div style="font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:640px;margin:auto;padding:24px;background:#f8fafc">
-      <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
-        <div style="padding:20px 24px;background:#0f172a;color:#ffffff">
-          <div style="font-size:16px;font-weight:700">${appName}</div>
-          <div style="font-size:12px;opacity:.9;margin-top:6px">Notification</div>
-        </div>
-        <div style="padding:24px;color:#0f172a">
-          <h2 style="margin:0 0 10px 0;font-size:20px;line-height:28px">${safeTitle}</h2>
-          ${safeUser ? `<p style="margin:0 0 8px 0;color:#334155;font-size:14px">Hi ${safeUser},</p>` : ''}
-          <p style="margin:0 0 16px 0;color:#334155;font-size:14px;line-height:22px">${safeMessage}</p>
-          ${actionUrl ? `<a href="${actionUrl}" target="_blank" rel="noopener" style="display:inline-block;background:#2563eb;color:#ffffff;padding:10px 14px;border-radius:8px;text-decoration:none;font-weight:600">Open Notification</a>` : ''}
-          ${actionUrl ? `<p style="margin:14px 0 0 0;color:#64748b;font-size:12px;word-break:break-all">If the button does not work, use: <a href="${actionUrl}" style="color:#2563eb">${actionUrl}</a></p>` : ''}
-        </div>
-      </div>
-    </div>
-  `
-  const textParts = [title, message]
-  if (actionUrl) textParts.push(`Open: ${actionUrl}`)
+  const safeActionHref = actionUrl ? encodeURI(actionUrl) : ''
+  const safeActionUrl = actionUrl ? escapeHtml(actionUrl) : ''
+  const assetBase = getBrandAssetBaseUrl()
+  const logoUrl = `${assetBase}/cyber-labs-email-logo.svg`
+  const greetingText = safeUser ? `Hi ${safeUser},` : 'Hi,'
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+@media only screen and (max-width: 600px) {
+  .main-card {
+    width: 92% !important;
+  }
+
+  .card-padding {
+    padding: 28px !important;
+  }
+
+  .heading {
+    font-size: 22px !important;
+  }
+
+  .text {
+    font-size: 15px !important;
+  }
+
+  .logo {
+    width: 160px !important;
+  }
+
+  .button {
+    width: 100% !important;
+    text-align: center !important;
+  }
+}
+</style>
+</head>
+
+<body style="
+margin:0;
+padding:0;
+background:#FFFFFF;
+font-family:-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Arial, sans-serif;
+">
+
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr>
+<td align="center" style="padding:40px 15px;">
+
+<table class="main-card" width="600" cellpadding="0" cellspacing="0"
+style="
+max-width:600px;
+background:#ffffff;
+border-radius:18px;
+overflow:hidden;
+box-shadow:0 25px 70px rgba(0,0,0,0.45);
+">
+
+<tr>
+<td style="
+background: linear-gradient(135deg,#0B1A2B,#1E3A8A);
+padding:36px;
+text-align:center;
+">
+
+<img class="logo"
+src="${logoUrl}"
+width="200"
+alt="Cyber Labs"
+style="display:block;margin:auto;">
+
+<div style="
+color:#C7D2FE;
+font-size:13px;
+letter-spacing:1.4px;
+margin-top:12px;
+">
+CYBER LABS SECURE PLATFORM
+</div>
+
+</td>
+</tr>
+
+<tr>
+<td class="card-padding" style="padding:40px;">
+
+<div class="heading" style="
+font-size:26px;
+font-weight:700;
+color:#0F172A;
+margin-bottom:18px;
+">
+${safeTitle}
+</div>
+
+<div class="text" style="
+font-size:16px;
+color:#334155;
+line-height:1.6;
+margin-bottom:12px;
+">
+${greetingText}
+</div>
+
+<div class="text" style="
+font-size:16px;
+color:#334155;
+line-height:1.6;
+margin-bottom:30px;
+">
+${safeMessage}
+</div>
+
+${safeActionHref ? `<table cellpadding="0" cellspacing="0">
+<tr>
+<td class="button" style="
+background: linear-gradient(135deg,#4F7BFF,#8B5CF6);
+padding:14px 28px;
+border-radius:12px;
+box-shadow:0 10px 30px rgba(79,123,255,0.35);
+">
+
+<a href="${safeActionHref}"
+target="_blank"
+rel="noopener"
+style="
+color:white;
+font-weight:600;
+font-size:16px;
+text-decoration:none;
+display:inline-block;
+">
+Open Notification &rarr;
+</a>
+
+</td>
+</tr>
+</table>` : ''}
+
+</td>
+</tr>
+
+${safeActionHref ? `<tr>
+<td style="
+background:#F1F5F9;
+padding:22px;
+text-align:center;
+font-size:13px;
+color:#64748B;
+">
+
+If the button doesn't work, open this link:<br>
+
+<span style="color:#4F7BFF;word-break:break-all;">
+${safeActionUrl}
+</span>
+
+</td>
+</tr>` : ''}
+
+</table>
+</td>
+</tr>
+</table>
+
+</body>
+</html>`
+  const textParts = [
+    title,
+    safeUser ? `Hi ${userName},` : '',
+    message,
+  ].filter(Boolean)
+  if (actionUrl) {
+    textParts.push(`Open Notification: ${actionUrl}`)
+    textParts.push(`If the button doesn't work, use: ${actionUrl}`)
+  }
   return { subject: title, html, text: textParts.join('\n\n') }
 }
 
