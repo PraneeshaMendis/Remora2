@@ -5,10 +5,22 @@ import { getProjects } from '../services/projectsAPI.ts'
 
 type ProjectDocumentMetric = {
   id: string
+  name: string
+  projectId?: string
+  projectName?: string
+  phaseId?: string
+  phaseName?: string
+  taskTitle?: string
   taskId?: string
   createdById: string
+  createdByName?: string
   reviewerId?: string
+  reviewerName?: string
   status: string
+  reviewScore?: number | null
+  reviewComment?: string
+  reviewedAt?: string
+  createdAt?: string
 }
 
 type ProjectMetrics = {
@@ -109,6 +121,8 @@ type TaskDeliveryProjectGroup = {
   urgency: 'URGENT ACTION' | 'WATCH LIST' | 'STABLE'
 }
 
+type MemberDetailPanelType = 'time-logged' | 'documents-shared' | 'documents-reviewed' | 'comments'
+
 const roundHours = (value: number) => {
   return Math.round((value + Number.EPSILON) * 10) / 10
 }
@@ -124,6 +138,23 @@ const toReadableStatus = (value: string) => {
     .filter(Boolean)
     .map(part => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ')
+}
+
+const parseRatingFromReviewComment = (value?: string) => {
+  const raw = String(value || '').trim()
+  if (!raw) return null
+  const match = raw.match(/rating:\s*(\d(?:\.\d+)?)\s*\/\s*5/i)
+  if (!match) return null
+  const rating = Number(match[1])
+  if (!Number.isFinite(rating)) return null
+  return Math.min(5, Math.max(0, rating))
+}
+
+const resolveDocumentRating = (doc: ProjectDocumentMetric) => {
+  if (typeof doc.reviewScore === 'number' && Number.isFinite(doc.reviewScore)) {
+    return Math.min(5, Math.max(0, doc.reviewScore))
+  }
+  return parseRatingFromReviewComment(doc.reviewComment)
 }
 
 const getTaskStatusMeta = (status: Task['status']) => {
@@ -898,8 +929,15 @@ const DirectorDashboard: React.FC = () => {
   // State for project detail modal
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false)
+  const [memberDetailPanel, setMemberDetailPanel] = useState<{ memberId: string; type: MemberDetailPanelType } | null>(null)
 
   const selectedProjectId = selectedProject?.id
+
+  useEffect(() => {
+    if (!isProjectModalOpen) {
+      setMemberDetailPanel(null)
+    }
+  }, [isProjectModalOpen, selectedProjectId])
 
   useEffect(() => {
     if (!isProjectModalOpen || !selectedProjectId) return
@@ -987,10 +1025,22 @@ const DirectorDashboard: React.FC = () => {
 
         const mappedDocuments: ProjectDocumentMetric[] = documentsByTask.flat().map((doc: any) => ({
           id: String(doc?.id || ''),
+          name: String(doc?.name || doc?.fileName || 'Untitled document'),
+          projectId: doc?.projectId ? String(doc.projectId) : selectedProjectId,
+          projectName: String(doc?.projectName || selectedProject?.name || ''),
+          phaseId: doc?.phaseId ? String(doc.phaseId) : undefined,
+          phaseName: String(doc?.phaseName || ''),
           taskId: doc?.taskId ? String(doc.taskId) : undefined,
+          taskTitle: String(doc?.taskTitle || ''),
           createdById: String(doc?.createdBy?.id || doc?.createdById || ''),
+          createdByName: String(doc?.createdBy?.name || ''),
           reviewerId: doc?.reviewer?.id ? String(doc.reviewer.id) : undefined,
+          reviewerName: String(doc?.reviewer?.name || ''),
           status: String(doc?.status || '').toLowerCase(),
+          reviewScore: typeof doc?.reviewScore === 'number' ? Number(doc.reviewScore) : null,
+          reviewComment: typeof doc?.reviewComment === 'string' ? doc.reviewComment : '',
+          reviewedAt: String(doc?.reviewedAt || ''),
+          createdAt: String(doc?.createdAt || ''),
         }))
 
         if (active) {
@@ -1018,7 +1068,7 @@ const DirectorDashboard: React.FC = () => {
     return () => {
       active = false
     }
-  }, [isProjectModalOpen, selectedProjectId, tasksByProjectId, metricsByProjectId, teamMemberById])
+  }, [isProjectModalOpen, selectedProjectId, selectedProject?.name, tasksByProjectId, metricsByProjectId, teamMemberById])
 
   const selectedMetrics = selectedProjectId ? metricsByProjectId[selectedProjectId] : undefined
   const projectTimeLogs = selectedMetrics?.timeLogs ?? []
@@ -1031,9 +1081,84 @@ const DirectorDashboard: React.FC = () => {
     ? Math.round((projectLoggedHours / selectedProject.allocatedHours) * 100)
     : 0
   const totalProjectLogged = projectTimeLogs.reduce((sum, log) => sum + log.hours, 0)
-  const flattenedComments = useMemo(() => {
-    return projectComments.flatMap(comment => [comment, ...(comment.replies || [])])
-  }, [projectComments])
+  const selectedPortfolioProject = useMemo(() => {
+    if (!selectedProjectId) return null
+    return portfolioProjects.find(project => project.id === selectedProjectId) || null
+  }, [portfolioProjects, selectedProjectId])
+
+  const taskContextById = useMemo(() => {
+    const map = new Map<string, { taskTitle: string; phaseId?: string; phaseName?: string; projectName: string }>()
+    if (!selectedPortfolioProject) return map
+
+    selectedPortfolioProject.phases.forEach(phase => {
+      phase.tasks.forEach(task => {
+        if (!task.id) return
+        map.set(task.id, {
+          taskTitle: task.title || 'Untitled task',
+          phaseId: phase.id,
+          phaseName: phase.name || 'Unknown phase',
+          projectName: selectedPortfolioProject.name || selectedProject?.name || 'Project',
+        })
+      })
+    })
+    return map
+  }, [selectedPortfolioProject, selectedProject?.name])
+
+  const memberCommentEntries = useMemo(() => {
+    const entries: Array<{
+      id: string
+      authorId: string
+      authorName: string
+      content: string
+      createdAt: string
+      projectName: string
+      phaseName: string
+      taskTitle: string
+      isReply: boolean
+    }> = []
+
+    projectComments.forEach(comment => {
+      const context = taskContextById.get(comment.taskId || '')
+      entries.push({
+        id: String(comment.id || ''),
+        authorId: String(comment.author?.id || ''),
+        authorName: String(comment.author?.name || 'Unknown'),
+        content: String(comment.content || ''),
+        createdAt: String(comment.createdAt || ''),
+        projectName: context?.projectName || selectedProject?.name || 'Project',
+        phaseName: context?.phaseName || 'Unknown phase',
+        taskTitle: context?.taskTitle || 'Unknown task',
+        isReply: false,
+      })
+
+      ;(comment.replies || []).forEach(reply => {
+        entries.push({
+          id: String(reply.id || ''),
+          authorId: String(reply.author?.id || ''),
+          authorName: String(reply.author?.name || 'Unknown'),
+          content: String(reply.content || ''),
+          createdAt: String(reply.createdAt || ''),
+          projectName: context?.projectName || selectedProject?.name || 'Project',
+          phaseName: context?.phaseName || 'Unknown phase',
+          taskTitle: context?.taskTitle || 'Unknown task',
+          isReply: true,
+        })
+      })
+    })
+
+    return entries.sort((a, b) => {
+      const aTs = toTimestamp(a.createdAt) || 0
+      const bTs = toTimestamp(b.createdAt) || 0
+      return bTs - aTs
+    })
+  }, [projectComments, taskContextById, selectedProject?.name])
+
+  const toggleMemberDetailPanel = (memberId: string, type: MemberDetailPanelType) => {
+    setMemberDetailPanel(prev => {
+      if (prev && prev.memberId === memberId && prev.type === type) return null
+      return { memberId, type }
+    })
+  }
 
   // Use all projects instead of just recent ones
   const displayProjects = projects
@@ -2252,14 +2377,34 @@ const DirectorDashboard: React.FC = () => {
                       log.userId === memberId
                     )
                     const totalLoggedHours = memberTimeLogs.reduce((sum, log) => sum + log.hours, 0)
-                    const documentsShared = projectDocuments.filter(doc => doc.createdById === memberId).length
-                    const documentsReviewed = projectDocuments.filter(doc =>
-                      doc.reviewerId === memberId && doc.status === 'approved'
-                    ).length
-                    const commentsAdded = flattenedComments.filter(comment => comment.author?.id === memberId).length
+                    const memberSharedDocuments = projectDocuments
+                      .filter(doc => doc.createdById === memberId)
+                      .sort((a, b) => (toTimestamp(b.createdAt) || 0) - (toTimestamp(a.createdAt) || 0))
+                    const memberReviewedDocuments = projectDocuments
+                      .filter(doc => doc.reviewerId === memberId && doc.status === 'approved')
+                      .sort((a, b) => (toTimestamp(b.reviewedAt || b.createdAt) || 0) - (toTimestamp(a.reviewedAt || a.createdAt) || 0))
+                    const memberComments = memberCommentEntries.filter(comment => comment.authorId === memberId)
+                    const documentsShared = memberSharedDocuments.length
+                    const documentsReviewed = memberReviewedDocuments.length
+                    const commentsAdded = memberComments.length
+                    const memberTimeEntries = memberTimeLogs
+                      .map(log => {
+                        const taskContext = taskContextById.get(log.taskId || '')
+                        return {
+                          id: String(log.id || ''),
+                          hours: Number(log.hours || 0),
+                          description: String(log.description || ''),
+                          loggedAt: String(log.loggedAt || log.createdAt || ''),
+                          projectName: taskContext?.projectName || selectedProject?.name || 'Project',
+                          phaseName: taskContext?.phaseName || 'Unknown phase',
+                          taskTitle: taskContext?.taskTitle || `Task ${String(log.taskId || '').slice(0, 8) || 'Unknown'}`,
+                        }
+                      })
+                      .sort((a, b) => (toTimestamp(b.loggedAt) || 0) - (toTimestamp(a.loggedAt) || 0))
                     const contributionPercent = totalProjectLogged > 0
                       ? Math.round((totalLoggedHours / totalProjectLogged) * 100)
                       : 0
+                    const panelType = memberDetailPanel?.memberId === memberId ? memberDetailPanel.type : null
 
                     return (
                       <div key={memberId} className="border border-gray-200 dark:border-white/10 rounded-lg p-4">
@@ -2282,7 +2427,15 @@ const DirectorDashboard: React.FC = () => {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleMemberDetailPanel(memberId, 'time-logged')}
+                            className={`rounded-lg p-3 text-left transition ${
+                              panelType === 'time-logged'
+                                ? 'ring-2 ring-blue-400/60 bg-blue-100 dark:bg-blue-900/30'
+                                : 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/30'
+                            }`}
+                          >
                             <div className="flex items-center space-x-2">
                               <svg className="h-5 w-5 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -2294,9 +2447,17 @@ const DirectorDashboard: React.FC = () => {
                                 <div className="text-xs text-blue-700 dark:text-blue-300">Time Logged</div>
                               </div>
                             </div>
-                          </div>
+                          </button>
 
-                          <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleMemberDetailPanel(memberId, 'documents-shared')}
+                            className={`rounded-lg p-3 text-left transition ${
+                              panelType === 'documents-shared'
+                                ? 'ring-2 ring-green-400/60 bg-green-100 dark:bg-green-900/30'
+                                : 'bg-green-50 hover:bg-green-100 dark:bg-green-900/20 dark:hover:bg-green-900/30'
+                            }`}
+                          >
                             <div className="flex items-center space-x-2">
                               <svg className="h-5 w-5 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -2308,9 +2469,17 @@ const DirectorDashboard: React.FC = () => {
                                 <div className="text-xs text-green-700 dark:text-green-300">Documents Shared</div>
                               </div>
                             </div>
-                          </div>
+                          </button>
 
-                          <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleMemberDetailPanel(memberId, 'comments')}
+                            className={`rounded-lg p-3 text-left transition ${
+                              panelType === 'comments'
+                                ? 'ring-2 ring-purple-400/60 bg-purple-100 dark:bg-purple-900/30'
+                                : 'bg-purple-50 hover:bg-purple-100 dark:bg-purple-900/20 dark:hover:bg-purple-900/30'
+                            }`}
+                          >
                             <div className="flex items-center space-x-2">
                               <svg className="h-5 w-5 text-purple-600 dark:text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -2322,11 +2491,19 @@ const DirectorDashboard: React.FC = () => {
                                 <div className="text-xs text-purple-700 dark:text-purple-300">Comments Added</div>
                               </div>
                             </div>
-                          </div>
+                          </button>
                         </div>
 
                         <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleMemberDetailPanel(memberId, 'documents-reviewed')}
+                            className={`rounded-lg p-3 text-left transition ${
+                              panelType === 'documents-reviewed'
+                                ? 'ring-2 ring-yellow-400/60 bg-yellow-100 dark:bg-yellow-900/30'
+                                : 'bg-yellow-50 hover:bg-yellow-100 dark:bg-yellow-900/20 dark:hover:bg-yellow-900/30'
+                            }`}
+                          >
                             <div className="flex items-center space-x-2">
                               <svg className="h-5 w-5 text-yellow-600 dark:text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
@@ -2338,7 +2515,7 @@ const DirectorDashboard: React.FC = () => {
                                 <div className="text-xs text-yellow-700 dark:text-yellow-300">Documents Reviewed</div>
                               </div>
                             </div>
-                          </div>
+                          </button>
 
                           <div className="bg-gray-50 dark:bg-black/50 rounded-lg p-3">
                             <div className="flex items-center space-x-2">
@@ -2354,6 +2531,155 @@ const DirectorDashboard: React.FC = () => {
                             </div>
                           </div>
                         </div>
+
+                        {panelType && (
+                          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-white/10 dark:bg-black/40">
+                            <div className="mb-3 flex items-center justify-between">
+                              <p className="text-sm font-semibold text-slate-800 dark:text-gray-100">
+                                {panelType === 'time-logged'
+                                  ? 'Time Logged Details'
+                                  : panelType === 'documents-shared'
+                                    ? 'Documents Shared'
+                                    : panelType === 'documents-reviewed'
+                                      ? 'Documents Reviewed'
+                                      : 'Comments Added'}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => setMemberDetailPanel(null)}
+                                className="text-xs font-semibold text-slate-500 transition hover:text-slate-700 dark:text-gray-400 dark:hover:text-gray-200"
+                              >
+                                Close
+                              </button>
+                            </div>
+
+                            {panelType === 'time-logged' ? (
+                              memberTimeEntries.length === 0 ? (
+                                <p className="text-xs text-slate-500 dark:text-gray-400">No time logs found for this member.</p>
+                              ) : (
+                                <div className="space-y-2">
+                                  {memberTimeEntries.map(entry => (
+                                    <div key={`${memberId}-timelog-${entry.id}`} className="rounded-lg border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-black/30">
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                          <p className="text-sm font-semibold text-slate-900 dark:text-white">{entry.taskTitle}</p>
+                                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-600 dark:text-gray-400">
+                                            <span>{entry.projectName}</span>
+                                            <span>•</span>
+                                            <span>Phase: {entry.phaseName}</span>
+                                            <span>•</span>
+                                            <span>Task: {entry.taskTitle}</span>
+                                          </div>
+                                          {entry.description && (
+                                            <p className="mt-2 text-xs text-slate-700 dark:text-gray-300">
+                                              <span className="font-semibold">Work note:</span> {entry.description}
+                                            </p>
+                                          )}
+                                        </div>
+                                        <div className="text-right">
+                                          <p className="text-sm font-semibold text-slate-900 dark:text-white">{formatHours(entry.hours)}</p>
+                                          <p className="mt-1 text-[11px] text-slate-500 dark:text-gray-400">
+                                            {formatRelativeTime(entry.loggedAt)}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )
+                            ) : panelType === 'comments' ? (
+                              memberComments.length === 0 ? (
+                                <p className="text-xs text-slate-500 dark:text-gray-400">No comments found for this member.</p>
+                              ) : (
+                                <div className="space-y-2">
+                                  {memberComments.map(item => (
+                                    <div key={`${memberId}-comment-${item.id}`} className="rounded-lg border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-black/30">
+                                      <p className="text-sm text-slate-800 dark:text-gray-100">{item.content || 'No comment content'}</p>
+                                      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-600 dark:text-gray-400">
+                                        <span className="rounded-full bg-purple-100 px-2 py-0.5 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300">
+                                          {item.isReply ? 'Reply' : 'Comment'}
+                                        </span>
+                                        <span>{item.projectName}</span>
+                                        <span>•</span>
+                                        <span>{item.phaseName}</span>
+                                        <span>•</span>
+                                        <span>{item.taskTitle}</span>
+                                        <span className="ml-auto">{formatRelativeTime(item.createdAt)}</span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )
+                            ) : (
+                              ((panelType === 'documents-shared' ? memberSharedDocuments : memberReviewedDocuments).length === 0) ? (
+                                <p className="text-xs text-slate-500 dark:text-gray-400">No documents found for this member.</p>
+                              ) : (
+                                <div className="space-y-2">
+                                  {(panelType === 'documents-shared' ? memberSharedDocuments : memberReviewedDocuments).map(doc => {
+                                    const taskContext = taskContextById.get(doc.taskId || '')
+                                    const projectName = doc.projectName || taskContext?.projectName || selectedProject?.name || 'Project'
+                                    const phaseName = doc.phaseName || taskContext?.phaseName || 'Unknown phase'
+                                    const taskTitle = doc.taskTitle || taskContext?.taskTitle || 'Unknown task'
+                                    const rating = resolveDocumentRating(doc)
+                                    const normalizedRating = rating === null ? 0 : Math.max(0, Math.min(5, rating))
+                                    return (
+                                      <div key={`${memberId}-${panelType}-${doc.id}`} className="rounded-lg border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-black/30">
+                                        <p className="text-sm font-semibold text-slate-900 dark:text-white">{doc.name}</p>
+                                        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-600 dark:text-gray-400">
+                                          <span>{projectName}</span>
+                                          <span>•</span>
+                                          <span>{phaseName}</span>
+                                          <span>•</span>
+                                          <span>{taskTitle}</span>
+                                        </div>
+                                        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                                          <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                                            {rating === null ? (
+                                              <span>Rating N/A</span>
+                                            ) : (
+                                              <span className="inline-flex items-center gap-1">
+                                                <span>Rating</span>
+                                                <span
+                                                  className="inline-flex items-center gap-0.5"
+                                                  aria-label={`Rating ${normalizedRating.toFixed(1)} out of 5`}
+                                                >
+                                                  {[1, 2, 3, 4, 5].map(star => (
+                                                    <svg
+                                                      key={`${doc.id}-rating-star-${star}`}
+                                                      className="h-3.5 w-3.5"
+                                                      viewBox="0 0 20 20"
+                                                      fill={star <= normalizedRating ? 'currentColor' : 'none'}
+                                                      stroke="currentColor"
+                                                      strokeWidth={1.5}
+                                                    >
+                                                      <path d="M10 2.5 12.4 7l4.9.8-3.5 3.5.8 5-4.6-2.3-4.6 2.3.8-5L2.7 7.8 7.6 7 10 2.5Z" />
+                                                    </svg>
+                                                  ))}
+                                                </span>
+                                                <span>{normalizedRating.toFixed(1)}</span>
+                                              </span>
+                                            )}
+                                          </span>
+                                          <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700 dark:bg-white/10 dark:text-gray-300">
+                                            {toReadableStatus(doc.status)}
+                                          </span>
+                                          <span className="ml-auto text-slate-500 dark:text-gray-400">
+                                            {formatRelativeTime(doc.reviewedAt || doc.createdAt)}
+                                          </span>
+                                        </div>
+                                        {doc.reviewComment && (
+                                          <p className="mt-2 text-xs text-slate-700 dark:text-gray-300">
+                                            <span className="font-semibold">Review note:</span> {doc.reviewComment}
+                                          </p>
+                                        )}
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              )
+                            )}
+                          </div>
+                        )}
                       </div>
                     )
                   })}
