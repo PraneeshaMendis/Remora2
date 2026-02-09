@@ -21,7 +21,7 @@ import EventModal from '../components/modals/EventModal'
 import CountrySelect from '../components/CountrySelect'
 import { useAuth } from '../contexts/AuthContext'
 import { listReviewers } from '../services/usersAPI'
-import { createCalendarEvent, deleteCalendarEvent, listCalendarEvents, updateCalendarEvent } from '../services/calendarEventsAPI'
+import { createCalendarEvent, deleteCalendarEvent, listCalendarEvents, listCalendarProjectTree, updateCalendarEvent } from '../services/calendarEventsAPI'
 
 // Types
 interface CalendarEvent {
@@ -37,6 +37,11 @@ interface CalendarEvent {
   assignee?: string
   assigneeId?: string
   project?: string
+  projectId?: string
+  phase?: string
+  phaseId?: string
+  task?: string
+  taskId?: string
   platform?: 'teams' | 'zoom' | 'google-meet' | 'physical'
   meetingLink?: string
   attendees?: string[]
@@ -55,6 +60,16 @@ interface CalendarEvent {
 
 interface DayEvents {
   [date: string]: CalendarEvent[]
+}
+
+type CalendarProjectOption = {
+  id: string
+  name: string
+  phases: Array<{
+    id: string
+    name: string
+    tasks: Array<{ id: string; name: string }>
+  }>
 }
 
 // External calendar source
@@ -88,6 +103,7 @@ const CalendarDashboard: React.FC = () => {
   const [employees, setEmployees] = useState<Array<{ id: string; name: string; email: string }>>([])
   const [selectedUserId, setSelectedUserId] = useState<string>('')
   const [selectedDate, setSelectedDate] = useState<string>('')
+  const [projectOptions, setProjectOptions] = useState<CalendarProjectOption[]>([])
   // Local events represent events you create in-app
   const [localEvents, setLocalEvents] = useState<CalendarEvent[]>([])
   // External connected sources (google/outlook/ics). Now loaded per-user from backend.
@@ -236,6 +252,21 @@ const CalendarDashboard: React.FC = () => {
     load()
     return () => { active = false }
   }, [user?.id, isExecutive, calendarScope, selectedUserId])
+
+  useEffect(() => {
+    let active = true
+    const loadProjectTree = async () => {
+      if (!user?.id) return
+      try {
+        const tree = await listCalendarProjectTree()
+        if (active) setProjectOptions(Array.isArray(tree) ? tree : [])
+      } catch {
+        if (active) setProjectOptions([])
+      }
+    }
+    loadProjectTree()
+    return () => { active = false }
+  }, [user?.id])
   // Persisted by backend; no localStorage write
   // Persist holidays prefs per user
   useEffect(() => {
@@ -608,7 +639,10 @@ const CalendarDashboard: React.FC = () => {
         endTime: eventData.endTime,
         priority: eventData.priority,
         status: eventData.status,
-        project: eventData.project,
+        project: eventData.project || null,
+        projectId: eventData.projectId || null,
+        phaseId: eventData.phaseId || null,
+        taskId: eventData.taskId || null,
         meetingLink: eventData.meetingLink,
         platform: eventData.platform,
         attendees: eventData.attendees,
@@ -677,6 +711,11 @@ const CalendarDashboard: React.FC = () => {
     return event.isAssigned
       ? 'ring-1 ring-blue-500/40 bg-blue-50/40 dark:bg-blue-900/15'
       : ''
+  }
+
+  const getProjectPath = (event: CalendarEvent) => {
+    const parts = [event.project, event.phase, event.task].filter(Boolean) as string[]
+    return parts.join(' > ')
   }
 
   const getSourceIcon = (type: CalendarSourceType) => {
@@ -1636,10 +1675,10 @@ const CalendarDashboard: React.FC = () => {
                           </div>
                           <h4 className="font-semibold text-gray-900 dark:text-white text-lg mb-1">{event.title}</h4>
                           <p className="text-gray-600 dark:text-gray-400 mb-2 break-words whitespace-pre-wrap">{event.description}</p>
-                          {event.project && (
+                          {getProjectPath(event) && (
                             <div className="flex items-center space-x-1 text-sm text-gray-500 dark:text-gray-400">
                               <Users className="h-4 w-4" />
-                              <span>{event.project}</span>
+                              <span>{getProjectPath(event)}</span>
                             </div>
                           )}
                         </div>
@@ -1724,10 +1763,10 @@ const CalendarDashboard: React.FC = () => {
                           </div>
                           <h4 className="font-semibold text-gray-900 dark:text-white text-lg mb-1">{event.title}</h4>
                           <p className="text-gray-600 dark:text-gray-400 mb-2 break-words whitespace-pre-wrap">{event.description}</p>
-                          {event.project && (
+                          {getProjectPath(event) && (
                             <div className="flex items-center space-x-1 text-sm text-gray-500 dark:text-gray-400">
                               <Users className="h-4 w-4" />
-                              <span>{event.project}</span>
+                              <span>{getProjectPath(event)}</span>
                             </div>
                           )}
                         </div>
@@ -1765,6 +1804,7 @@ const CalendarDashboard: React.FC = () => {
         onSave={handleSaveEvent}
         assigneeOptions={isExecutive ? employees.map(e => ({ id: e.id, name: e.name })) : undefined}
         defaultAssigneeId={isExecutive && calendarScope === 'team' ? selectedUserId : undefined}
+        projectOptions={projectOptions}
       />
 
       {/* Day Events Modal */}

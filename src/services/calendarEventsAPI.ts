@@ -10,13 +10,26 @@ export type CalendarEventPayload = {
   endTime: string
   priority?: 'high' | 'medium' | 'low'
   status?: 'scheduled' | 'in-progress' | 'completed' | 'cancelled'
-  project?: string
+  project?: string | null
+  projectId?: string | null
+  phaseId?: string | null
+  taskId?: string | null
   meetingLink?: string
   platform?: 'teams' | 'zoom' | 'google-meet' | 'physical'
   attendees?: string[]
   isRecurring?: boolean
   recurrenceType?: 'daily' | 'weekly' | 'monthly'
 }
+
+export type CalendarProjectTree = Array<{
+  id: string
+  name: string
+  phases: Array<{
+    id: string
+    name: string
+    tasks: Array<{ id: string; name: string }>
+  }>
+}>
 
 export function listCalendarEvents(userId?: string) {
   const qs = userId ? `?userId=${encodeURIComponent(userId)}` : ''
@@ -33,4 +46,8 @@ export function updateCalendarEvent(id: string, payload: Partial<CalendarEventPa
 
 export function deleteCalendarEvent(id: string) {
   return apiJson(`/api/calendar/events/${id}`, 'DELETE')
+}
+
+export function listCalendarProjectTree() {
+  return apiGet('/api/calendar/project-tree') as Promise<CalendarProjectTree>
 }

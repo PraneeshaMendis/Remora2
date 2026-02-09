@@ -1,15 +1,61 @@
 import nodemailer from 'nodemailer'
+import { EmailClient } from '@azure/communication-email'
 
 function isTruthy(v?: string) {
   return String(v || '').toLowerCase() === 'true'
 }
 
-export function emailEnabled() {
+function smtpEmailEnabled() {
   return !!process.env.SMTP_HOST && !!process.env.SMTP_USER && !!process.env.SMTP_PASS
 }
 
+function acsEmailEnabled() {
+  return !!process.env.AZURE_COMMUNICATION_CONNECTION_STRING && !!process.env.AZURE_EMAIL_SENDER
+}
+
+function stripHtml(html: string) {
+  return String(html || '').replace(/<[^>]+>/g, '').trim()
+}
+
+function parseMailFromAddress() {
+  const raw = String(process.env.MAIL_FROM || '').trim()
+  if (!raw) return ''
+  const match = raw.match(/<([^>]+)>/)
+  if (match?.[1]) return match[1].trim()
+  return raw.includes('@') ? raw : ''
+}
+
+function getMailBrandName() {
+  const explicit = String(process.env.MAIL_FROM_NAME || '').trim()
+  if (explicit) return explicit
+  const raw = String(process.env.MAIL_FROM || '').replace(/<[^>]+>/g, '').replace(/"/g, '').trim()
+  if (raw && raw.includes('@')) return raw.split('@')[0]
+  if (raw) return raw
+  return 'Remora'
+}
+
+function getSenderAddress() {
+  return String(
+    process.env.AZURE_EMAIL_SENDER || parseMailFromAddress() || process.env.SMTP_USER || 'no-reply@example.com',
+  ).trim()
+}
+
+let acsClient: EmailClient | null = null
+
+function getAcsClient() {
+  if (!acsEmailEnabled()) throw new Error('ACS not configured')
+  if (!acsClient) {
+    acsClient = new EmailClient(process.env.AZURE_COMMUNICATION_CONNECTION_STRING as string)
+  }
+  return acsClient
+}
+
+export function emailEnabled() {
+  return acsEmailEnabled() || smtpEmailEnabled()
+}
+
 export function getTransport() {
-  if (!emailEnabled()) throw new Error('SMTP not configured')
+  if (!smtpEmailEnabled()) throw new Error('SMTP not configured')
   const secure = isTruthy(process.env.SMTP_SECURE)
   const port = Number(process.env.SMTP_PORT || (secure ? 465 : 587))
   return nodemailer.createTransport({
@@ -20,12 +66,44 @@ export function getTransport() {
   })
 }
 
+async function sendViaAcs(to: string, subject: string, html: string, text?: string) {
+  const client = getAcsClient()
+  const poller = await client.beginSend({
+    senderAddress: String(process.env.AZURE_EMAIL_SENDER),
+    content: {
+      subject,
+      plainText: text || stripHtml(html),
+      html,
+    },
+    recipients: { to: [{ address: to }] },
+  })
+  const result: any = await poller.pollUntilDone()
+  const status = String(result?.status || '')
+  if (status && status.toLowerCase() !== 'succeeded') {
+    throw new Error(`ACS email send failed with status "${status}"`)
+  }
+  return { ok: true, messageId: String(result?.id || ''), provider: 'acs' as const }
+}
+
+async function sendViaSmtp(to: string, subject: string, html: string, text?: string) {
+  const from = process.env.MAIL_FROM || `${getMailBrandName()} <${getSenderAddress()}>`
+  const transporter = getTransport()
+  const info = await transporter.sendMail({ from, to, subject, text: text || stripHtml(html), html })
+  return { ok: true, messageId: info.messageId, provider: 'smtp' as const }
+}
+
 export async function sendMail(to: string, subject: string, html: string, text?: string) {
   if (!emailEnabled()) return { ok: false, skipped: true }
-  const from = process.env.MAIL_FROM || process.env.SMTP_USER || 'no-reply@example.com'
-  const transporter = getTransport()
-  const info = await transporter.sendMail({ from, to, subject, text: text || html.replace(/<[^>]+>/g, ''), html })
-  return { ok: true, messageId: info.messageId }
+  if (acsEmailEnabled()) {
+    try {
+      return await sendViaAcs(to, subject, html, text)
+    } catch (e) {
+      if (!smtpEmailEnabled()) throw e
+      // fallback to SMTP if configured
+    }
+  }
+  if (smtpEmailEnabled()) return sendViaSmtp(to, subject, html, text)
+  return { ok: false, skipped: true }
 }
 
 export function renderVerifyEmail(link: string) {
@@ -44,7 +122,7 @@ export function renderVerifyEmail(link: string) {
 }
 
 export function renderInviteEmail(link: string, name?: string, roleName?: string, departmentName?: string) {
-  const brand = (process.env.MAIL_FROM || 'Remora').replace(/<.*?>/g, '').trim() || 'Remora'
+  const brand = getMailBrandName()
   const role = roleName ? String(roleName) : undefined
   const dept = departmentName ? String(departmentName) : undefined
   const tagStyle = 'display:inline-block;padding:6px 10px;border-radius:9999px;background:#F1F5F9;color:#0F172A;font-size:12px;font-weight:600;margin-right:8px;border:1px solid #E2E8F0'
@@ -102,7 +180,7 @@ export function renderApprovedEmail(baseUrl: string) {
 }
 
 export function renderPasswordResetEmail(link: string, name?: string) {
-  const brand = (process.env.MAIL_FROM || 'Remora').replace(/<.*?>/g, '').trim() || 'Remora'
+  const brand = getMailBrandName()
   return {
     subject: `${brand}: Reset your password`,
     html: `

@@ -212,6 +212,11 @@ model CalendarEvent {
   meetingLink   String?
   platform      CalendarEventPlatform?
   project       String?
+  projectId     String?
+  phase         String?
+  phaseId       String?
+  task          String?
+  taskId        String?
   attendees     String[]
   isRecurring   Boolean                  @default(false)
   recurrenceType CalendarEventRecurrence?
@@ -220,6 +225,9 @@ model CalendarEvent {
 
   @@index([userId, startAt])
   @@index([createdById, createdAt])
+  @@index([projectId])
+  @@index([phaseId])
+  @@index([taskId])
 }
 
 model Department {

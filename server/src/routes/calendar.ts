@@ -444,6 +444,11 @@ function mapEventForClient(ev: any) {
     assignee: ev.user?.name || undefined,
     assigneeId: ev.userId,
     project: ev.project || undefined,
+    projectId: ev.projectId || undefined,
+    phase: ev.phase || undefined,
+    phaseId: ev.phaseId || undefined,
+    task: ev.task || undefined,
+    taskId: ev.taskId || undefined,
     platform,
     meetingLink: ev.meetingLink || undefined,
     attendees: Array.isArray(ev.attendees) ? ev.attendees : [],
@@ -460,6 +465,96 @@ function mapEventForClient(ev: any) {
   }
 }
 
+function normalizeEventLinkId(value: unknown): string | null {
+  const v = String(value ?? '').trim()
+  return v ? v : null
+}
+
+type EventLinkContext = {
+  projectId: string | null
+  project: string | null
+  phaseId: string | null
+  phase: string | null
+  taskId: string | null
+  task: string | null
+}
+
+async function resolveEventLinkContext(input: {
+  projectId?: unknown
+  phaseId?: unknown
+  taskId?: unknown
+  project?: unknown
+}): Promise<EventLinkContext> {
+  let projectId = normalizeEventLinkId(input.projectId)
+  let phaseId = normalizeEventLinkId(input.phaseId)
+  let taskId = normalizeEventLinkId(input.taskId)
+  const projectLabel = normalizeEventLinkId(input.project)
+
+  if (taskId) {
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      include: { phase: { include: { project: true } } },
+    })
+    if (!task) throw new Error('Invalid taskId')
+    taskId = task.id
+    phaseId = task.phaseId
+    projectId = task.phase.projectId
+    return {
+      projectId,
+      project: task.phase.project.title || null,
+      phaseId,
+      phase: task.phase.name || null,
+      taskId,
+      task: task.title || null,
+    }
+  }
+
+  if (phaseId) {
+    const phase = await prisma.phase.findUnique({
+      where: { id: phaseId },
+      include: { project: true },
+    })
+    if (!phase) throw new Error('Invalid phaseId')
+    if (projectId && projectId !== phase.projectId) {
+      throw new Error('phaseId does not belong to projectId')
+    }
+    projectId = phase.projectId
+    return {
+      projectId,
+      project: phase.project.title || null,
+      phaseId: phase.id,
+      phase: phase.name || null,
+      taskId: null,
+      task: null,
+    }
+  }
+
+  if (projectId) {
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { id: true, title: true },
+    })
+    if (!project) throw new Error('Invalid projectId')
+    return {
+      projectId: project.id,
+      project: project.title || null,
+      phaseId: null,
+      phase: null,
+      taskId: null,
+      task: null,
+    }
+  }
+
+  return {
+    projectId: null,
+    project: projectLabel || null,
+    phaseId: null,
+    phase: null,
+    taskId: null,
+    task: null,
+  }
+}
+
 const eventSchema = z.object({
   userId: z.string().optional(),
   title: z.string().min(1),
@@ -470,7 +565,10 @@ const eventSchema = z.object({
   endTime: z.string(),
   priority: z.enum(['high', 'medium', 'low']).optional().default('medium'),
   status: z.enum(['scheduled', 'in-progress', 'completed', 'cancelled']).optional().default('scheduled'),
-  project: z.string().optional(),
+  project: z.union([z.string(), z.null()]).optional(),
+  projectId: z.union([z.string(), z.null()]).optional(),
+  phaseId: z.union([z.string(), z.null()]).optional(),
+  taskId: z.union([z.string(), z.null()]).optional(),
   meetingLink: z.string().optional(),
   platform: z.enum(['teams', 'zoom', 'google-meet', 'physical']).optional(),
   attendees: z.array(z.string()).optional(),
@@ -483,6 +581,42 @@ const toDateTime = (date: string, time: string) => {
   const dt = new Date(`${normalizedDate}T${time}`)
   return dt
 }
+
+// Minimal real project -> phase -> task tree for calendar event linking
+router.get('/project-tree', async (req: Request, res: Response) => {
+  const requesterId = await resolveUserId(req)
+  if (!requesterId) return res.status(401).json({ error: 'Login required' })
+  const projects = await prisma.project.findMany({
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      title: true,
+      phases: {
+        orderBy: { createdAt: 'asc' },
+        select: {
+          id: true,
+          name: true,
+          tasks: {
+            orderBy: { createdAt: 'asc' },
+            select: { id: true, title: true },
+          },
+        },
+      },
+    },
+  })
+
+  res.json(
+    projects.map((p) => ({
+      id: p.id,
+      name: p.title,
+      phases: (p.phases || []).map((ph) => ({
+        id: ph.id,
+        name: ph.name,
+        tasks: (ph.tasks || []).map((t) => ({ id: t.id, name: t.title })),
+      })),
+    })),
+  )
+})
 
 // Local events (in-app) per user
 router.get('/events', async (req: Request, res: Response) => {
@@ -521,6 +655,13 @@ router.post('/events', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'End time must be after start time' })
   }
   try {
+    const links = await resolveEventLinkContext({
+      projectId: data.projectId,
+      phaseId: data.phaseId,
+      taskId: data.taskId,
+      project: data.project,
+    })
+
     const created = await prisma.calendarEvent.create({
       data: {
         userId: targetId,
@@ -532,7 +673,12 @@ router.post('/events', async (req: Request, res: Response) => {
         endAt,
         priority: data.priority.toUpperCase() as any,
         status: data.status.toUpperCase().replace('-', '_') as any,
-        project: data.project || undefined,
+        project: links.project || undefined,
+        projectId: links.projectId || undefined,
+        phase: links.phase || undefined,
+        phaseId: links.phaseId || undefined,
+        task: links.task || undefined,
+        taskId: links.taskId || undefined,
         meetingLink: data.meetingLink || undefined,
         platform: data.platform ? data.platform.toUpperCase().replace('-', '_') as any : undefined,
         attendees: data.attendees || [],
@@ -595,23 +741,46 @@ router.patch('/events/:id', async (req: Request, res: Response) => {
   }
 
   try {
+    const hasProjectLabel = Object.prototype.hasOwnProperty.call(data, 'project')
+    const hasProjectId = Object.prototype.hasOwnProperty.call(data, 'projectId')
+    const hasPhaseId = Object.prototype.hasOwnProperty.call(data, 'phaseId')
+    const hasTaskId = Object.prototype.hasOwnProperty.call(data, 'taskId')
+    const linksTouched = hasProjectLabel || hasProjectId || hasPhaseId || hasTaskId
+    const links = linksTouched
+      ? await resolveEventLinkContext({
+          projectId: data.projectId,
+          phaseId: data.phaseId,
+          taskId: data.taskId,
+          project: data.project,
+        })
+      : null
+
+    const updateData: any = {
+      title: data.title ?? undefined,
+      description: data.description ?? undefined,
+      type: data.type ? data.type.toUpperCase() as any : undefined,
+      startAt,
+      endAt,
+      priority: data.priority ? data.priority.toUpperCase() as any : undefined,
+      status: data.status ? data.status.toUpperCase().replace('-', '_') as any : undefined,
+      meetingLink: data.meetingLink ?? undefined,
+      platform: data.platform ? data.platform.toUpperCase().replace('-', '_') as any : undefined,
+      attendees: data.attendees ?? undefined,
+      isRecurring: data.isRecurring ?? undefined,
+      recurrenceType: data.recurrenceType ? data.recurrenceType.toUpperCase() as any : undefined,
+    }
+    if (linksTouched && links) {
+      updateData.project = links.project
+      updateData.projectId = links.projectId
+      updateData.phase = links.phase
+      updateData.phaseId = links.phaseId
+      updateData.task = links.task
+      updateData.taskId = links.taskId
+    }
+
     const updated = await prisma.calendarEvent.update({
       where: { id: eventId },
-      data: {
-        title: data.title ?? undefined,
-        description: data.description ?? undefined,
-        type: data.type ? data.type.toUpperCase() as any : undefined,
-        startAt,
-        endAt,
-        priority: data.priority ? data.priority.toUpperCase() as any : undefined,
-        status: data.status ? data.status.toUpperCase().replace('-', '_') as any : undefined,
-        project: data.project ?? undefined,
-        meetingLink: data.meetingLink ?? undefined,
-        platform: data.platform ? data.platform.toUpperCase().replace('-', '_') as any : undefined,
-        attendees: data.attendees ?? undefined,
-        isRecurring: data.isRecurring ?? undefined,
-        recurrenceType: data.recurrenceType ? data.recurrenceType.toUpperCase() as any : undefined,
-      },
+      data: updateData,
       include: { user: { select: { name: true } }, createdBy: { select: { name: true } } },
     })
     res.json(mapEventForClient(updated))

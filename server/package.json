@@ -36,6 +36,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@azure/communication-email": "^1.0.0",
     "@prisma/client": "^5.18.0",
     "axios": "^1.12.2",
     "bcryptjs": "^2.4.3",

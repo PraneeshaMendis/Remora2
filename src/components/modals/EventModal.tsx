@@ -14,6 +14,11 @@ interface CalendarEvent {
   assignee?: string
   assigneeId?: string
   project?: string
+  projectId?: string
+  phase?: string
+  phaseId?: string
+  task?: string
+  taskId?: string
   platform?: 'teams' | 'zoom' | 'google-meet' | 'physical'
   meetingLink?: string
   attendees?: string[]
@@ -21,6 +26,16 @@ interface CalendarEvent {
   recurrenceType?: 'daily' | 'weekly' | 'monthly'
   createdBy: string
   createdAt: string
+}
+
+type CalendarProjectOption = {
+  id: string
+  name: string
+  phases: Array<{
+    id: string
+    name: string
+    tasks: Array<{ id: string; name: string }>
+  }>
 }
 
 interface EventModalProps {
@@ -31,6 +46,7 @@ interface EventModalProps {
   onSave: (event: CalendarEvent) => void
   assigneeOptions?: Array<{ id: string; name: string }>
   defaultAssigneeId?: string
+  projectOptions?: CalendarProjectOption[]
 }
 
 const EventModal: React.FC<EventModalProps> = ({
@@ -40,7 +56,8 @@ const EventModal: React.FC<EventModalProps> = ({
   selectedDate,
   onSave,
   assigneeOptions,
-  defaultAssigneeId
+  defaultAssigneeId,
+  projectOptions = []
 }) => {
   const [formData, setFormData] = useState({
     title: '',
@@ -53,6 +70,9 @@ const EventModal: React.FC<EventModalProps> = ({
     status: 'scheduled' as 'scheduled' | 'in-progress' | 'completed' | 'cancelled',
     assigneeId: '',
     project: '',
+    projectId: '',
+    phaseId: '',
+    taskId: '',
     platform: 'teams' as 'teams' | 'zoom' | 'google-meet' | 'physical',
     meetingLink: '',
     attendees: [] as string[],
@@ -62,15 +82,6 @@ const EventModal: React.FC<EventModalProps> = ({
 
   const [attendeeInput, setAttendeeInput] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
-
-  // Mock data for dropdowns
-  const projects = [
-    'Mobile App Redesign',
-    'Backend API Development', 
-    'Design System',
-    'Database Migration',
-    'User Authentication'
-  ]
 
   const teamMembers = assigneeOptions && assigneeOptions.length > 0
     ? assigneeOptions
@@ -86,6 +97,30 @@ const EventModal: React.FC<EventModalProps> = ({
 
   useEffect(() => {
     if (event) {
+      const projectMatchById = event.projectId
+        ? projectOptions.find((p) => p.id === event.projectId)
+        : null
+      const projectMatchByName = !projectMatchById && event.project
+        ? projectOptions.find((p) => p.name === event.project)
+        : null
+      const selectedProject = projectMatchById || projectMatchByName || null
+
+      const phaseMatchById = selectedProject && event.phaseId
+        ? selectedProject.phases.find((ph) => ph.id === event.phaseId)
+        : null
+      const phaseMatchByName = selectedProject && !phaseMatchById && event.phase
+        ? selectedProject.phases.find((ph) => ph.name === event.phase)
+        : null
+      const selectedPhase = phaseMatchById || phaseMatchByName || null
+
+      const taskMatchById = selectedPhase && event.taskId
+        ? selectedPhase.tasks.find((t) => t.id === event.taskId)
+        : null
+      const taskMatchByName = selectedPhase && !taskMatchById && event.task
+        ? selectedPhase.tasks.find((t) => t.name === event.task)
+        : null
+      const selectedTask = taskMatchById || taskMatchByName || null
+
       setFormData({
         title: event.title,
         description: event.description,
@@ -96,7 +131,10 @@ const EventModal: React.FC<EventModalProps> = ({
         priority: event.priority,
         status: event.status,
         assigneeId: event.assigneeId || defaultAssigneeId || '',
-        project: event.project || '',
+        project: selectedProject?.name || event.project || '',
+        projectId: selectedProject?.id || event.projectId || '',
+        phaseId: selectedPhase?.id || event.phaseId || '',
+        taskId: selectedTask?.id || event.taskId || '',
         platform: event.platform || 'teams',
         meetingLink: event.meetingLink || '',
         attendees: event.attendees || [],
@@ -115,6 +153,9 @@ const EventModal: React.FC<EventModalProps> = ({
         status: 'scheduled',
         assigneeId: defaultAssigneeId || '',
         project: '',
+        projectId: '',
+        phaseId: '',
+        taskId: '',
         platform: 'teams',
         meetingLink: '',
         attendees: [],
@@ -123,7 +164,16 @@ const EventModal: React.FC<EventModalProps> = ({
       })
     }
     setErrors({})
-  }, [event, selectedDate, defaultAssigneeId])
+  }, [event, selectedDate, defaultAssigneeId, projectOptions])
+
+  const selectedProject = formData.projectId
+    ? projectOptions.find((p) => p.id === formData.projectId)
+    : undefined
+  const phaseOptions = selectedProject?.phases || []
+  const selectedPhase = formData.phaseId
+    ? phaseOptions.find((ph) => ph.id === formData.phaseId)
+    : undefined
+  const taskOptions = selectedPhase?.tasks || []
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {}
@@ -173,7 +223,12 @@ const EventModal: React.FC<EventModalProps> = ({
       assignee: formData.assigneeId
         ? teamMembers.find(member => member.id === formData.assigneeId)?.name
         : undefined,
-      project: formData.project || undefined,
+      project: selectedProject?.name || formData.project || undefined,
+      projectId: formData.projectId || undefined,
+      phase: selectedPhase?.name || undefined,
+      phaseId: formData.phaseId || undefined,
+      task: (formData.taskId ? taskOptions.find(t => t.id === formData.taskId)?.name : undefined) || undefined,
+      taskId: formData.taskId || undefined,
       platform: (formData.platform === 'teams' || formData.platform === 'zoom' || formData.platform === 'google-meet') ? formData.platform : undefined,
       meetingLink: formData.meetingLink || undefined,
       attendees: formData.attendees.length > 0 ? formData.attendees : undefined,
@@ -368,20 +423,30 @@ const EventModal: React.FC<EventModalProps> = ({
               </div>
             </div>
 
-            {/* Project and Assignee */}
+            {/* Project, Phase, Task and Assignee */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Project
                 </label>
                 <select
-                  value={formData.project}
-                  onChange={(e) => setFormData(prev => ({ ...prev, project: e.target.value }))}
+                  value={formData.projectId}
+                  onChange={(e) => {
+                    const nextProjectId = e.target.value
+                    const nextProject = projectOptions.find((p) => p.id === nextProjectId)
+                    setFormData(prev => ({
+                      ...prev,
+                      projectId: nextProjectId,
+                      project: nextProject?.name || '',
+                      phaseId: '',
+                      taskId: '',
+                    }))
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
                 >
                   <option value="">Select Project</option>
-                  {projects.map(project => (
-                    <option key={project} value={project}>{project}</option>
+                  {projectOptions.map((project) => (
+                    <option key={project.id} value={project.id}>{project.name}</option>
                   ))}
                 </select>
               </div>
@@ -398,6 +463,47 @@ const EventModal: React.FC<EventModalProps> = ({
                   <option value="">Select Assignee</option>
                   {teamMembers.map(member => (
                     <option key={member.id} value={member.id}>{member.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Phase
+                </label>
+                <select
+                  value={formData.phaseId}
+                  onChange={(e) => {
+                    const nextPhaseId = e.target.value
+                    setFormData(prev => ({
+                      ...prev,
+                      phaseId: nextPhaseId,
+                      taskId: '',
+                    }))
+                  }}
+                  disabled={!formData.projectId}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <option value="">{formData.projectId ? 'Select Phase' : 'Select Project First'}</option>
+                  {phaseOptions.map((phase) => (
+                    <option key={phase.id} value={phase.id}>{phase.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Task (Optional)
+                </label>
+                <select
+                  value={formData.taskId}
+                  onChange={(e) => setFormData(prev => ({ ...prev, taskId: e.target.value }))}
+                  disabled={!formData.phaseId}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <option value="">{formData.phaseId ? 'Select Task (Optional)' : 'Select Phase First'}</option>
+                  {taskOptions.map((task) => (
+                    <option key={task.id} value={task.id}>{task.name}</option>
                   ))}
                 </select>
               </div>
