@@ -53,7 +53,7 @@ function renderNotificationEmail(input: { title: string; message: string; target
   const safeActionHref = actionUrl ? encodeURI(actionUrl) : ''
   const safeActionUrl = actionUrl ? escapeHtml(actionUrl) : ''
   const assetBase = getBrandAssetBaseUrl()
-  const logoUrl = `${assetBase}/cyber-labs-email-logo.svg`
+  const logoUrl = `${assetBase}/cyber3.svg?v=20260210`
   const greetingText = safeUser ? `Hi ${safeUser},` : 'Hi,'
   const html = `<!DOCTYPE html>
 <html>
