@@ -467,6 +467,7 @@ model Document {
   reviewLink  String?
   reviewScore Int?
   reviewedAt  DateTime?
+  sentToClientAt DateTime?
   version     Int      @default(1)
   createdAt   DateTime @default(now())
 

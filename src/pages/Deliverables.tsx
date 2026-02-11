@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { HiCheckCircle, HiDocument, HiLink, HiStar, HiTrendingUp } from 'react-icons/hi'
 import { Document } from '../types/index.ts'
-import { listAllDocuments } from '../services/documentsAPI'
+import { listAllDocuments, updateSentToClientDate } from '../services/documentsAPI'
 import { getProjectsWithPhases } from '../services/projectsAPI'
 import { API_BASE } from '../services/api'
 
@@ -13,34 +13,12 @@ interface ProjectRef {
 const Deliverables: React.FC = () => {
   const [deliverables, setDeliverables] = useState<Document[]>([])
   const [projects, setProjects] = useState<ProjectRef[]>([])
+  const [projectFilter, setProjectFilter] = useState('all')
+  const [preparedByFilter, setPreparedByFilter] = useState('all')
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const [sentMeta, setSentMeta] = useState<Record<string, { date?: string }>>({})
-  const [sentMetaKey] = useState(() => {
-    try {
-      const uid = localStorage.getItem('userId') || 'guest'
-      return `deliverables.sentMeta.${uid}`
-    } catch {
-      return 'deliverables.sentMeta.guest'
-    }
-  })
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(sentMetaKey)
-      if (!raw) return
-      const parsed = JSON.parse(raw)
-      if (parsed && typeof parsed === 'object') {
-        setSentMeta(parsed)
-      }
-    } catch {}
-  }, [sentMetaKey])
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(sentMetaKey, JSON.stringify(sentMeta))
-    } catch {}
-  }, [sentMeta, sentMetaKey])
+  const [sentDateSaveError, setSentDateSaveError] = useState('')
+  const [savingSentDateById, setSavingSentDateById] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     let isMounted = true
@@ -146,6 +124,7 @@ const Deliverables: React.FC = () => {
       reviewScore: typeof d.reviewScore === 'number' ? Number(d.reviewScore) : undefined,
       externalLink: d.externalLink ? String(d.externalLink) : undefined,
       reviewLink: d.reviewLink ? String(d.reviewLink) : undefined,
+      sentToClientAt: d.sentToClientAt ? String(d.sentToClientAt) : undefined,
     }
   }
 
@@ -189,34 +168,86 @@ const Deliverables: React.FC = () => {
     return parseReviewNote(doc.reviewNote).rating
   }
 
-  const updateSentDate = (docId: string, value: string) => {
-    setSentMeta(prev => {
-      const next = { ...prev }
-      if (!value) {
-        delete next[docId]
-        return next
-      }
-      next[docId] = { date: value }
-      return next
-    })
+  const toDateInputValue = (raw?: string) => {
+    const value = String(raw || '').trim()
+    if (!value) return ''
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+    const ts = Date.parse(value)
+    if (Number.isNaN(ts)) return ''
+    return new Date(ts).toISOString().slice(0, 10)
   }
 
-  const getSentDate = (docId: string) => sentMeta[docId]?.date || ''
+  const updateSentDate = async (docId: string, value: string) => {
+    const current = deliverables.find(doc => doc.id === docId)
+    const previous = current?.sentToClientAt
+    const nextLocalValue = value || undefined
+
+    setSentDateSaveError('')
+    setDeliverables(prev => prev.map(doc => (doc.id === docId ? { ...doc, sentToClientAt: nextLocalValue } : doc)))
+    setSavingSentDateById(prev => ({ ...prev, [docId]: true }))
+
+    try {
+      const updated = await updateSentToClientDate(docId, value || null)
+      const normalized = mapApiDocToUi(updated)
+      setDeliverables(prev =>
+        prev.map(doc => (doc.id === docId ? { ...doc, sentToClientAt: normalized.sentToClientAt } : doc)),
+      )
+    } catch {
+      setDeliverables(prev => prev.map(doc => (doc.id === docId ? { ...doc, sentToClientAt: previous } : doc)))
+      setSentDateSaveError('Unable to save "Date Sent to Client". Please try again.')
+    } finally {
+      setSavingSentDateById(prev => {
+        const next = { ...prev }
+        delete next[docId]
+        return next
+      })
+    }
+  }
+
+  const getSentDate = (doc: Document) => toDateInputValue(doc.sentToClientAt)
 
   const approvedDeliverables = useMemo(
     () => deliverables.filter(doc => String(doc.status || '').toLowerCase() === 'approved'),
     [deliverables],
   )
 
+  const projectOptions = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const doc of approvedDeliverables) {
+      if (!doc.projectId) {
+        seen.set('__unknown__', 'Unknown Project')
+        continue
+      }
+      const project = projects.find(item => item.id === doc.projectId)
+      seen.set(doc.projectId, project?.name || 'Unknown Project')
+    }
+    return [...seen.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [approvedDeliverables, projects])
+
+  const preparedByOptions = useMemo(() => {
+    return [...new Set(approvedDeliverables.map(doc => String(doc.uploadedBy || '').trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b))
+  }, [approvedDeliverables])
+
+  const filteredDeliverables = useMemo(() => {
+    return approvedDeliverables.filter(doc => {
+      const matchesProject =
+        projectFilter === 'all' ||
+        (projectFilter === '__unknown__' ? !doc.projectId : doc.projectId === projectFilter)
+      const matchesPreparedBy = preparedByFilter === 'all' || doc.uploadedBy === preparedByFilter
+      return matchesProject && matchesPreparedBy
+    })
+  }, [approvedDeliverables, projectFilter, preparedByFilter])
+
   const sortedDeliverables = useMemo(() => {
-    return [...approvedDeliverables].sort((a, b) => {
-      const aManual = sentMeta[a.id]?.date || ''
-      const bManual = sentMeta[b.id]?.date || ''
-      const aTs = Date.parse(aManual || a.uploadedAt || '')
-      const bTs = Date.parse(bManual || b.uploadedAt || '')
+    return [...filteredDeliverables].sort((a, b) => {
+      const aTs = Date.parse(String(a.sentToClientAt || a.uploadedAt || ''))
+      const bTs = Date.parse(String(b.sentToClientAt || b.uploadedAt || ''))
       return (Number.isNaN(bTs) ? 0 : bTs) - (Number.isNaN(aTs) ? 0 : aTs)
     })
-  }, [approvedDeliverables, sentMeta])
+  }, [filteredDeliverables])
 
   const statCards = useMemo(() => {
     if (loading) {
@@ -258,6 +289,11 @@ const Deliverables: React.FC = () => {
           {loadError}
         </div>
       )}
+      {sentDateSaveError && (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {sentDateSaveError}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {statCards.map(card => {
@@ -292,6 +328,57 @@ const Deliverables: React.FC = () => {
           </div>
         </div>
 
+        <div className="mt-4 flex flex-wrap items-end gap-3">
+          <label className="w-full space-y-1 sm:w-[220px] md:w-[240px]">
+            <span className="text-[11px] uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+              Project
+            </span>
+            <select
+              value={projectFilter}
+              onChange={(event) => setProjectFilter(event.target.value)}
+              className="w-full rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-200/60 dark:border-white/10 dark:bg-black/40 dark:text-slate-200 dark:focus:border-primary-300 dark:focus:ring-primary-500/30"
+            >
+              <option value="all">All projects</option>
+              {projectOptions.map(option => (
+                <option key={option.id} value={option.id}>
+                  {option.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="w-full space-y-1 sm:w-[220px] md:w-[240px]">
+            <span className="text-[11px] uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+              Prepared by
+            </span>
+            <select
+              value={preparedByFilter}
+              onChange={(event) => setPreparedByFilter(event.target.value)}
+              className="w-full rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-200/60 dark:border-white/10 dark:bg-black/40 dark:text-slate-200 dark:focus:border-primary-300 dark:focus:ring-primary-500/30"
+            >
+              <option value="all">All members</option>
+              {preparedByOptions.map(name => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="flex items-end">
+            <button
+              type="button"
+              onClick={() => {
+                setProjectFilter('all')
+                setPreparedByFilter('all')
+              }}
+              className="h-[42px] rounded-xl border border-slate-200/80 px-4 text-sm font-medium text-slate-600 transition hover:bg-slate-100/70 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+
         <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200/70 dark:border-white/10">
           <table className="min-w-full text-left text-sm">
             <thead className="bg-slate-50 dark:bg-black/40 text-[11px] uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
@@ -316,7 +403,7 @@ const Deliverables: React.FC = () => {
               ) : sortedDeliverables.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-5 py-10 text-center text-sm text-slate-500 dark:text-slate-400">
-                    No approved deliverables yet.
+                    No deliverables match the selected filters.
                   </td>
                 </tr>
               ) : (
@@ -325,8 +412,9 @@ const Deliverables: React.FC = () => {
                   const fileLabel = doc.externalLink ? 'Open link' : displayFileName(doc.fileName)
                   const rating = Math.max(0, Math.min(5, getRating(doc)))
                   const notes = parseReviewNote(doc.reviewNote).notes
-                  const sentDate = getSentDate(doc.id)
+                  const sentDate = getSentDate(doc)
                   const isSent = Boolean(sentDate)
+                  const isSaving = Boolean(savingSentDateById[doc.id])
                   return (
                     <tr key={doc.id} className="hover:bg-slate-50/80 dark:hover:bg-black/40">
                       <td className="px-5 py-4">
@@ -371,8 +459,9 @@ const Deliverables: React.FC = () => {
                             {isSent ? (
                               <button
                                 type="button"
+                                disabled={isSaving}
                                 className="text-[11px] text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-                                onClick={() => updateSentDate(doc.id, '')}
+                                onClick={() => { void updateSentDate(doc.id, '') }}
                               >
                                 Clear
                               </button>
@@ -381,9 +470,13 @@ const Deliverables: React.FC = () => {
                           <input
                             type="date"
                             value={sentDate}
-                            onChange={(event) => updateSentDate(doc.id, event.target.value)}
+                            disabled={isSaving}
+                            onChange={(event) => { void updateSentDate(doc.id, event.target.value) }}
                             className="w-[150px] rounded-lg border border-slate-200/80 bg-white px-2 py-1 text-xs text-slate-700 shadow-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-200/60 dark:border-white/10 dark:bg-black/40 dark:text-slate-200 dark:focus:border-primary-300 dark:focus:ring-primary-500/30"
                           />
+                          {isSaving ? (
+                            <span className="text-[11px] text-slate-500 dark:text-slate-400">Saving…</span>
+                          ) : null}
                         </div>
                       </td>
                       <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-200">

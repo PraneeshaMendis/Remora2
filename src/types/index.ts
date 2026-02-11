@@ -90,6 +90,7 @@ export interface Document {
   reviewScore?: number
   externalLink?: string
   reviewLink?: string
+  sentToClientAt?: string
 }
 
 export interface Review {

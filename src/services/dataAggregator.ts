@@ -1,4 +1,6 @@
 import { Task, Project, TimeLog, Comment, Document, User } from '../types/index.ts'
+import { apiGet } from './api'
+import { getProjects } from './projectsAPI'
 
 export interface AggregatedUserData {
   user: User
@@ -22,6 +24,138 @@ export interface AggregatedUserData {
   timeSaved: number
   earlyCompletions: number
   averageTimeSaved: number
+}
+
+const toRounded = (value: number) => Math.round((value + Number.EPSILON) * 10) / 10
+
+const safeIsoString = (value: unknown): string => {
+  const parsed = new Date(String(value || ''))
+  return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString()
+}
+
+const toTimestamp = (value?: string): number | null => {
+  const ts = Date.parse(String(value || ''))
+  return Number.isNaN(ts) ? null : ts
+}
+
+const getInitials = (name: string): string => {
+  const cleaned = String(name || '').trim()
+  if (!cleaned) return 'U'
+  return cleaned
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(part => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+}
+
+const mapProjectStatus = (status?: string): Project['status'] => {
+  const normalized = String(status || '').toUpperCase()
+  switch (normalized) {
+    case 'IN_PROGRESS':
+      return 'in-progress'
+    case 'ON_HOLD':
+      return 'blocked'
+    case 'COMPLETED':
+      return 'completed'
+    case 'CANCELLED':
+      return 'blocked'
+    case 'IN_REVIEW':
+      return 'in-review'
+    case 'PLANNING':
+    default:
+      return 'planning'
+  }
+}
+
+const mapTaskStatus = (status?: string): Task['status'] => {
+  const normalized = String(status || '').toUpperCase()
+  switch (normalized) {
+    case 'IN_PROGRESS':
+      return 'in-progress'
+    case 'ON_HOLD':
+      return 'blocked'
+    case 'COMPLETED':
+      return 'completed'
+    case 'IN_REVIEW':
+      return 'in-review'
+    case 'NOT_STARTED':
+    default:
+      return 'planning'
+  }
+}
+
+const mapTaskPriority = (priority?: string): Task['priority'] => {
+  const normalized = String(priority || '').toUpperCase()
+  switch (normalized) {
+    case 'CRITICAL':
+      return 'critical'
+    case 'HIGH':
+      return 'high'
+    case 'LOW':
+      return 'low'
+    case 'MEDIUM':
+    default:
+      return 'medium'
+  }
+}
+
+const mapDocumentStatus = (status?: string): Document['status'] => {
+  const normalized = String(status || '').toLowerCase()
+  if (normalized === 'approved') return 'approved'
+  if (normalized === 'rejected') return 'rejected'
+  if (normalized === 'needs-changes' || normalized === 'needs_changes') return 'needs-changes'
+  if (normalized === 'in-review' || normalized === 'in_review') return 'in-review'
+  if (normalized === 'pending') return 'pending'
+  return 'draft'
+}
+
+const priorityRank: Record<Task['priority'], number> = {
+  low: 1,
+  medium: 2,
+  high: 3,
+  critical: 4,
+}
+
+const deriveProjectPriority = (tasks: Task[]): Project['priority'] => {
+  if (!tasks.length) return 'medium'
+  return tasks.reduce<Project['priority']>((current, task) => {
+    return priorityRank[task.priority] > priorityRank[current] ? task.priority : current
+  }, 'low')
+}
+
+const deriveProjectDates = (detail: any): { startDate: string; dueDate: string } => {
+  const phases = Array.isArray(detail?.phases) ? detail.phases : []
+  const parseDate = (value: unknown) => {
+    const ts = Date.parse(String(value || ''))
+    return Number.isNaN(ts) ? null : new Date(ts)
+  }
+  let start = parseDate(detail?.startDate)
+  let end = parseDate(detail?.endDate)
+
+  if (!start) {
+    const phaseStarts = phases
+      .map((phase: any) => parseDate(phase?.startDate))
+      .filter(Boolean) as Date[]
+    if (phaseStarts.length) {
+      start = new Date(Math.min(...phaseStarts.map(date => date.getTime())))
+    }
+  }
+
+  if (!end) {
+    const phaseEnds = phases
+      .map((phase: any) => parseDate(phase?.endDate))
+      .filter(Boolean) as Date[]
+    if (phaseEnds.length) {
+      end = new Date(Math.max(...phaseEnds.map(date => date.getTime())))
+    }
+  }
+
+  return {
+    startDate: start ? start.toISOString() : '',
+    dueDate: end ? end.toISOString() : '',
+  }
 }
 
 export class DataAggregator {
@@ -311,6 +445,431 @@ export class DataAggregator {
         version: 1
       }
     ]
+  }
+
+  public async aggregateUserDataFromApi(userId: string, userData?: User): Promise<AggregatedUserData> {
+    const user: User = userData || {
+      id: userId,
+      name: 'Unknown User',
+      email: 'unknown@company.com',
+      role: 'member',
+      department: 'General',
+      avatar: 'U',
+      isActive: true,
+      lastActive: new Date().toISOString(),
+    }
+
+    try {
+      const list = await getProjects().catch(() => [])
+      const projects = Array.isArray(list) ? list : []
+      const userProjectIds = projects
+        .filter((project: any) => {
+          const memberships = Array.isArray(project?.memberships) ? project.memberships : []
+          if (memberships.length > 0) {
+            return memberships.some((membership: any) => {
+              const memberId = String(membership?.user?.id || membership?.userId || '')
+              return memberId === userId
+            })
+          }
+          const teamIds = Array.isArray(project?.team) ? project.team.map((id: any) => String(id)) : []
+          return teamIds.includes(userId)
+        })
+        .map((project: any) => String(project?.id || ''))
+        .filter(Boolean)
+
+      const detailResponses = await Promise.all(
+        userProjectIds.map(async (projectId) => {
+          try {
+            return await apiGet(`/projects/${projectId}`)
+          } catch {
+            return null
+          }
+        })
+      )
+      const validProjectDetails = detailResponses.filter(Boolean) as any[]
+
+      const userProjects: Project[] = []
+      const userTasks: Task[] = []
+      const taskIds = new Set<string>()
+      const taskContextById = new Map<string, { projectId: string; phaseId?: string }>()
+
+      validProjectDetails.forEach((detail: any) => {
+        const projectId = String(detail?.id || '')
+        if (!projectId) return
+
+        const phases = Array.isArray(detail?.phases) ? detail.phases : []
+        const memberships = Array.isArray(detail?.memberships) ? detail.memberships : []
+        const teamIds = memberships
+          .map((membership: any) => String(membership?.user?.id || membership?.userId || ''))
+          .filter(Boolean)
+
+        const allProjectTasks: Task[] = []
+        const mappedPhases = phases.map((phase: any) => {
+          const phaseId = String(phase?.id || '')
+          const phaseTasks = Array.isArray(phase?.tasks) ? phase.tasks : []
+          const mappedTasksForPhase: Task[] = phaseTasks.map((task: any) => {
+            const mappedStatus = mapTaskStatus(task?.status)
+            const assignees = Array.isArray(task?.assignees) ? task.assignees : []
+            const assigneeIds = assignees
+              .map((assignee: any) => String(assignee?.user?.id || assignee?.userId || ''))
+              .filter(Boolean)
+
+            const createdAt = safeIsoString(task?.createdAt) || new Date().toISOString()
+            const updatedAt = safeIsoString(task?.updatedAt) || createdAt
+            const dueDate = safeIsoString(task?.dueDate)
+            const completedAt = safeIsoString(task?.completedAt)
+            const taskId = String(task?.id || '')
+
+            if (taskId) {
+              taskIds.add(taskId)
+              taskContextById.set(taskId, { projectId, phaseId: phaseId || undefined })
+            }
+
+            const mappedTask: Task = {
+              id: taskId,
+              title: String(task?.title || ''),
+              description: String(task?.description || ''),
+              status: mappedStatus,
+              priority: mapTaskPriority(task?.priority),
+              dueDate,
+              projectId,
+              phaseId: phaseId || undefined,
+              assignees: assigneeIds,
+              assignee: assigneeIds[0],
+              isDone: mappedStatus === 'completed' || mappedStatus === 'done',
+              createdAt,
+              updatedAt,
+              completedAt: completedAt || undefined,
+              progress: mappedStatus === 'completed' || mappedStatus === 'done'
+                ? 100
+                : mappedStatus === 'in-progress'
+                  ? 50
+                  : 0,
+              createdBy: String(task?.createdById || task?.createdBy || ''),
+            }
+
+            allProjectTasks.push(mappedTask)
+            if (mappedTask.assignees.includes(userId) || mappedTask.assignee === userId) {
+              userTasks.push(mappedTask)
+            }
+
+            return mappedTask
+          })
+
+          const completedInPhase = mappedTasksForPhase.filter(task => task.status === 'completed' || task.status === 'done').length
+          const hasInProgress = mappedTasksForPhase.some(task => task.status === 'in-progress')
+          const phaseStatus = mappedTasksForPhase.length === 0
+            ? 'pending'
+            : completedInPhase === mappedTasksForPhase.length
+              ? 'completed'
+              : hasInProgress
+                ? 'in-progress'
+                : 'pending'
+
+          return {
+            id: phaseId,
+            name: String(phase?.name || ''),
+            description: String(phase?.description || ''),
+            status: phaseStatus as 'pending' | 'in-progress' | 'completed',
+            startDate: safeIsoString(phase?.startDate) || '',
+            dueDate: safeIsoString(phase?.endDate) || '',
+            projectId,
+          }
+        })
+
+        const projectDates = deriveProjectDates(detail)
+        const allocatedHours = Number(detail?.allocatedHours || 0)
+        const loggedHours = Number(detail?.usedHours ?? detail?.loggedHours ?? 0)
+        const remainingHours = Number(detail?.leftHours ?? Math.max(allocatedHours - loggedHours, 0))
+
+        userProjects.push({
+          id: projectId,
+          name: String(detail?.title || detail?.name || 'Untitled Project'),
+          description: String(detail?.description || ''),
+          status: mapProjectStatus(detail?.status),
+          progress: Number(detail?.progress || 0),
+          startDate: projectDates.startDate,
+          dueDate: projectDates.dueDate,
+          team: teamIds,
+          tags: [],
+          priority: deriveProjectPriority(allProjectTasks),
+          phases: mappedPhases,
+          tasks: [],
+          members: [],
+          allocatedHours,
+          loggedHours: toRounded(loggedHours),
+          remainingHours: toRounded(remainingHours),
+        })
+      })
+
+      const uniqueTaskIds = Array.from(taskIds)
+      const [logsByTask, commentsByTask, sentDocsRaw, inboxDocsRaw] = await Promise.all([
+        Promise.all(
+          uniqueTaskIds.map(async taskId => {
+            try {
+              const logs = await apiGet(`/timelogs/tasks/${taskId}/timelogs`)
+              return Array.isArray(logs) ? logs : []
+            } catch {
+              return []
+            }
+          })
+        ),
+        Promise.all(
+          uniqueTaskIds.map(async taskId => {
+            try {
+              const comments = await apiGet(`/tasks/${taskId}/comments`)
+              return Array.isArray(comments) ? comments : []
+            } catch {
+              return []
+            }
+          })
+        ),
+        apiGet('/api/documents/sent').catch(() => []),
+        apiGet('/api/documents/inbox').catch(() => []),
+      ])
+
+      const userTimeLogs: TimeLog[] = []
+      logsByTask.forEach((taskLogs, index) => {
+        const fallbackTaskId = uniqueTaskIds[index] || ''
+        const taskLogsList = Array.isArray(taskLogs) ? taskLogs : []
+        taskLogsList.forEach((log: any) => {
+          const ownerId = String(log?.userId || log?.user?.id || '')
+          if (ownerId !== userId) return
+          const taskId = String(log?.taskId || fallbackTaskId)
+          const context = taskContextById.get(taskId)
+          const startedAt = safeIsoString(log?.startedAt || log?.loggedAt || log?.createdAt) || new Date().toISOString()
+          const hours = Number(log?.durationMins || 0) > 0
+            ? Number(log.durationMins) / 60
+            : Number(log?.hours || 0)
+
+          userTimeLogs.push({
+            id: String(log?.id || `${taskId}-${userTimeLogs.length + 1}`),
+            userId,
+            userName: String(log?.userName || log?.user?.name || user.name || 'Unknown'),
+            projectId: context?.projectId || '',
+            taskId,
+            phaseId: context?.phaseId || '',
+            hours: toRounded(hours),
+            description: String(log?.description || ''),
+            loggedAt: startedAt,
+            createdAt: safeIsoString(log?.createdAt) || startedAt,
+            attachmentUrl: log?.attachment?.filePath ? String(log.attachment.filePath) : undefined,
+            attachmentFileName: log?.attachment?.filePath
+              ? String(log.attachment.filePath).split('/').pop()
+              : undefined,
+          })
+        })
+      })
+
+      const userComments: Comment[] = []
+      commentsByTask.forEach((taskComments, index) => {
+        const taskId = uniqueTaskIds[index] || ''
+        const context = taskContextById.get(taskId)
+        const list = Array.isArray(taskComments) ? taskComments : []
+
+        const pushComment = (entry: any) => {
+          const authorId = String(entry?.author?.id || '')
+          if (authorId !== userId) return
+          const authorName = String(entry?.author?.name || user.name || 'Unknown')
+          userComments.push({
+            id: String(entry?.id || `${taskId}-${userComments.length + 1}`),
+            taskId,
+            content: String(entry?.content || ''),
+            author: {
+              id: authorId,
+              name: authorName,
+              email: String(entry?.author?.email || user.email || ''),
+              avatar: getInitials(authorName),
+            },
+            projectId: context?.projectId,
+            phaseId: context?.phaseId,
+            createdAt: safeIsoString(entry?.createdAt) || new Date().toISOString(),
+            replies: [],
+          })
+        }
+
+        list.forEach((comment: any) => {
+          pushComment(comment)
+          const replies = Array.isArray(comment?.replies) ? comment.replies : []
+          replies.forEach((reply: any) => pushComment(reply))
+        })
+      })
+
+      const userDocuments = this.mapApiDocuments(Array.isArray(sentDocsRaw) ? sentDocsRaw : [], userId)
+      const reviewedDocuments = this
+        .mapApiDocuments(Array.isArray(inboxDocsRaw) ? inboxDocsRaw : [], userId)
+        .filter((doc) => {
+          return Boolean(doc.reviewedAt) || ['approved', 'rejected', 'needs-changes'].includes(doc.status)
+        })
+
+      return this.buildAggregatedMetrics({
+        user,
+        tasks: userTasks,
+        projects: userProjects,
+        timeLogs: userTimeLogs,
+        comments: userComments,
+        documents: userDocuments,
+        reviewedDocuments,
+      })
+    } catch (error) {
+      console.error('Error loading profile data from API:', error)
+      return this.aggregateUserData(userId, userData)
+    }
+  }
+
+  private mapApiDocuments(items: any[], fallbackUserId: string): Document[] {
+    return items.map((item: any, index: number) => {
+      const reviewerId = item?.reviewer?.id ? String(item.reviewer.id) : (item?.reviewerId ? String(item.reviewerId) : undefined)
+      const uploadedBy = String(item?.createdBy?.id || item?.createdById || item?.uploadedBy || fallbackUserId)
+      const submittedAt = safeIsoString(item?.createdAt || item?.uploadedAt) || new Date().toISOString()
+
+      return {
+        id: String(item?.id || `doc-${index + 1}`),
+        name: String(item?.name || item?.fileName || 'Untitled Document'),
+        projectId: String(item?.projectId || ''),
+        phaseId: item?.phaseId ? String(item.phaseId) : undefined,
+        taskId: item?.taskId ? String(item.taskId) : undefined,
+        reviewerId,
+        reviewerRole: String(item?.reviewerRole || item?.reviewer?.role || ''),
+        uploadedBy,
+        uploadedByRole: String(item?.createdByRole || item?.uploadedByRole || ''),
+        sentTo: reviewerId ? [reviewerId] : [],
+        dateSubmitted: submittedAt,
+        status: mapDocumentStatus(item?.status),
+        fileName: String(item?.name || item?.fileName || 'document'),
+        fileSize: Number(item?.fileSize || 0),
+        fileType: String(item?.fileType || 'file'),
+        type: String(item?.fileType || ''),
+        version: Number(item?.version || 1),
+        uploadedAt: submittedAt,
+        reviewedAt: safeIsoString(item?.reviewedAt) || undefined,
+        reviewNote: String(item?.reviewComment || item?.reviewNote || ''),
+        reviewScore: typeof item?.reviewScore === 'number' ? Number(item.reviewScore) : undefined,
+        externalLink: item?.externalLink ? String(item.externalLink) : undefined,
+        reviewLink: item?.reviewLink ? String(item.reviewLink) : undefined,
+      }
+    })
+  }
+
+  private buildAggregatedMetrics(input: {
+    user: User
+    tasks: Task[]
+    projects: Project[]
+    timeLogs: TimeLog[]
+    comments: Comment[]
+    documents: Document[]
+    reviewedDocuments: Document[]
+  }): AggregatedUserData {
+    const { user, tasks, projects, timeLogs, comments, documents, reviewedDocuments } = input
+    const now = new Date()
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+
+    const totalHoursThisMonth = toRounded(
+      timeLogs
+        .filter(log => {
+          const ts = toTimestamp(log.loggedAt || log.createdAt)
+          return ts !== null && ts >= thisMonthStart.getTime()
+        })
+        .reduce((sum, log) => sum + Number(log.hours || 0), 0)
+    )
+
+    const totalHoursAllTime = toRounded(
+      timeLogs.reduce((sum, log) => sum + Number(log.hours || 0), 0)
+    )
+
+    const projectsInvolved = projects.length
+    const phasesContributed = new Set(tasks.map(task => task.phaseId).filter(Boolean)).size
+
+    const weeksInMonth = Math.max(
+      1,
+      Math.ceil((now.getTime() - thisMonthStart.getTime()) / (1000 * 60 * 60 * 24 * 7))
+    )
+    const averageHoursPerWeek = toRounded(totalHoursThisMonth / weeksInMonth)
+
+    const completedTasks = tasks.filter(task => task.status === 'completed' || task.status === 'done')
+    const onTimeTasks = completedTasks.filter(task => {
+      const dueTs = toTimestamp(task.dueDate)
+      const completedTs = toTimestamp(task.completedAt || task.updatedAt)
+      return dueTs !== null && completedTs !== null && completedTs <= dueTs
+    }).length
+
+    const onTimeContribution = completedTasks.length > 0
+      ? toRounded((onTimeTasks / completedTasks.length) * 100)
+      : 0
+    const delayedContribution = completedTasks.length > 0
+      ? toRounded(((completedTasks.length - onTimeTasks) / completedTasks.length) * 100)
+      : 0
+
+    const overdueTasksCount = tasks.filter(task => {
+      const dueTs = toTimestamp(task.dueDate)
+      const isCompleted = task.status === 'completed' || task.status === 'done'
+      return dueTs !== null && !isCompleted && dueTs < Date.now()
+    }).length
+
+    const commentsAdded = comments.length
+    const commentsPerWeek = toRounded(commentsAdded / weeksInMonth)
+
+    const documentsShared = documents.length
+    const documentsReviewed = reviewedDocuments.length
+
+    const completedProjects = projects.filter(project => project.status === 'completed')
+    const projectHoursById = new Map<string, number>()
+    timeLogs.forEach(log => {
+      const projectId = String(log.projectId || '')
+      if (!projectId) return
+      const existing = projectHoursById.get(projectId) || 0
+      projectHoursById.set(projectId, existing + Number(log.hours || 0))
+    })
+
+    const timeSaved = toRounded(
+      completedProjects.reduce((total, project) => {
+        const usedHours = projectHoursById.get(project.id) || 0
+        if (project.allocatedHours <= 0) return total
+        return total + Math.max(0, Number(project.allocatedHours) - usedHours)
+      }, 0)
+    )
+
+    const latestCompletionByProject = new Map<string, number>()
+    tasks
+      .filter(task => task.status === 'completed' || task.status === 'done')
+      .forEach(task => {
+        const completionTs = toTimestamp(task.completedAt || task.updatedAt)
+        if (completionTs === null) return
+        const current = latestCompletionByProject.get(task.projectId) || 0
+        if (completionTs > current) latestCompletionByProject.set(task.projectId, completionTs)
+      })
+
+    const earlyCompletions = completedProjects.filter(project => {
+      const dueTs = toTimestamp(project.dueDate)
+      const completionTs = latestCompletionByProject.get(project.id)
+      return dueTs !== null && typeof completionTs === 'number' && completionTs <= dueTs
+    }).length
+
+    const averageTimeSaved = earlyCompletions > 0 ? toRounded(timeSaved / earlyCompletions) : 0
+
+    return {
+      user,
+      tasks,
+      projects,
+      timeLogs,
+      comments,
+      documents,
+      totalHoursThisMonth,
+      totalHoursAllTime,
+      projectsInvolved,
+      phasesContributed,
+      averageHoursPerWeek,
+      onTimeContribution,
+      delayedContribution,
+      overdueTasksCount,
+      commentsAdded,
+      commentsPerWeek,
+      documentsShared,
+      documentsReviewed,
+      timeSaved,
+      earlyCompletions,
+      averageTimeSaved,
+    }
   }
 
   public aggregateUserData(userId: string, userData?: User): AggregatedUserData {

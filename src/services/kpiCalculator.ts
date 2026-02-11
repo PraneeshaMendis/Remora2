@@ -118,29 +118,19 @@ export class KPICalculator {
 
   // Calculate Quality Score (20% weight)
   private calculateQuality(): number {
-    const { documents, comments } = this.userData
+    const { documents } = this.userData
     const filteredDocuments = this.filterByTimeWindow(documents)
 
     if (filteredDocuments.length === 0) return 0
 
-    // First-pass approval rate
-    const approvedDocs = filteredDocuments.filter(doc => doc.status === 'approved').length
-    const approvalRate = (approvedDocs / filteredDocuments.length) * 100
+    const ratings = filteredDocuments
+      .map(doc => this.resolveDocumentRating(doc))
+      .filter((rating): rating is number => typeof rating === 'number' && Number.isFinite(rating))
 
-    // Document turnaround time
-    const avgTurnaroundTime = filteredDocuments.reduce((acc, doc) => {
-      if (!doc.uploadedAt || !doc.reviewedAt) return acc
-      const uploaded = new Date(doc.uploadedAt)
-      const reviewed = new Date(doc.reviewedAt)
-      return acc + (reviewed.getTime() - uploaded.getTime()) / (1000 * 60 * 60 * 24) // days
-    }, 0) / Math.max(1, filteredDocuments.length)
+    if (ratings.length === 0) return 0
 
-    const turnaroundScore = Math.max(0, 100 - avgTurnaroundTime * 10) // Penalty for slow turnaround
-
-    // Review participation
-    const reviewParticipation = this.calculateReviewParticipation(comments)
-
-    return (approvalRate * 0.5 + turnaroundScore * 0.3 + reviewParticipation * 0.2)
+    const averageRating = ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length
+    return Math.min(100, Math.max(0, (averageRating / 5) * 100))
   }
 
   // Calculate Initiative Score (10% weight)
@@ -254,14 +244,26 @@ export class KPICalculator {
     return Math.min(100, (actualLogs / expectedLogs) * 100)
   }
 
-  private calculateReviewParticipation(comments: Comment[]): number {
-    const reviewComments = comments.filter(comment => 
-      comment.content.toLowerCase().includes('review') || 
-      comment.content.toLowerCase().includes('approve') ||
-      comment.content.toLowerCase().includes('feedback')
-    ).length
+  private parseRatingFromReviewNote(note?: string): number | null {
+    const raw = String(note || '').trim()
+    if (!raw) return null
+    const match = raw.match(/rating:\s*(\d(?:\.\d+)?)\s*\/\s*5/i)
+    if (!match) return null
+    const rating = Number(match[1])
+    if (!Number.isFinite(rating)) return null
+    return Math.min(5, Math.max(0, rating))
+  }
 
-    return Math.min(100, reviewComments * 10)
+  private resolveDocumentRating(doc: Document): number | null {
+    if (typeof doc.reviewScore === 'number' && Number.isFinite(doc.reviewScore)) {
+      return Math.min(5, Math.max(0, doc.reviewScore))
+    }
+    return this.parseRatingFromReviewNote(doc.reviewNote)
+  }
+
+  private hasDocumentQualityRatings(): boolean {
+    const filteredDocuments = this.filterByTimeWindow(this.userData.documents)
+    return filteredDocuments.some(doc => this.resolveDocumentRating(doc) !== null)
   }
 
   private calculateGrade(overallScore: number): string {
@@ -287,13 +289,14 @@ export class KPICalculator {
 
     // Weighted average based on role
     const weights = this.getRoleWeights()
-    const overall = 
+    const weightedOverall =
       delivery * weights.delivery +
       reliability * weights.reliability +
       collaboration * weights.collaboration +
       quality * weights.quality +
       initiative * weights.initiative +
       efficiency * weights.efficiency
+    const overall = this.hasDocumentQualityRatings() ? quality : weightedOverall
 
     return {
       delivery: Math.round(delivery * 10) / 10,

@@ -85,3 +85,13 @@ export async function reviewDocument(
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }
+
+export async function updateSentToClientDate(id: string, sentToClientAt: string | null) {
+  const res = await fetch(`${API_BASE}/api/documents/${id}/sent-date?_ts=${Date.now()}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ sentToClientAt }),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}

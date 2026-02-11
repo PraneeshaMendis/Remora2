@@ -62,6 +62,7 @@ function mapDocument(d: any) {
     reviewLink: d.reviewLink || null,
     reviewScore: typeof d.reviewScore === 'number' ? d.reviewScore : null,
     reviewedAt: d.reviewedAt || null,
+    sentToClientAt: d.sentToClientAt || null,
     version: d.version || 1,
     createdAt: d.createdAt,
   }
@@ -272,6 +273,56 @@ router.get('/:id', async (req: Request, res: Response) => {
   })
   if (!d) return res.status(404).json({ error: 'Not found' })
   res.json(mapDocument(d))
+})
+
+// Save/clear "Date Sent to Client" on a deliverable
+router.patch('/:id/sent-date', async (req: Request, res: Response) => {
+  const userId = (req as any).userId as string | null
+  if (!userId) return res.status(401).json({ error: 'Login required' })
+
+  const schema = z.object({
+    sentToClientAt: z.union([z.string(), z.null()]),
+  })
+  const parsed = schema.safeParse(req.body)
+  if (!parsed.success) return res.status(400).json(parsed.error.flatten())
+
+  const existing = await db.document.findUnique({
+    where: { id: req.params.id },
+    select: { id: true, createdById: true, reviewerId: true },
+  })
+  if (!existing) return res.status(404).json({ error: 'Not found' })
+
+  const actor = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { role: { select: { name: true } } },
+  })
+  const roleName = String(actor?.role?.name || '').toLowerCase()
+  const canManageAll = ['director', 'manager', 'lead', 'admin'].some(role => roleName.includes(role))
+  const canEditOwn =
+    String(existing.createdById || '') === String(userId) ||
+    String(existing.reviewerId || '') === String(userId)
+
+  if (!canManageAll && !canEditOwn) {
+    return res.status(403).json({ error: 'Not allowed to update this document' })
+  }
+
+  const raw = typeof parsed.data.sentToClientAt === 'string' ? parsed.data.sentToClientAt.trim() : parsed.data.sentToClientAt
+  let sentToClientAt: Date | null = null
+  if (raw) {
+    const normalized = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T00:00:00.000Z` : raw
+    const parsedDate = new Date(normalized)
+    if (Number.isNaN(parsedDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid sentToClientAt date' })
+    }
+    sentToClientAt = parsedDate
+  }
+
+  const updated = await db.document.update({
+    where: { id: existing.id },
+    data: { sentToClientAt },
+    include: { reviewer: { include: { role: true } }, createdBy: { include: { role: true } }, project: true, phase: true, task: true },
+  })
+  res.json(mapDocument(updated))
 })
 
 // Reviewer updates status (approve / reject / needs-changes / in-review)

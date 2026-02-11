@@ -1,4 +1,5 @@
 {
+  "$schema": "./.vscode/schemas/package.schema.json",
   "name": "testvite",
   "version": "1.0.0",
   "type": "module",

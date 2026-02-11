@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../contexts/AuthContext.tsx'
 import { 
   HiInformationCircle, 
@@ -50,6 +50,38 @@ interface TimeAllocation {
   color: string
 }
 
+const TIME_ALLOCATION_COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-emerald-500', 'bg-pink-500']
+
+const roundValue = (value: number) => Math.round((value + Number.EPSILON) * 10) / 10
+
+const toTimestamp = (value?: string) => {
+  const ts = Date.parse(String(value || ''))
+  return Number.isNaN(ts) ? null : ts
+}
+
+const toDateKey = (value?: string) => {
+  const ts = toTimestamp(value)
+  if (ts === null) return null
+  return new Date(ts).toISOString().slice(0, 10)
+}
+
+const formatProjectDuration = (startDate?: string, dueDate?: string) => {
+  const startTs = toTimestamp(startDate)
+  const endTs = toTimestamp(dueDate)
+  if (startTs !== null && endTs !== null) {
+    const start = new Date(startTs).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    const end = new Date(endTs).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    return `${start} - ${end}`
+  }
+  if (startTs !== null) {
+    return `From ${new Date(startTs).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+  }
+  if (endTs !== null) {
+    return `Until ${new Date(endTs).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+  }
+  return 'Date not set'
+}
+
 const Profile: React.FC = () => {
   const { user } = useAuth()
   const [isEditing, setIsEditing] = useState(false)
@@ -66,16 +98,20 @@ const Profile: React.FC = () => {
 
   // Load and calculate real data
   useEffect(() => {
-    const loadUserData = async () => {
-      if (!user?.id) return
+    let active = true
 
-      setIsLoading(true)
+    const loadUserData = async () => {
+      if (!user?.id) {
+        if (active) setIsLoading(false)
+        return
+      }
+
+      if (active) setIsLoading(true)
       try {
-        // Get aggregated data for the user
-        const userData = dataAggregator.aggregateUserData(user.id, user)
+        const userData = await dataAggregator.aggregateUserDataFromApi(user.id, user)
+        if (!active) return
         setAggregatedData(userData)
 
-        // Calculate KPI scores
         const calculator = createKPICalculator(
           userData.user,
           userData.tasks,
@@ -85,213 +121,353 @@ const Profile: React.FC = () => {
           userData.documents,
           timeWindow
         )
-        
+
         const calculatedKPI = calculator.calculateKPI()
-        setKpiData(calculatedKPI)
+        if (active) setKpiData(calculatedKPI)
       } catch (error) {
         console.error('Error loading user data:', error)
+        if (!active) return
+        const fallbackData = dataAggregator.aggregateUserData(user.id, user)
+        setAggregatedData(fallbackData)
+        const fallbackCalculator = createKPICalculator(
+          fallbackData.user,
+          fallbackData.tasks,
+          fallbackData.projects,
+          fallbackData.timeLogs,
+          fallbackData.comments,
+          fallbackData.documents,
+          timeWindow
+        )
+        setKpiData(fallbackCalculator.calculateKPI())
       } finally {
-        setIsLoading(false)
+        if (active) setIsLoading(false)
       }
     }
 
     loadUserData()
+    return () => {
+      active = false
+    }
   }, [user?.id, timeWindow])
 
-  // Use real data when available, fallback to mock data
+  const projectHoursById = useMemo(() => {
+    const map = new Map<string, number>()
+    if (!aggregatedData) return map
+    aggregatedData.timeLogs.forEach(log => {
+      const projectId = String(log.projectId || '')
+      if (!projectId) return
+      map.set(projectId, (map.get(projectId) || 0) + Number(log.hours || 0))
+    })
+    return map
+  }, [aggregatedData])
+
   const profileData = {
-    name: aggregatedData?.user.name || user?.name || 'John Doe',
-    email: aggregatedData?.user.email || user?.email || 'john.doe@company.com',
-    role: aggregatedData?.user.role || user?.role || 'Manager',
-    department: aggregatedData?.user.department || user?.department || 'Engineering',
+    name: aggregatedData?.user.name || user?.name || 'Profile',
+    email: aggregatedData?.user.email || user?.email || '',
+    role: aggregatedData?.user.role || user?.role || 'member',
+    department: aggregatedData?.user.department || user?.department || '',
     profilePicture: null,
-    currentProjects: aggregatedData?.projects.map(project => ({
+    currentProjects: (aggregatedData?.projects || []).map(project => ({
       id: project.id,
       name: project.name,
       link: `/projects/${project.id}`
-    })) || [
-      { id: '1', name: 'Mobile App Redesign', link: '/projects/1' },
-      { id: '2', name: 'Backend API Development', link: '/projects/2' },
-      { id: '3', name: 'Security Audit', link: '/projects/3' }
-    ],
-    totalHoursThisMonth: aggregatedData?.totalHoursThisMonth || 168,
-    totalHoursAllTime: aggregatedData?.totalHoursAllTime || 2048,
-    performanceScore: kpiData?.overall || 87.5
+    })),
+    totalHoursThisMonth: aggregatedData?.totalHoursThisMonth ?? 0,
+    totalHoursAllTime: aggregatedData?.totalHoursAllTime ?? 0,
+    performanceScore: kpiData?.overall ?? 0
   }
 
-  // Use calculated KPI data when available, fallback to mock data
   const displayKpiData: KPIData = kpiData || {
-    delivery: 82.3,
-    reliability: 89.1,
-    collaboration: 76.8,
-    quality: 84.2,
-    initiative: 91.5,
-    efficiency: 88.7,
-    overall: 85.2,
-    grade: 'B+'
+    delivery: 0,
+    reliability: 0,
+    collaboration: 0,
+    quality: 0,
+    initiative: 0,
+    efficiency: 0,
+    overall: 0,
+    grade: 'N/A'
   }
+
+  const contributionShare = useMemo(() => {
+    const totalHours = aggregatedData?.totalHoursAllTime || 0
+    if (!aggregatedData || totalHours <= 0) return []
+    return aggregatedData.projects
+      .map(project => {
+        const hours = projectHoursById.get(project.id) || 0
+        return {
+          project: project.name,
+          percentage: Math.min(100, Math.round((hours / totalHours) * 100)),
+        }
+      })
+      .filter(item => item.percentage > 0)
+      .sort((a, b) => b.percentage - a.percentage)
+  }, [aggregatedData, projectHoursById])
 
   const contributionData = {
-    projectsInvolved: aggregatedData?.projectsInvolved || 12,
-    phasesContributed: aggregatedData?.phasesContributed || 8,
-    totalHoursWorked: aggregatedData?.totalHoursAllTime || 2048,
-    averageHoursPerWeek: aggregatedData?.averageHoursPerWeek || 42.5,
-    contributionShare: aggregatedData?.projects.map(project => ({
-      project: project.name,
-      percentage: Math.round((project.loggedHours / aggregatedData.totalHoursAllTime) * 100)
-    })) || [
-      { project: 'Mobile App Redesign', percentage: 35 },
-      { project: 'Backend API', percentage: 28 },
-      { project: 'Security Audit', percentage: 22 },
-      { project: 'Other Projects', percentage: 15 }
-    ]
+    projectsInvolved: aggregatedData?.projectsInvolved ?? 0,
+    phasesContributed: aggregatedData?.phasesContributed ?? 0,
+    totalHoursWorked: aggregatedData?.totalHoursAllTime ?? 0,
+    averageHoursPerWeek: aggregatedData?.averageHoursPerWeek ?? 0,
+    contributionShare
   }
 
+  const totalTaskCount = aggregatedData?.tasks.length || 0
   const taskPerformance = {
-    onTimeContribution: aggregatedData?.onTimeContribution || 78.5,
-    delayedContribution: aggregatedData?.delayedContribution || 18.2,
-    overdueTasksCount: aggregatedData?.overdueTasksCount || 3,
+    onTimeContribution: aggregatedData?.onTimeContribution ?? 0,
+    delayedContribution: aggregatedData?.delayedContribution ?? 0,
+    overdueTasksCount: aggregatedData?.overdueTasksCount ?? 0,
     performanceBreakdown: [
-      { 
-        status: 'On-time', 
-        count: Math.round((aggregatedData?.onTimeContribution || 78.5) / 100 * (aggregatedData?.tasks.length || 60)),
-        color: 'bg-green-500' 
+      {
+        status: 'On-time',
+        count: Math.round(((aggregatedData?.onTimeContribution ?? 0) / 100) * totalTaskCount),
+        color: 'bg-green-500'
       },
-      { 
-        status: 'Late', 
-        count: Math.round((aggregatedData?.delayedContribution || 18.2) / 100 * (aggregatedData?.tasks.length || 60)),
-        color: 'bg-yellow-500' 
+      {
+        status: 'Late',
+        count: Math.round(((aggregatedData?.delayedContribution ?? 0) / 100) * totalTaskCount),
+        color: 'bg-yellow-500'
       },
-      { 
-        status: 'Overdue', 
-        count: aggregatedData?.overdueTasksCount || 3,
-        color: 'bg-red-500' 
+      {
+        status: 'Overdue',
+        count: aggregatedData?.overdueTasksCount ?? 0,
+        color: 'bg-red-500'
       }
     ]
   }
 
   const collaborationMetrics = {
-    commentsAdded: aggregatedData?.commentsAdded || 156,
-    commentsPerWeek: aggregatedData?.commentsPerWeek || 12.8,
-    documentsShared: aggregatedData?.documentsShared || 23,
-    documentsReviewed: aggregatedData?.documentsReviewed || 18,
-    documentFlow: aggregatedData?.documents.slice(0, 3).map(doc => ({
-      from: aggregatedData.user.name,
-      to: 'Team Member',
-      project: aggregatedData.projects.find(p => p.id === doc.projectId)?.name || 'Project',
-      type: (doc.type || doc.fileType).toUpperCase()
-    })) || [
-      { from: 'Sarah Johnson', to: 'John Doe', project: 'Mobile App', type: 'Design Review' },
-      { from: 'John Doe', to: 'Mike Chen', project: 'Backend API', type: 'Code Review' },
-      { from: 'John Doe', to: 'Emily Davis', project: 'Security Audit', type: 'Security Report' }
-    ]
+    commentsAdded: aggregatedData?.commentsAdded ?? 0,
+    commentsPerWeek: aggregatedData?.commentsPerWeek ?? 0,
+    documentsShared: aggregatedData?.documentsShared ?? 0,
+    documentsReviewed: aggregatedData?.documentsReviewed ?? 0,
+    documentFlow: (aggregatedData?.documents || [])
+      .slice()
+      .sort((a, b) => (toTimestamp(b.uploadedAt) || 0) - (toTimestamp(a.uploadedAt) || 0))
+      .slice(0, 3)
+      .map(doc => ({
+        from: aggregatedData?.user.name || user?.name || 'User',
+        to: doc.reviewerId ? 'Reviewer' : 'Team',
+        project: aggregatedData?.projects.find(p => p.id === doc.projectId)?.name || 'Project',
+        type: (doc.type || doc.fileType || 'Document').toUpperCase()
+      }))
   }
 
   const efficiencyMetrics = {
-    totalAllocatedHours: aggregatedData?.projects.reduce((sum, p) => sum + p.allocatedHours, 0) || 240,
-    totalLoggedHours: aggregatedData?.totalHoursAllTime || 2048,
-    timeSaved: aggregatedData?.timeSaved || 192,
-    earlyCompletions: aggregatedData?.earlyCompletions || 8,
-    averageTimeSaved: aggregatedData?.averageTimeSaved || 12.5,
-    efficiencyBreakdown: aggregatedData?.projects
-      .filter(project => project.status === 'completed') // Only completed projects
+    totalAllocatedHours: aggregatedData?.projects.reduce((sum, p) => sum + p.allocatedHours, 0) ?? 0,
+    totalLoggedHours: aggregatedData?.totalHoursAllTime ?? 0,
+    timeSaved: aggregatedData?.timeSaved ?? 0,
+    earlyCompletions: aggregatedData?.earlyCompletions ?? 0,
+    averageTimeSaved: aggregatedData?.averageTimeSaved ?? 0,
+    efficiencyBreakdown: (aggregatedData?.projects || [])
+      .filter(project => project.status === 'completed')
       .map(project => {
-        const projectTimeLogs = aggregatedData.timeLogs.filter(log => log.projectId === project.id)
-        const loggedHours = projectTimeLogs.reduce((sum, log) => sum + log.hours, 0)
+        const loggedHours = roundValue(projectHoursById.get(project.id) || 0)
         const saved = Math.max(0, project.allocatedHours - loggedHours)
-        const efficiency = project.allocatedHours > 0 ? Math.round((project.allocatedHours / loggedHours) * 100) : 100
-        
+        const efficiency = project.allocatedHours > 0 && loggedHours > 0
+          ? Math.round((project.allocatedHours / loggedHours) * 100)
+          : 100
+
         return {
           project: project.name,
           allocated: project.allocatedHours,
           logged: loggedHours,
           saved: saved,
-          efficiency: efficiency
+          efficiency
         }
-      }) || [
-      { project: 'Mobile App Redesign', allocated: 60, logged: 45, saved: 15, efficiency: 125 },
-      { project: 'Backend API', allocated: 40, logged: 28, saved: 12, efficiency: 130 },
-      { project: 'Security Audit', allocated: 30, logged: 28, saved: 2, efficiency: 107 },
-      { project: 'Other Projects', allocated: 110, logged: 95, saved: 15, efficiency: 116 }
-    ]
+      })
   }
 
-  const projectPerformance: ProjectPerformance[] = [
-    {
-      id: '1',
-      name: 'TECH-2025-008 (Penetration Testing)',
-      duration: 'Jan 15 - Mar 30',
-      hoursLogged: 32,
-      contributionPercent: 28,
-      phasesContributed: '1/2',
-      onTimeContribution: 92,
-      comments: 7,
-      docsUploaded: 3,
-      docsReviewed: 2,
-      status: 'on-time'
-    },
-    {
-      id: '2',
-      name: 'MOBILE-2025-003 (App Redesign)',
-      duration: 'Feb 1 - Apr 15',
-      hoursLogged: 45,
-      contributionPercent: 35,
-      phasesContributed: '2/3',
-      onTimeContribution: 85,
-      comments: 12,
-      docsUploaded: 5,
-      docsReviewed: 3,
-      status: 'on-time'
-    },
-    {
-      id: '3',
-      name: 'API-2025-001 (Backend Development)',
-      duration: 'Dec 1 - Feb 28',
-      hoursLogged: 28,
-      contributionPercent: 22,
-      phasesContributed: '1/1',
-      onTimeContribution: 78,
-      comments: 4,
-      docsUploaded: 2,
-      docsReviewed: 1,
-      status: 'late'
+  const projectPerformance: ProjectPerformance[] = useMemo(() => {
+    if (!aggregatedData) return []
+    const totalHours = aggregatedData.totalHoursAllTime || 0
+    const now = Date.now()
+
+    return aggregatedData.projects
+      .map((project) => {
+        const projectTasks = aggregatedData.tasks.filter(task => task.projectId === project.id)
+        const projectTaskIds = new Set(projectTasks.map(task => task.id))
+        const projectComments = aggregatedData.comments.filter(comment => {
+          return comment.projectId === project.id || projectTaskIds.has(comment.taskId)
+        })
+        const projectDocs = aggregatedData.documents.filter(doc => doc.projectId === project.id)
+        const hoursLogged = roundValue(projectHoursById.get(project.id) || 0)
+        const contributionPercent = totalHours > 0
+          ? Math.min(100, Math.round((hoursLogged / totalHours) * 100))
+          : 0
+        const contributedPhases = new Set(projectTasks.map(task => task.phaseId).filter(Boolean)).size
+        const totalPhases = Math.max(1, project.phases.length || contributedPhases || 1)
+
+        const completedTasks = projectTasks.filter(task => task.status === 'completed' || task.status === 'done')
+        const onTimeCount = completedTasks.filter(task => {
+          const dueTs = toTimestamp(task.dueDate)
+          const completedTs = toTimestamp(task.completedAt || task.updatedAt)
+          return dueTs !== null && completedTs !== null && completedTs <= dueTs
+        }).length
+        const onTimeContribution = completedTasks.length
+          ? Math.round((onTimeCount / completedTasks.length) * 100)
+          : 0
+
+        const hasOverdue = projectTasks.some(task => {
+          const dueTs = toTimestamp(task.dueDate)
+          if (dueTs === null) return false
+          const isCompleted = task.status === 'completed' || task.status === 'done'
+          return !isCompleted && dueTs < now
+        })
+
+        const status: ProjectPerformance['status'] = hasOverdue
+          ? 'overdue'
+          : onTimeContribution >= 80
+            ? 'on-time'
+            : 'late'
+
+        const reviewedDocs = projectDocs.filter(doc => {
+          return Boolean(doc.reviewedAt) || ['approved', 'rejected', 'needs-changes'].includes(doc.status)
+        }).length
+
+        return {
+          id: project.id,
+          name: project.name,
+          duration: formatProjectDuration(project.startDate, project.dueDate),
+          hoursLogged,
+          contributionPercent,
+          phasesContributed: `${contributedPhases}/${totalPhases}`,
+          onTimeContribution,
+          comments: projectComments.length,
+          docsUploaded: projectDocs.length,
+          docsReviewed: reviewedDocs,
+          status,
+        }
+      })
+      .sort((a, b) => b.hoursLogged - a.hoursLogged)
+  }, [aggregatedData, projectHoursById])
+
+  const activityData = useMemo(() => {
+    if (!aggregatedData) {
+      return { daily: [], weekly: [], monthly: [] } as {
+        daily: Array<{ day: string; hours: number; comments: number; docs: number }>
+        weekly: Array<{ week: string; hours: number; comments: number; docs: number }>
+        monthly: Array<{ month: string; hours: number; comments: number; docs: number }>
+      }
     }
-  ]
 
-  const dailyData = [
-    { day: 'Mon', hours: 8, comments: 3, docs: 1 },
-    { day: 'Tue', hours: 7.5, comments: 2, docs: 0 },
-    { day: 'Wed', hours: 6, comments: 5, docs: 2 },
-    { day: 'Thu', hours: 8.5, comments: 1, docs: 1 },
-    { day: 'Fri', hours: 7, comments: 4, docs: 0 },
-    { day: 'Sat', hours: 6.5, comments: 2, docs: 1 },
-    { day: 'Sun', hours: 8, comments: 3, docs: 2 }
-  ]
+    const hoursByDay = new Map<string, number>()
+    const commentsByDay = new Map<string, number>()
+    const docsByDay = new Map<string, number>()
 
-  const weeklyData = [
-    { week: 'Week 1', hours: 32, comments: 12, docs: 2 },
-    { week: 'Week 2', hours: 38, comments: 17, docs: 3 },
-    { week: 'Week 3', hours: 42, comments: 15, docs: 3 },
-    { week: 'Week 4', hours: 36, comments: 21, docs: 6 },
-    { week: 'Week 5', hours: 20, comments: 16, docs: 2 },
-    { week: 'Week 6', hours: 33, comments: 14, docs: 2 },
-    { week: 'Week 7', hours: 38, comments: 18, docs: 3 },
-    { week: 'Week 8', hours: 40, comments: 16, docs: 3 }
-  ]
+    aggregatedData.timeLogs.forEach(log => {
+      const key = toDateKey(log.loggedAt || log.createdAt)
+      if (!key) return
+      hoursByDay.set(key, (hoursByDay.get(key) || 0) + Number(log.hours || 0))
+    })
+    aggregatedData.comments.forEach(comment => {
+      const key = toDateKey(comment.createdAt)
+      if (!key) return
+      commentsByDay.set(key, (commentsByDay.get(key) || 0) + 1)
+    })
+    aggregatedData.documents.forEach(doc => {
+      const key = toDateKey(doc.uploadedAt || doc.dateSubmitted)
+      if (!key) return
+      docsByDay.set(key, (docsByDay.get(key) || 0) + 1)
+    })
 
-  const monthlyData = [
-    { month: 'Jan', hours: 168, comments: 78, docs: 15 },
-    { month: 'Feb', hours: 152, comments: 65, docs: 12 },
-    { month: 'Mar', hours: 176, comments: 82, docs: 18 },
-    { month: 'Apr', hours: 160, comments: 71, docs: 14 }
-  ]
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const daily = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(today)
+      date.setDate(today.getDate() - (6 - index))
+      const key = date.toISOString().slice(0, 10)
+      return {
+        day: date.toLocaleDateString(undefined, { weekday: 'short' }),
+        hours: roundValue(hoursByDay.get(key) || 0),
+        comments: commentsByDay.get(key) || 0,
+        docs: docsByDay.get(key) || 0,
+      }
+    })
 
-  const timeAllocation: TimeAllocation[] = [
-    { project: 'Mobile App Redesign', hours: 45, percentage: 35, color: 'bg-blue-500' },
-    { project: 'Backend API', hours: 36, percentage: 28, color: 'bg-green-500' },
-    { project: 'Security Audit', hours: 28, percentage: 22, color: 'bg-purple-500' },
-    { project: 'Other Projects', hours: 19, percentage: 15, color: 'bg-orange-500' }
-  ]
+    const trailing56 = Array.from({ length: 56 }, (_, index) => {
+      const date = new Date(today)
+      date.setDate(today.getDate() - (55 - index))
+      const key = date.toISOString().slice(0, 10)
+      return {
+        hours: hoursByDay.get(key) || 0,
+        comments: commentsByDay.get(key) || 0,
+        docs: docsByDay.get(key) || 0,
+      }
+    })
+
+    const weekly = Array.from({ length: 8 }, (_, index) => {
+      const chunk = trailing56.slice(index * 7, index * 7 + 7)
+      return {
+        week: `Week ${index + 1}`,
+        hours: roundValue(chunk.reduce((sum, item) => sum + item.hours, 0)),
+        comments: chunk.reduce((sum, item) => sum + item.comments, 0),
+        docs: chunk.reduce((sum, item) => sum + item.docs, 0),
+      }
+    })
+
+    const monthHours = new Map<string, number>()
+    const monthComments = new Map<string, number>()
+    const monthDocs = new Map<string, number>()
+    const getMonthKey = (value?: string) => {
+      const ts = toTimestamp(value)
+      if (ts === null) return null
+      const date = new Date(ts)
+      return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
+    }
+
+    aggregatedData.timeLogs.forEach(log => {
+      const key = getMonthKey(log.loggedAt || log.createdAt)
+      if (!key) return
+      monthHours.set(key, (monthHours.get(key) || 0) + Number(log.hours || 0))
+    })
+    aggregatedData.comments.forEach(comment => {
+      const key = getMonthKey(comment.createdAt)
+      if (!key) return
+      monthComments.set(key, (monthComments.get(key) || 0) + 1)
+    })
+    aggregatedData.documents.forEach(doc => {
+      const key = getMonthKey(doc.uploadedAt || doc.dateSubmitted)
+      if (!key) return
+      monthDocs.set(key, (monthDocs.get(key) || 0) + 1)
+    })
+
+    const monthly = Array.from({ length: 4 }, (_, index) => {
+      const date = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - (3 - index), 1))
+      const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
+      return {
+        month: date.toLocaleDateString(undefined, { month: 'short' }),
+        hours: roundValue(monthHours.get(key) || 0),
+        comments: monthComments.get(key) || 0,
+        docs: monthDocs.get(key) || 0,
+      }
+    })
+
+    return { daily, weekly, monthly }
+  }, [aggregatedData])
+
+  const dailyData = activityData.daily
+  const weeklyData = activityData.weekly
+  const monthlyData = activityData.monthly
+
+  const timeAllocation: TimeAllocation[] = useMemo(() => {
+    if (!aggregatedData) return []
+    const totalHours = aggregatedData.totalHoursAllTime || 0
+    if (totalHours <= 0) return []
+
+    return aggregatedData.projects
+      .map((project, index) => {
+        const hours = roundValue(projectHoursById.get(project.id) || 0)
+        if (hours <= 0) return null
+        return {
+          project: project.name,
+          hours,
+          percentage: Math.min(100, Math.round((hours / totalHours) * 100)),
+          color: TIME_ALLOCATION_COLORS[index % TIME_ALLOCATION_COLORS.length],
+        } as TimeAllocation
+      })
+      .filter((item): item is TimeAllocation => item !== null)
+      .sort((a, b) => b.hours - a.hours)
+  }, [aggregatedData, projectHoursById])
 
   const getGradeColor = (grade: string) => {
     switch (grade.charAt(0)) {
@@ -503,19 +679,23 @@ const Profile: React.FC = () => {
         {/* Current Projects */}
         <div className="border-t border-gray-200 dark:border-white/10 pt-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Current Projects Assigned</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {profileData.currentProjects.map((project) => (
-              <a
-                key={project.id}
-                href={project.link}
-                className="block p-4 border border-gray-200 dark:border-white/10 rounded-xl hover:bg-gray-50 dark:hover:bg-black/40 transition-colors"
-              >
-                <h4 className="font-medium text-gray-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400">
-                  {project.name}
-                </h4>
-              </a>
-            ))}
-          </div>
+          {profileData.currentProjects.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {profileData.currentProjects.map((project) => (
+                <a
+                  key={project.id}
+                  href={project.link}
+                  className="block p-4 border border-gray-200 dark:border-white/10 rounded-xl hover:bg-gray-50 dark:hover:bg-black/40 transition-colors"
+                >
+                  <h4 className="font-medium text-gray-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400">
+                    {project.name}
+                  </h4>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500 dark:text-gray-400">No current project assignments found.</p>
+          )}
         </div>
 
         {/* Hours and Performance */}
@@ -645,26 +825,20 @@ const Profile: React.FC = () => {
                 <div>
                   <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Data Sources</h4>
                   <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
-                    <li>• Tasks: Completion rates, on-time delivery, priority weighting</li>
-                    <li>• Projects: Milestone hit rates, role-based contributions</li>
-                    <li>• Daily Logs: Consistency, depth, attachment rates</li>
-                    <li>• Reviews: First-pass approval rates, participation</li>
-                    <li>• Documents: Upload rates, turnaround times</li>
-                    <li>• Activity Feed: Comments, cross-project interactions</li>
-                    <li>• Time Allocation: Allocated vs. actual hours, early completion bonuses</li>
-                    <li>• User Role: Department and role-specific weighting</li>
+                    <li>• Projects and Tasks: Assignment, deadlines, and completion timelines</li>
+                    <li>• Time Logs: Real logged hours from task activity</li>
+                    <li>• Comments: Contribution volume across assigned work</li>
+                    <li>• Documents: Uploaded files and reviewer feedback</li>
+                    <li>• KPI Rule: Overall KPI equals document quality rating (review score) normalized to 100</li>
                   </ul>
                 </div>
 
                 <div>
-                  <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Role Weights (Manager)</h4>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>Delivery: 20%</div>
-                    <div>Reliability: 25%</div>
-                    <div>Collaboration: 20%</div>
-                    <div>Quality: 20%</div>
-                    <div>Initiative: 10%</div>
-                    <div>Efficiency: 5%</div>
+                  <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">KPI Scoring</h4>
+                  <div className="grid grid-cols-1 gap-2 text-sm">
+                    <div>Document quality rating scale: 1 to 5</div>
+                    <div>KPI score conversion: (Average Rating / 5) x 100</div>
+                    <div>Rating source: `reviewScore` or `Rating: X/5` in reviewer notes</div>
                   </div>
                 </div>
 
@@ -684,7 +858,7 @@ const Profile: React.FC = () => {
                       <span className="font-medium">{displayKpiData.collaboration}%</span>
                     </div>
                     <div className="flex justify-between">
-                      <span>Quality (Approval + Turnaround):</span>
+                      <span>Quality (Reviewer Rating):</span>
                       <span className="font-medium">{displayKpiData.quality}%</span>
                     </div>
                     <div className="flex justify-between">
@@ -850,7 +1024,7 @@ const Profile: React.FC = () => {
             <div className="text-xs text-gray-400 dark:text-gray-500">Per project</div>
           </div>
           <div className="text-center">
-            <div className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">88.7%</div>
+            <div className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">{displayKpiData.efficiency}%</div>
             <div className="text-sm text-gray-500 dark:text-gray-400">Efficiency Score</div>
             <div className="text-xs text-gray-400 dark:text-gray-500">KPI Component</div>
           </div>
