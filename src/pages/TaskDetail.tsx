@@ -1965,11 +1965,6 @@ const TaskDetail: React.FC = () => {
                       ) : (
                         <button type="button" onClick={() => stopRecording('log')} className="text-xs px-2 py-1 rounded-md bg-red-600 text-white">Stop</button>
                       )}
-                      {!isLiveLog ? (
-                        <button type="button" onClick={() => startLiveDictation('log')} className="text-xs px-2 py-1 rounded-md bg-green-600 text-white">🎙 Live</button>
-                      ) : (
-                        <button type="button" onClick={() => stopLiveDictation('log')} className="text-xs px-2 py-1 rounded-md bg-orange-600 text-white">Stop Live</button>
-                      )}
                     </div>
                   </div>
                   <textarea

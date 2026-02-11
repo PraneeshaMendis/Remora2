@@ -28,6 +28,7 @@ import Permissions from './pages/Permissions.tsx'
 import BudgetConfig from './pages/BudgetConfig.tsx'
 import ProjectCosting from './pages/ProjectCosting.tsx'
 import MeetingLogger from './pages/MeetingLogger.tsx'
+import ExecutiveKPIDashboard from './pages/ExecutiveKPIDashboard.tsx'
 
 function App() {
   return (
@@ -46,6 +47,8 @@ function App() {
             <Route element={<AuthenticatedLayout />}>
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard" element={<DirectorDashboard />} />
+              <Route path="kpi-tracker" element={<ExecutiveKPIDashboard />} />
+              <Route path="executive-kpi" element={<ExecutiveKPIDashboard />} />
               <Route path="projects" element={<ProjectsList />} />
               <Route path="projects/add" element={<AddProject />} />
               <Route path="projects/:id" element={<ProjectDetail />} />

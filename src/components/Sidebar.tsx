@@ -16,7 +16,8 @@ import {
   Shield,
   Wallet,
   ClipboardList,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Gauge
 } from 'lucide-react'
 import CyberLabsLogo from './CyberLabsLogo.tsx'
 import SidebarLogoScene from './SidebarLogoScene.tsx'
@@ -39,6 +40,13 @@ const Sidebar: React.FC = () => {
           icon: BarChart3,
           roles: ['director'],
           description: 'Executive overview',
+        },
+        {
+          name: 'KPI Tracker',
+          href: '/kpi-tracker',
+          icon: Gauge,
+          roles: ['director', 'manager'],
+          description: 'Document quality KPI',
         },
         {
           name: 'Calendar',
