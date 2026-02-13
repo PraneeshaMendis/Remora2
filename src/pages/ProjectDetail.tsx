@@ -185,6 +185,16 @@ const ProjectDetail: React.FC = () => {
     const res = await fetch(`${base}/projects/${id}`)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json()
+    const mapMembershipToMember = (membership: any): ProjectMember => ({
+      id: membership.user?.id || membership.userId,
+      name: membership.user?.name || 'Unknown',
+      email: membership.user?.email || '',
+      role: (membership.role || 'member').toString().toLowerCase(),
+      department: membership.user?.department?.name || '',
+      avatar: (membership.user?.name || 'U').split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase(),
+    })
+
+    const teamMembers: ProjectMember[] = (data.memberships || []).map((m: any) => mapMembershipToMember(m))
     const apiPhases = (data.phases || []).map((p: any) => ({
       id: p.id,
       title: p.name,
@@ -194,28 +204,24 @@ const ProjectDetail: React.FC = () => {
       status: 'active',
       projectId: data.id,
       assignees: [],
-      tasks: (p.tasks || []).map((t: any) => ({
-        id: t.id,
-        title: t.title,
-        description: t.description || '',
-        status: (t.status || 'NOT_STARTED').toString().toLowerCase().replace('_', '-') as any,
-        priority: 'medium',
-        startDate: t.startDate ? new Date(t.startDate).toISOString().split('T')[0] : '',
-        dueDate: t.dueDate || '',
-        completedAt: t.completedAt || undefined,
-        assignee: { id: '', name: '', email: '', role: '', department: '' },
-        phaseId: p.id,
-        createdAt: '',
-        updatedAt: ''
-      }))
-    }))
-    const teamMembers: ProjectMember[] = (data.memberships || []).map((m: any) => ({
-      id: m.user?.id || m.userId,
-      name: m.user?.name || 'Unknown',
-      email: m.user?.email || '',
-      role: (m.role || 'member').toString().toLowerCase(),
-      department: m.user?.department?.name || '',
-      avatar: (m.user?.name || 'U').split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase(),
+      tasks: (p.tasks || []).map((t: any) => {
+        const assigneeMembers: ProjectMember[] = (t.assignees || []).map((m: any) => mapMembershipToMember(m))
+        return {
+          id: t.id,
+          title: t.title,
+          description: t.description || '',
+          status: (t.status || 'NOT_STARTED').toString().toLowerCase().replace('_', '-') as any,
+          priority: (t.priority || 'MEDIUM').toString().toLowerCase() as any,
+          startDate: t.startDate ? new Date(t.startDate).toISOString().split('T')[0] : '',
+          dueDate: t.dueDate ? new Date(t.dueDate).toISOString().split('T')[0] : '',
+          completedAt: t.completedAt || undefined,
+          assignees: assigneeMembers,
+          assignee: assigneeMembers[0],
+          phaseId: p.id,
+          createdAt: t.createdAt || '',
+          updatedAt: t.updatedAt || ''
+        }
+      })
     }))
 
     const mapped: Project = {
@@ -565,6 +571,15 @@ const ProjectDetail: React.FC = () => {
       default: return undefined
     }
   }
+  const toApiPriority = (p: string): 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | undefined => {
+    switch (p) {
+      case 'low': return 'LOW'
+      case 'medium': return 'MEDIUM'
+      case 'high': return 'HIGH'
+      case 'critical': return 'CRITICAL'
+      default: return undefined
+    }
+  }
 
   // Task management functions
   const updateTaskStatus = (phaseId: string, taskId: string, newStatus: string, completedDateInput?: string) => {
@@ -737,28 +752,38 @@ const ProjectDetail: React.FC = () => {
     setIsEditPhaseModalOpen(true)
   }
 
-  const handleSaveTask = (updatedTask: any) => {
-    setProject(prev => {
-      if (!prev) return null
-      
-      const updatedProject = {
-        ...prev,
-        phases: prev.phases.map(phase => ({
-          ...phase,
-          tasks: phase.tasks.map(task => 
-            task.id === updatedTask.id ? { ...task, ...updatedTask } : task
-          )
-        }))
-      }
+  const handleSaveTask = async (updatedTask: any) => {
+    const base = (import.meta as any).env.VITE_API_URL || 'http://localhost:4000'
+    const apiStatus = toApiStatus(updatedTask.status)
+    const apiPriority = toApiPriority(updatedTask.priority)
 
-      // Recalculate project progress based on task completion
-      const newProgress = calculateProjectProgress(convertPhasesForProgress(updatedProject.phases))
-      
-      return {
-        ...updatedProject,
-        progress: newProgress
-      }
+    if (!apiStatus) throw new Error('Invalid task status')
+    if (!apiPriority) throw new Error('Invalid task priority')
+
+    const payload: any = {
+      title: String(updatedTask.title || '').trim(),
+      description: updatedTask.description || '',
+      status: apiStatus,
+      priority: apiPriority,
+      startDate: updatedTask.startDate ? new Date(updatedTask.startDate).toISOString() : null,
+      dueDate: updatedTask.dueDate ? new Date(updatedTask.dueDate).toISOString() : null,
+      completedAt: apiStatus === 'COMPLETED'
+        ? (updatedTask.completedAt ? new Date(updatedTask.completedAt).toISOString() : new Date().toISOString())
+        : null,
+      assigneeUserIds: updatedTask.assignee?.id ? [updatedTask.assignee.id] : [],
+    }
+
+    const res = await fetch(`${base}/tasks/${updatedTask.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     })
+    if (!res.ok) {
+      const txt = await res.text()
+      throw new Error(txt || `Failed to save task: ${res.status}`)
+    }
+
+    await reloadProject()
   }
 
   const handleSavePhase = async (updatedPhase: any) => {
@@ -1666,6 +1691,7 @@ const ProjectDetail: React.FC = () => {
         }}
         task={editingTask}
         onSave={handleSaveTask}
+        teamMembers={project?.team || []}
       />
     </div>
   )

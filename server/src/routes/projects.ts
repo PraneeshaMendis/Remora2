@@ -6,6 +6,11 @@ import { createNotifications } from '../utils/notifications.ts'
 
 const router = Router()
 
+function formatNotificationDate(date: Date | null | undefined) {
+  if (!date) return 'Not set'
+  return date.toISOString().slice(0, 10)
+}
+
 function calcTaskProgress(tasks: { status: TaskStatus }[]) {
   const total = tasks.length
   if (total === 0) return 0
@@ -421,12 +426,15 @@ router.post('/:id/phases/:phaseId/tasks', async (req: Request, res: Response) =>
     const notifyIds = (assigneeUserIds || []).filter((uid: string) => uid && uid !== actorId)
     if (notifyIds.length) {
       try {
+        const projectTitle = phase.project?.title || 'Untitled project'
+        const startLabel = formatNotificationDate(created.startDate)
+        const dueLabel = formatNotificationDate(created.dueDate)
         await createNotifications(
           notifyIds.map((uid: string) => ({
             userId: uid,
             type: 'TASK_ASSIGNMENT',
             title: 'Assigned to task',
-            message: `You were assigned to "${created.title}" in phase "${phase.name}".`,
+            message: `You were assigned to "${created.title}" in project "${projectTitle}" (phase "${phase.name}"). Start date: ${startLabel}. Due date: ${dueLabel}.`,
             targetUrl: `/projects/${projectId}/tasks/${created.id}`,
           })),
         )

@@ -6,6 +6,11 @@ import { createNotifications } from '../utils/notifications.ts'
 
 const router = Router()
 
+function formatNotificationDate(date: Date | null | undefined) {
+  if (!date) return 'Not set'
+  return date.toISOString().slice(0, 10)
+}
+
 router.post('/phases/:phaseId/tasks', async (req: Request, res: Response) => {
   const phaseId = req.params.phaseId
   const schema = z.object({
@@ -90,7 +95,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
   if (!parsed.success) return res.status(400).json(parsed.error.flatten())
   const { assigneeUserIds, ...rest } = parsed.data as any
   const hasCompletedAtInput = Object.prototype.hasOwnProperty.call(parsed.data, 'completedAt')
-  let taskMeta: { title: string; phaseName: string; projectId: string } | null = null
+  let taskMeta: { title: string; phaseName: string; projectId: string; projectTitle: string; startDate: Date | null; dueDate: Date | null } | null = null
   let existingAssignees: string[] = []
   if (assigneeUserIds !== undefined) {
     const taskInfo = await prisma.task.findUnique({
@@ -102,7 +107,14 @@ router.patch('/:id', async (req: Request, res: Response) => {
     })
     if (!taskInfo) return res.status(404).json({ error: 'Task not found' })
     existingAssignees = taskInfo.assignees.map(a => a.userId)
-    taskMeta = { title: taskInfo.title, phaseName: taskInfo.phase.name, projectId: taskInfo.phase.projectId }
+    taskMeta = {
+      title: taskInfo.title,
+      phaseName: taskInfo.phase.name,
+      projectId: taskInfo.phase.projectId,
+      projectTitle: taskInfo.phase.project.title || 'Untitled project',
+      startDate: taskInfo.startDate,
+      dueDate: taskInfo.dueDate,
+    }
   }
   const data: any = { ...rest }
   if (data.startDate !== undefined) {
@@ -133,6 +145,12 @@ router.patch('/:id', async (req: Request, res: Response) => {
   }
   if (taskMeta && data.title) {
     taskMeta.title = data.title
+  }
+  if (taskMeta && data.startDate !== undefined) {
+    taskMeta.startDate = data.startDate
+  }
+  if (taskMeta && data.dueDate !== undefined) {
+    taskMeta.dueDate = data.dueDate
   }
   // Update basic fields first
   await prisma.task.update({ where: { id }, data })
@@ -167,12 +185,14 @@ router.patch('/:id', async (req: Request, res: Response) => {
     const notifyIds = newAssignees.filter((uid: string) => uid && uid !== actorId)
     if (notifyIds.length && taskMeta) {
       try {
+        const startLabel = formatNotificationDate(taskMeta.startDate)
+        const dueLabel = formatNotificationDate(taskMeta.dueDate)
         await createNotifications(
           notifyIds.map((uid: string) => ({
             userId: uid,
             type: 'TASK_ASSIGNMENT',
             title: 'Assigned to task',
-            message: `You were assigned to "${taskMeta.title}" in phase "${taskMeta.phaseName}".`,
+            message: `You were assigned to "${taskMeta.title}" in project "${taskMeta.projectTitle}" (phase "${taskMeta.phaseName}"). Start date: ${startLabel}. Due date: ${dueLabel}.`,
             targetUrl: `/projects/${taskMeta.projectId}/tasks/${id}`,
           })),
         )

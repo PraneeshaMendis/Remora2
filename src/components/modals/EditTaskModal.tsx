@@ -26,7 +26,7 @@ interface EditTaskModalProps {
   isOpen: boolean
   onClose: () => void
   task: Task | null
-  onSave: (task: Task) => void
+  onSave: (task: Task) => void | Promise<void>
   teamMembers?: Array<{
     id: string
     name: string
@@ -52,13 +52,7 @@ const EditTaskModal: React.FC<EditTaskModalProps> = ({
     dueDate: '',
     status: 'not-started',
     priority: 'medium',
-    assignee: {
-      id: '',
-      name: '',
-      email: '',
-      role: '',
-      department: ''
-    },
+    assignee: undefined,
     phaseId: '',
     createdAt: '',
     updatedAt: ''
@@ -88,10 +82,15 @@ const EditTaskModal: React.FC<EditTaskModalProps> = ({
     }))
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    onSave(formData)
-    onClose()
+    try {
+      await onSave(formData)
+      onClose()
+    } catch (error: any) {
+      console.error('Failed to save task', error)
+      alert(error?.message || 'Failed to save task')
+    }
   }
 
 
